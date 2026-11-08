@@ -1,0 +1,350 @@
+#include "tgui/models.h"
+
+#include <algorithm>
+#include <climits>
+#include <cmath>
+
+namespace tgui {
+namespace {
+
+std::optional<int> optInt(const QJsonObject& j, const char* key)
+{
+    const QJsonValue v = j.value(key);
+    if (!v.isDouble())
+        return std::nullopt;
+    const double d = v.toDouble();
+    if (d < INT_MIN || d > INT_MAX)
+        return std::nullopt;
+    return static_cast<int>(d);
+}
+
+std::optional<double> optNum(const QJsonObject& j, const char* key)
+{
+    const QJsonValue v = j.value(key);
+    return v.isDouble() ? std::optional<double>(v.toDouble()) : std::nullopt;
+}
+
+std::optional<QString> optStr(const QJsonObject& j, const char* key)
+{
+    const QJsonValue v = j.value(key);
+    return v.isString() ? std::optional<QString>(v.toString()) : std::nullopt;
+}
+
+std::optional<bool> optBool(const QJsonObject& j, const char* key)
+{
+    const QJsonValue v = j.value(key);
+    return v.isBool() ? std::optional<bool>(v.toBool()) : std::nullopt;
+}
+
+QStringList optStringList(const QJsonArray& array)
+{
+    QStringList list;
+    for (const QJsonValue& e : array)
+        if (e.isString())
+            list << e.toString();
+    return list;
+}
+
+bool statusIn(int status, std::initializer_list<int> values)
+{
+    for (int v : values)
+        if (v == status)
+            return true;
+    return false;
+}
+
+} // namespace
+
+bool statusIsDownloading(int status)
+{
+    return status == static_cast<int>(TorrentStatus::Download);
+}
+
+bool statusIsSeeding(int status)
+{
+    return status == static_cast<int>(TorrentStatus::Seed);
+}
+
+bool statusIsWaiting(int status)
+{
+    return statusIn(status, {
+        static_cast<int>(TorrentStatus::CheckWait),
+        static_cast<int>(TorrentStatus::Check),
+        static_cast<int>(TorrentStatus::DownloadWait),
+    });
+}
+
+bool statusIsStopped(int status)
+{
+    return status == static_cast<int>(TorrentStatus::Stopped);
+}
+
+bool statusIsFinished(int status, double sizeWhenDone, double leftUntilDone)
+{
+    // transgui: imgDone (Seed) and (leftUntilDone <> 0 or sizeWhenDone = 0)
+    // → stopped, иначе TR_STATUS_FINISHED.
+    return status == static_cast<int>(TorrentStatus::Seed) && sizeWhenDone > 0.0 &&
+           leftUntilDone == 0.0;
+}
+
+bool torrentIsActive(int rateDownload, int rateUpload)
+{
+    return rateDownload != 0 || rateUpload != 0;
+}
+
+bool parseTorrent(const QJsonObject& j, Torrent& t)
+{
+    if (!j.contains("id"))
+        return false;
+
+    t.id = optInt(j, "id").value_or(0);
+    t.name = optStr(j, "name");
+    t.status = optInt(j, "status");
+    t.errorString = optStr(j, "errorString");
+    t.announceResponse = optStr(j, "announceResponse");
+    t.recheckProgress = optNum(j, "recheckProgress");
+    t.sizeWhenDone = optNum(j, "sizeWhenDone");
+    t.totalSize = optNum(j, "totalSize");
+    t.leftUntilDone = optNum(j, "leftUntilDone");
+    t.downloadedEver = optNum(j, "downloadedEver");
+    t.uploadedEver = optNum(j, "uploadedEver");
+    t.uploadRatio = optNum(j, "uploadRatio");
+    t.metadataPercentComplete = optNum(j, "metadataPercentComplete");
+    t.rateDownload = optInt(j, "rateDownload");
+    t.rateUpload = optInt(j, "rateUpload");
+    t.peersSendingToUs = optInt(j, "peersSendingToUs");
+    t.peersGettingFromUs = optInt(j, "peersGettingFromUs");
+    t.eta = optInt(j, "eta");
+    t.addedDate = optInt(j, "addedDate");
+    t.doneDate = optInt(j, "doneDate");
+    t.activityDate = optInt(j, "activityDate");
+    t.secondsSeeding = optInt(j, "secondsSeeding");
+    t.secondsDownloading = optInt(j, "secondsDownloading");
+    t.bandwidthPriority = optInt(j, "bandwidthPriority");
+    t.queuePosition = optInt(j, "queuePosition");
+    t.isPrivate = optBool(j, "isPrivate");
+    t.isFinished = optBool(j, "isFinished");
+    t.isStalled = optBool(j, "isStalled");
+    t.sequentialDownload = optBool(j, "sequential_download");
+    t.downloadDir = optStr(j, "downloadDir");
+
+    const QJsonValue labels = j.value("labels");
+    if (labels.isArray())
+        t.labels = optStringList(labels.toArray());
+
+    const QJsonValue ts = j.value("trackerStats");
+    if (ts.isArray())
+        t.trackerStats = parseTrackerStats(ts.toArray());
+
+    return true;
+}
+
+QVector<Torrent> parseTorrents(const QJsonArray& array)
+{
+    QVector<Torrent> result;
+    for (const QJsonValue& e : array) {
+        if (!e.isObject())
+            continue;
+        Torrent t;
+        if (parseTorrent(e.toObject(), t))
+            result.push_back(t);
+    }
+    return result;
+}
+
+QVector<Torrent> parseTorrentsTable(const QJsonObject& body)
+{
+    QVector<Torrent> result;
+    const QJsonArray arr = body.value("torrents").toArray();
+    if (arr.isEmpty() || !arr.first().isArray())
+        return result;
+
+    const QStringList fields = optStringList(arr.first().toArray());
+    for (int i = 1; i < arr.size(); ++i) {
+        if (!arr.at(i).isArray())
+            continue;
+        const QJsonArray row = arr.at(i).toArray();
+        QJsonObject obj;
+        const int n = std::min(fields.size(), row.size());
+        for (int f = 0; f < n; ++f)
+            obj.insert(fields.at(f), row.at(f));
+        Torrent t;
+        if (parseTorrent(obj, t))
+            result.push_back(t);
+    }
+    return result;
+}
+
+QVector<TrackerStat> parseTrackerStats(const QJsonArray& array)
+{
+    QVector<TrackerStat> result;
+    for (const QJsonValue& e : array) {
+        if (!e.isObject())
+            continue;
+        const QJsonObject j = e.toObject();
+        TrackerStat s;
+        s.announce = j.value("announce").toString();
+        s.announceState = j.value("announceState").toInt();
+        s.hasAnnounced = j.value("hasAnnounced").toBool();
+        s.lastAnnounceSucceeded = j.value("lastAnnounceSucceeded").toBool();
+        s.lastAnnounceResult = j.value("lastAnnounceResult").toString();
+        s.lastAnnounceTime = j.value("lastAnnounceTime").toInt();
+        s.seederCount = j.value("seederCount").isDouble() ? j.value("seederCount").toInt() : -1;
+        s.leecherCount =
+            j.value("leecherCount").isDouble() ? j.value("leecherCount").toInt() : -1;
+        s.torrentId = j.value("torrentId").toInt();
+        result.push_back(s);
+    }
+    return result;
+}
+
+QVector<Peer> parsePeers(const QJsonArray& array)
+{
+    QVector<Peer> result;
+    for (const QJsonValue& e : array) {
+        if (!e.isObject())
+            continue;
+        const QJsonObject j = e.toObject();
+        Peer p;
+        p.address = j.value("address").toString();
+        p.port = j.value("port").isDouble() ? j.value("port").toInt() : 0;
+        p.clientName = j.value("clientName").toString();
+        p.flagStr = j.value("flagStr").toString();
+        if (j.value("progress").isDouble())
+            p.progress = j.value("progress").toDouble();
+        if (j.value("rateToClient").isDouble())
+            p.rateToClient = static_cast<int>(j.value("rateToClient").toDouble());
+        if (j.value("rateToPeer").isDouble())
+            p.rateToPeer = static_cast<int>(j.value("rateToPeer").toDouble());
+        result.push_back(p);
+    }
+    return result;
+}
+
+QVector<FileStat> parseFiles(const QJsonObject& torrent)
+{
+    QVector<FileStat> result;
+    const QJsonArray files = torrent.value("files").toArray();
+    const QJsonArray priorities = torrent.value("priorities").toArray();
+    const QJsonArray wanted = torrent.value("wanted").toArray();
+
+    for (int i = 0; i < files.size(); ++i) {
+        if (!files.at(i).isObject())
+            continue;
+        const QJsonObject f = files.at(i).toObject();
+        FileStat fs;
+        fs.index = i;
+        fs.name = f.value("name").toString();
+        fs.size = f.value("size").toDouble();
+        if (i < priorities.size() && priorities.at(i).isDouble())
+            fs.priority = static_cast<int>(priorities.at(i).toDouble());
+        if (i < wanted.size())
+            fs.wanted = wanted.at(i).isBool() ? wanted.at(i).toBool()
+                                              : wanted.at(i).toInt() != 0;
+        result.push_back(fs);
+    }
+    return result;
+}
+
+namespace {
+
+// session-stats: число >= 0 и конечное (transgui _GetNumber).
+bool getNumber(const QJsonObject& s, const char* key, double& out)
+{
+    const QJsonValue v = s.value(key);
+    if (!v.isDouble())
+        return false;
+    out = v.toDouble();
+    return out >= 0.0 && std::isfinite(out);
+}
+
+// session-stats: целое >= 0 и <= maxValue (transgui _GetInteger).
+bool getInt(const QJsonObject& s, const char* key, long long& out, long long maxValue)
+{
+    const QJsonValue v = s.value(key);
+    if (!v.isDouble())
+        return false;
+    const double d = v.toDouble();
+    if (!std::isfinite(d) || d < 0.0 || d > static_cast<double>(maxValue) || d != std::trunc(d))
+        return false;
+    out = static_cast<long long>(d);
+    return true;
+}
+
+bool getStatsBlock(const QJsonObject& json, const char* key, StatsBlock& out)
+{
+    const QJsonValue v = json.value(key);
+    if (!v.isObject())
+        return false;
+    const QJsonObject s = v.toObject();
+    double downloaded = 0.0;
+    double uploaded = 0.0;
+    long long files = 0;
+    long long seconds = 0;
+    if (!getNumber(s, "downloadedBytes", downloaded) || !getNumber(s, "uploadedBytes", uploaded) ||
+        !getInt(s, "filesAdded", files, static_cast<long long>(INT_MAX)) ||
+        !getInt(s, "secondsActive", seconds, static_cast<long long>(INT_MAX) - 30))
+        return false;
+    out.downloadedBytes = downloaded;
+    out.uploadedBytes = uploaded;
+    out.filesAdded = files;
+    out.secondsActive = seconds;
+    return true;
+}
+
+} // namespace
+
+bool parseSessionInfo(const QJsonObject& j, SessionInfo& out)
+{
+    if (!j.contains("rpc-version") && !j.contains("version"))
+        return false;
+
+    out.rpcVersion = j.value("rpc-version").toInt();
+    out.version = j.value("version").toString();
+    out.downloadDir = j.value("download-dir").toString();
+
+    out.altSpeedEnabled = j.value("alt-speed-enabled").toBool();
+    out.altSpeedDown = j.value("alt-speed-down").toInt();
+    out.altSpeedUp = j.value("alt-speed-up").toInt();
+    out.altSpeedTimeEnabled = j.value("alt-speed-time-enabled").toBool();
+    out.altSpeedTimeBegin = j.value("alt-speed-time-begin").toInt();
+    out.altSpeedTimeEnd = j.value("alt-speed-time-end").toInt();
+    out.altSpeedTimeDay = j.value("alt-speed-time-day").toInt();
+
+    out.speedLimitDownEnabled = j.value("speed-limit-down-enabled").toBool();
+    out.speedLimitDown = j.value("speed-limit-down").toInt();
+    out.speedLimitUpEnabled = j.value("speed-limit-up-enabled").toBool();
+    out.speedLimitUp = j.value("speed-limit-up").toInt();
+
+    out.blocklistEnabled = j.value("blocklist-enabled").toBool();
+    out.blocklistUrl = j.value("blocklist-url").toString();
+    out.torrentCount = j.value("torrent-count").toInt();
+    out.dhtEnabled = j.value("dht-enabled").toBool();
+    out.pexEnabled = j.value("pex-enabled").toBool();
+    out.lpdEnabled = j.value("lpd-enabled").toBool();
+    out.utpEnabled = j.value("utp-enabled").toBool();
+    out.peerPort = j.value("peer-port").toInt();
+    out.startAddedTorrents = j.contains("start-added-torrents")
+                                 ? j.value("start-added-torrents").toBool()
+                                 : true;
+    out.queueEnabled = j.value("queue-enabled").toBool();
+    out.queueSize = j.value("queue-size").toInt();
+    out.ratioLimit = j.value("ratio-limit").toDouble();
+    out.ratioLimitEnabled = j.value("ratio-limit-enabled").toBool();
+    out.raw = j;
+    return true;
+}
+
+bool parseSessionStats(const QJsonObject& j, SessionStats& out)
+{
+    StatsBlock current;
+    StatsBlock cumulative;
+    if (!getStatsBlock(j, "current-stats", current) ||
+        !getStatsBlock(j, "cumulative-stats", cumulative))
+        return false;
+    out.current = current;
+    out.cumulative = cumulative;
+    return true;
+}
+
+} // namespace tgui

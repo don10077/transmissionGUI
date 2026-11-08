@@ -1,0 +1,17 @@
+# Build-каталоги (CMakePresets: build/win-debug, build/win-release)
+build/
+CMakeFiles/
+CMakeUserPresets.json
+compile_commands.json
+Release/
+_deps/
+
+# Объекты и артефакты
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.exe
+!tools/*.exe
+WORKFLOW.md
