@@ -7,7 +7,7 @@
 
 namespace tgui::bencode {
 
-// Zначение bencode: целое, строка, список, словарь (аналог transgui bencode.pas).
+// Значение bencode: целое, строка, список, словарь.
 class Value {
 public:
     enum class Type { Integer, String, List, Dictionary };

@@ -81,7 +81,7 @@ bool statusIsStopped(int status)
 
 bool statusIsFinished(int status, double sizeWhenDone, double leftUntilDone)
 {
-    // transgui: imgDone (Seed) and (leftUntilDone <> 0 or sizeWhenDone = 0)
+    // «Завершено»: Seed и (leftUntilDone <> 0 или sizeWhenDone = 0).
     // → stopped, иначе TR_STATUS_FINISHED.
     return status == static_cast<int>(TorrentStatus::Seed) && sizeWhenDone > 0.0 &&
            leftUntilDone == 0.0;
@@ -235,7 +235,10 @@ QVector<FileStat> parseFiles(const QJsonObject& torrent)
         FileStat fs;
         fs.index = i;
         fs.name = f.value("name").toString();
-        fs.size = f.value("size").toDouble();
+        // В torrent-get размер файла — в поле "length" (не "size").
+        fs.size = f.value("length").toDouble();
+        if (fs.size <= 0.0)
+            fs.size = f.value("size").toDouble();
         if (i < priorities.size() && priorities.at(i).isDouble())
             fs.priority = static_cast<int>(priorities.at(i).toDouble());
         if (i < wanted.size())
@@ -248,7 +251,7 @@ QVector<FileStat> parseFiles(const QJsonObject& torrent)
 
 namespace {
 
-// session-stats: число >= 0 и конечное (transgui _GetNumber).
+// session-stats: число >= 0 и конечное.
 bool getNumber(const QJsonObject& s, const char* key, double& out)
 {
     const QJsonValue v = s.value(key);
@@ -258,7 +261,7 @@ bool getNumber(const QJsonObject& s, const char* key, double& out)
     return out >= 0.0 && std::isfinite(out);
 }
 
-// session-stats: целое >= 0 и <= maxValue (transgui _GetInteger).
+// session-stats: целое >= 0 и <= maxValue.
 bool getInt(const QJsonObject& s, const char* key, long long& out, long long maxValue)
 {
     const QJsonValue v = s.value(key);

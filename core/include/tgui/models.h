@@ -11,7 +11,7 @@
 
 namespace tgui {
 
-// Статусы Transmission (rpc-version ≥ 14; transgui TR_STATUS_*).
+// Статусы Transmission (rpc-version ≥ 14).
 enum class TorrentStatus : int {
     Stopped = 0,
     CheckWait = 1,
@@ -22,11 +22,11 @@ enum class TorrentStatus : int {
     Seed = 6,
 };
 
-// Псевдо-статус «Завершено» (transgui TR_STATUS_FINISHED): Seed при
+// Псевдо-статус «Завершено»: Seed при
 // sizeWhenDone > 0 и leftUntilDone == 0.
 bool statusIsFinished(int status, double sizeWhenDone, double leftUntilDone);
 
-// Приоритет полосы (transgui TR_PRI_LOW/NORMAL/HIGH).
+// Приоритет полосы пропускания (bandwidthpriority: -1/0/1).
 enum class BandwidthPriority : int { Low = -1, Normal = 0, High = 1 };
 
 // trackerStats[] из torrent-get.
@@ -42,8 +42,7 @@ struct TrackerStat {
     int torrentId = 0;
 };
 
-// Торрент (torrent-get). Опциональные поля зависят от запрошенных "fields" —
-// как в transgui (GetTorrentValue + FieldExists).
+// Торрент (torrent-get). Опциональные поля зависят от запрошенных "fields".
 struct Torrent {
     int id = 0;
 
@@ -100,14 +99,14 @@ struct FileStat {
     bool wanted = true;
 };
 
-// Детали одного торрента для вкладки «Файлы» (transgui DoFillFilesList).
+// Детали одного торрента для вкладки «Файлы».
 struct TorrentDetails {
     int id = 0;
     QString downloadDir;
     QVector<FileStat> files;
 };
 
-// session-get (transgui FillSessionInfo + параметры DaemonOptions).
+// session-get (информация о сессии + параметры демона).
 struct SessionInfo {
     int rpcVersion = 0;
     QString version;
@@ -151,7 +150,7 @@ struct StatsBlock {
     long long secondsActive = 0;
 };
 
-// session-stats (transgui FillStatistics: current-stats / cumulative-stats).
+// session-stats (current-stats / cumulative-stats).
 struct SessionStats {
     StatsBlock current;
     StatsBlock cumulative;
@@ -164,7 +163,7 @@ bool statusIsWaiting(int status);     // CheckWait | Check | DownloadWait
 bool statusIsStopped(int status);     // Stopped
 bool torrentIsActive(int rateDownload, int rateUpload);
 
-// --- Парсинг ответов демона (transgui Fill* / DoFill*) ---
+// --- Парсинг ответов демона ---
 bool parseTorrent(const QJsonObject& torrent, Torrent& out);
 QVector<Torrent> parseTorrents(const QJsonArray& array);
 // torrent-get с format=table (rpc ≥ 16): torrents[0] — имена полей,

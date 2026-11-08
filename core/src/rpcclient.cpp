@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include <QFile>
+
 namespace tgui {
 
 RpcClient::RpcClient(const Options& options, QObject* parent)
@@ -41,18 +43,21 @@ void RpcClient::connectToDaemon()
             emit connectionFailed(describeError(r));
             return;
         }
-        parseSessionInfo(r.arguments, m_sessionInfo);
+        if (!parseSessionInfo(r.arguments, m_sessionInfo)) {
+            emit connectionFailed(QStringLiteral("Invalid server response."));
+            return;
+        }
         m_rpcVersion = m_sessionInfo.rpcVersion;
         m_connected = true;
 
         auto finish = [this] { emit connected(m_sessionInfo); };
-        // transgui GetSessionInfo: rpc >= 15 → free-space для download-dir.
+        // При rpc >= 15 → free-space для download-dir.
         if (m_rpcVersion >= 15 && !m_sessionInfo.downloadDir.isEmpty()) {
             m_rpc.call("free-space", QJsonObject{{"path", m_sessionInfo.downloadDir}},
                        [this, finish](const JsonRpcResult& fs) {
                            if (fs.ok)
-                               m_sessionInfo.downloadDirFreeSpace =
-                                   fs.arguments.value("size-bytes").toVariant().toLongLong();
+                               m_sessionInfo.downloadDirFreeSpace = static_cast<qint64>(
+                                   fs.arguments.value("size-bytes").toDouble());
                            finish();
                        });
         } else {
@@ -93,7 +98,7 @@ QJsonArray toJsonArray(const QStringList& list)
     return array;
 }
 
-// transgui DeleteIfRpcLessThan: убрать поле, если версия RPC ниже нужной.
+// Убрать поле из списка, если версия RPC ниже нужной.
 void removeFieldIfUnsupported(QStringList& fields, const QString& field,
                               int currentVersion, int minVersion)
 {
@@ -105,11 +110,11 @@ void removeFieldIfUnsupported(QStringList& fields, const QString& field,
 
 void RpcClient::getTorrents(const QStringList& extraFields)
 {
-    // transgui TRpcThread.GetTorrents: базовый список полей.
+    // Базовый список полей torrent-get.
     QStringList fields = {
         "id", "name", "status", "errorString", "announceResponse", "recheckProgress",
         "sizeWhenDone", "leftUntilDone", "rateDownload", "rateUpload", "trackerStats",
-        "metadataPercentComplete", "sequential_download",
+        "metadataPercentComplete", "sequential_download", "downloadDir",
     };
     fields += extraFields;
     removeFieldIfUnsupported(fields, "labels", m_rpcVersion, 16);
@@ -139,7 +144,7 @@ void RpcClient::getTorrents(const QStringList& extraFields)
 
 void RpcClient::getTorrentDetails(int id)
 {
-    // transgui TRpcThread.GetFiles.
+    // torrent-get: файлы + приоритеты + wanted + downloadDir.
     QJsonObject args;
     torrentIds(args, id);
     args.insert("fields", toJsonArray({"id", "files", "priorities", "wanted", "downloadDir"}));
@@ -176,7 +181,7 @@ void RpcClient::getTorrentDetails(int id)
 
 void RpcClient::getPeers(int id)
 {
-    // transgui TRpcThread.GetPeers.
+    // torrent-get: пиры.
     QJsonObject args;
     torrentIds(args, id);
     args.insert("fields", toJsonArray({"peers"}));
@@ -196,7 +201,7 @@ void RpcClient::getPeers(int id)
 
 void RpcClient::getTrackers(int id)
 {
-    // transgui TRpcThread.GetTrackers.
+    // torrent-get: трекеры.
     QJsonObject args;
     torrentIds(args, id);
     args.insert("fields",
@@ -218,7 +223,7 @@ void RpcClient::getTrackers(int id)
 
 void RpcClient::getSessionStats()
 {
-    // transgui TRpcThread.GetStats.
+    // session-stats.
     m_rpc.call("session-stats", QJsonObject{}, [this](const JsonRpcResult& r) {
         if (!r.ok) {
             emit readError("session-stats", describeError(r));
@@ -265,7 +270,7 @@ void RpcClient::stopTorrent(int id)
 
 void RpcClient::startAll(bool force)
 {
-    // transgui TorrentAction(NULL, 'torrent-start') — без ids → все торренты.
+    // Без ids → все торренты.
     requestReport(force ? "torrent-start-now" : "torrent-start", QJsonObject{});
 }
 
@@ -315,7 +320,7 @@ void RpcClient::setTorrent(int id, const QJsonObject& params)
 
 void RpcClient::setLabels(int id, const QStringList& labels)
 {
-    // transgui: labels доступны с RPC 16 (Transmission 3.0+).
+    // labels доступны с RPC 16 (Transmission 3.0+).
     if (!supports(16)) {
         emit requestCompleted("torrent-set", false,
                               QStringLiteral("labels require Transmission RPC version 16 or newer"),
@@ -338,7 +343,7 @@ void RpcClient::setPriority(int id, int priority)
 
 void RpcClient::setFilesWanted(int id, const QVector<int>& wanted, const QVector<int>& unwanted)
 {
-    // transgui SetFilePriority: files-wanted + files-unwanted (индексы файлов).
+    // files-wanted + files-unwanted (индексы файлов).
     QJsonObject args;
     torrentIds(args, id);
     QJsonArray w;
@@ -354,17 +359,26 @@ void RpcClient::setFilesWanted(int id, const QVector<int>& wanted, const QVector
 
 void RpcClient::addTorrent(const AddTorrent& params)
 {
-    // transgui _AddTorrent: paused + peer-limit + sequential_download (>= 18).
+    // paused + peer-limit + sequential_download (>= 18).
     QJsonObject args;
     switch (params.source) {
-        case AddTorrent::Source::File:
-            args.insert("filename", params.file);
+        case AddTorrent::Source::File: {
+            // Файл доступен локально → читаем метаданные и шлём base64:
+            // удалённому демону путь клиента недоступен («unrecognized info»).
+            QFile f(params.file);
+            if (f.open(QIODevice::ReadOnly)) {
+                args.insert("metainfo", QString::fromLatin1(f.readAll().toBase64()));
+            } else {
+                // Файла локально нет — пусть демон попробует свой путь.
+                args.insert("filename", params.file);
+            }
             break;
+        }
         case AddTorrent::Source::Base64:
             args.insert("metainfo", params.metainfoBase64);
             break;
         case AddTorrent::Source::Url:
-            // transgui: magnet/URL добавляются полем "filename".
+            // magnet/URL добавляются полем "filename".
             args.insert("filename", params.url);
             break;
     }

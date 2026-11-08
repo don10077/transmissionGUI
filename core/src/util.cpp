@@ -9,7 +9,7 @@ namespace {
 std::string formatFixed(double value, int decimals, const char* unit)
 {
     char fmt[32];
-    std::snprintf(fmt, sizeof(fmt), "%%%df %s", decimals, unit);
+    std::snprintf(fmt, sizeof(fmt), "%%.%df %s", decimals, unit);
     char buf[96];
     std::snprintf(buf, sizeof(buf), fmt, value);
     return buf;
@@ -32,8 +32,7 @@ std::string formatSize(double bytes, int roundTo)
         bytes /= 1024.0;
         ++unit;
     }
-    // transgui: if (RoundTo = 0) and (i > 3) then RoundTo := i - 2;
-    // (1-based i: 4 = GB → 2 знака, 5 = TB → 3 знака).
+    // Для GB/TB — больше знаков после запятой (2 / 3), иначе — 0.
     if (roundTo == 0 && unit > 2)
         roundTo = unit - 1;
     return formatFixed(bytes, roundTo, units[static_cast<size_t>(unit)]);

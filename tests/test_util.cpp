@@ -11,14 +11,14 @@ using tgui::formatSeconds;
 using tgui::formatSize;
 using tgui::percentComplete;
 
-TEST(UtilFormatSize, TransguiParity)
+TEST(UtilFormatSize, Behavior)
 {
     // GetHumanSize(0, 0) → "0 b"
     EXPECT_EQ(formatSize(0), "0 b");
     EXPECT_EQ(formatSize(500), "500 b");
     // 1024 b → "1 KB"
     EXPECT_EQ(formatSize(1024), "1 KB");
-    // 1.5 MiB → "2 MB" (0 знаков, как в transgui)
+    // 1.5 MiB → "2 MB" (0 знаков)
     EXPECT_EQ(formatSize(1536 * 1024), "2 MB");
     // GB → 2 знака: 1.23 GB
     EXPECT_EQ(formatSize(1.23 * 1024 * 1024 * 1024), "1.23 GB");
@@ -30,18 +30,18 @@ TEST(UtilFormatSize, TransguiParity)
 
 TEST(UtilFormatSize, RateMode)
 {
-    // roundTo = 1: минимальная единица KB, 1 знак.
+    // roundTo = 1: минимальная единица KB, 1 знак (GetHumanSize(sz, 1)).
     EXPECT_EQ(formatSize(123456, 1), "120.6 KB");
-    EXPECT_EQ(formatSize(500, 1), "0 KB");
+    EXPECT_EQ(formatSize(500, 1), "0.5 KB");
 }
 
 TEST(UtilFormatRate, PerSecond)
 {
     EXPECT_EQ(formatRate(123456), "120.6 KB/s");
-    EXPECT_EQ(formatRate(0), "0 KB/s");
+    EXPECT_EQ(formatRate(0), "0.0 KB/s");
 }
 
-TEST(UtilFormatSeconds, TransguiParity)
+TEST(UtilFormatSeconds, Behavior)
 {
     EXPECT_EQ(formatSeconds(0), "0s");
     EXPECT_EQ(formatSeconds(45), "45s");
@@ -50,10 +50,10 @@ TEST(UtilFormatSeconds, TransguiParity)
     EXPECT_EQ(formatSeconds(3600), "1h");
     EXPECT_EQ(formatSeconds(5400), "1h, 30m");
     EXPECT_EQ(formatSeconds(86400), "1d");
-    EXPECT_EQ(formatSeconds(205200), "2d, 6h");
+    EXPECT_EQ(formatSeconds(205200), "2d, 9h"); // 57 ч
 }
 
-TEST(UtilFormatEta, TransguiParity)
+TEST(UtilFormatEta, Behavior)
 {
     // ∞ → ""
     EXPECT_EQ(formatEta(-1), "");
@@ -62,7 +62,7 @@ TEST(UtilFormatEta, TransguiParity)
     EXPECT_EQ(formatEta(45), "45s");
     EXPECT_EQ(formatEta(120), "2m");
     // > 2 мин → округление до минуты
-    EXPECT_EQ(formatEta(150), "2m, 30s");
+    EXPECT_EQ(formatEta(150), "3m");
     EXPECT_EQ(formatEta(180), "3m");
     // > 30 мин → округление до 5 минут
     EXPECT_EQ(formatEta(2000), "35m");
@@ -71,7 +71,7 @@ TEST(UtilFormatEta, TransguiParity)
     EXPECT_EQ(formatEta(10000), "3h");
 }
 
-TEST(UtilFormatRatio, TransguiParity)
+TEST(UtilFormatRatio, Behavior)
 {
     EXPECT_EQ(formatRatio(-1), "");
     EXPECT_EQ(formatRatio(-2), "\u221E"); // ∞
@@ -80,10 +80,10 @@ TEST(UtilFormatRatio, TransguiParity)
     EXPECT_EQ(formatRatio(0), "0.000");
 }
 
-TEST(UtilPercentComplete, TransguiParity)
+TEST(UtilPercentComplete, Behavior)
 {
     EXPECT_DOUBLE_EQ(percentComplete(1000, 250), 75.0);
     EXPECT_DOUBLE_EQ(percentComplete(0, 0), 0.0);
-    // left > size (не должно быть, но transgui жмёт на 0)
+    // left > size (не должно быть; результат жмём на 0)
     EXPECT_DOUBLE_EQ(percentComplete(100, 500), 0.0);
 }

@@ -5,9 +5,8 @@
 
 namespace tgui {
 
-// Форматирование «как в transgui» (main.pas: GetHumanSize, EtaToString,
-// SecondsToString, RatioToString). Единицы — b/KB/MB/GB/TB (в transgui не
-// переводятся: lang/transgui.ru их не переопределяет).
+// Форматирование числовых значений для UI: размеры, скорости, время,
+// ratio. Единицы — b/KB/MB/GB/TB (не переводятся).
 
 // GetHumanSize(bytes, roundTo): "0 b", "500 b", "1 KB", "1536 MB" (roundTo=0),
 // "1.23 GB", "1.234 TB". roundTo=1 — минимальная единица KB (скорости).

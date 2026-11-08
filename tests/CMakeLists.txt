@@ -9,9 +9,12 @@ add_executable(tgui_tests
     test_jsonrpc.cpp
     test_models.cpp
     test_rpcclient.cpp
+    # GUI-модели списка (regress: пустая таблица после подключения).
+    ${CMAKE_SOURCE_DIR}/app/src/torrentmodel.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/groupedproxy.cpp
 )
-target_include_directories(tgui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(tgui_tests PRIVATE tgui_core GTest::gtest)
+target_include_directories(tgui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/app/src)
+target_link_libraries(tgui_tests PRIVATE tgui_core Qt6::Widgets Qt6::Network GTest::gtest)
 tgui_set_warnings(tgui_tests)
 
 add_test(NAME tgui_tests COMMAND tgui_tests)

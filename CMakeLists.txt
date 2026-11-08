@@ -1,4 +1,4 @@
-# Корневой CMake-файл проекта transmissionGUI — C++/Qt-порт transgui (Lazarus).
+# Корневой CMake-файл проекта transmissionGUI — GUI-клиент демона Transmission (C++/Qt).
 #
 # Модули:
 #   core — RPC-клиент и модели данных (чистый C++23, Qt Core/Network, без Widgets)
@@ -9,7 +9,7 @@ cmake_minimum_required(VERSION 3.28)
 
 project(transmissiongui
     VERSION 0.1.0
-    DESCRIPTION "Transmission GUI (C++/Qt port of transgui)"
+    DESCRIPTION "Transmission daemon GUI client (C++/Qt)"
     LANGUAGES C CXX
 )
 

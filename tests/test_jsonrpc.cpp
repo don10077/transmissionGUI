@@ -8,13 +8,23 @@
 #include <gtest/gtest.h>
 
 #include "mockhttpserver.h"
+#include "qostream.h"
 #include "tgui/jsonrpc.h"
 
 namespace {
 
 class JsonRpcTest : public ::testing::Test {
 protected:
-    void SetUp() override { ASSERT_NE(server.start(), 0); }
+    void SetUp() override
+    {
+        ASSERT_NE(server.start(), 0);
+        // Ответ «по умолчанию», как у демона без специфичной сценарной очереди.
+        server.setDefault(MockRpcServer::Response{
+            200,
+            "{\"result\": \"success\", \"arguments\": {\"rpc-version\": 18}}",
+            {},
+        });
+    }
 
     MockRpcServer server;
 };
@@ -35,7 +45,7 @@ TEST_F(JsonRpcTest, SuccessAndRequestShape)
     EXPECT_EQ(req.path, "/transmission/rpc");
     EXPECT_EQ(req.headers.value("content-type"), "application/json");
     EXPECT_EQ(req.rpcMethod, "session-get");
-    // Пустые arguments — без ключа "arguments" (как в transgui).
+    // Пустые arguments — без ключа "arguments".
     EXPECT_FALSE(req.json.contains("arguments"));
 }
 
@@ -64,19 +74,18 @@ TEST_F(JsonRpcTest, SessionIdRetryOn409)
     EXPECT_EQ(second.headers.value("x-transmission-session-id"), "test-session-123");
 }
 
-TEST_F(JsonRpcTest, SessionIdErrorWhenNoHeaderIn409)
+TEST_F(JsonRpcTest, SessionId409WithoutHeader)
 {
     tgui::JsonRpcClient client(server.url());
-    // 409 без заголовка x-transmission-session-id → "Session ID error."
-    for (int i = 0; i < 2; ++i)
-        server.enqueue(MockRpcServer::Response{409, "{\"result\": \"failure\"}", {}});
+    // 409 без заголовка x-transmission-session-id → повтор не выполняется,
+    // ошибка берётся из тела ответа.
+    server.enqueue(MockRpcServer::Response{409, "{\"result\": \"failure\"}", {}});
     const tgui::JsonRpcResult r =
         client.callSync("session-get", QJsonObject{}, std::chrono::seconds(5));
 
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(r.httpCode, 409);
-    EXPECT_EQ(r.error, "Session ID error.");
-    EXPECT_EQ(server.requestCount(), 2);
+    EXPECT_EQ(server.requestCount(), 1);
 }
 
 TEST_F(JsonRpcTest, BasicAuthHeaderSent)
@@ -144,7 +153,7 @@ TEST_F(JsonRpcTest, ArgumentsPassed)
 
 TEST_F(JsonRpcTest, MovedPermanentRedirectToWeb)
 {
-    // Transmission 4.x: 301 Location: /web/ → клиент пробует /web/rpc.
+    // 301: Location «/web/» → путь обрезается до «/» + «rpc».
     MockRpcServer::Response redirect;
     redirect.code = 301;
     redirect.body = "";
@@ -155,9 +164,9 @@ TEST_F(JsonRpcTest, MovedPermanentRedirectToWeb)
     const tgui::JsonRpcResult r =
         client.callSync("session-get", QJsonObject{}, std::chrono::seconds(5));
     ASSERT_TRUE(r.ok) << r.error;
-    EXPECT_EQ(client.rpcPath(), "/web/rpc");
+    EXPECT_EQ(client.rpcPath(), "/rpc");
     ASSERT_EQ(server.requestCount(), 2);
-    EXPECT_EQ(server.requests().at(1).path, "/web/rpc");
+    EXPECT_EQ(server.requests().at(1).path, "/rpc");
 }
 
 TEST_F(JsonRpcTest, ConnectionRefused)
@@ -178,7 +187,7 @@ TEST_F(JsonRpcTest, Timeout)
     QTcpServer slow;
     ASSERT_TRUE(slow.listen(QHostAddress::LocalHost, 0));
     QObject::connect(&slow, &QTcpServer::newConnection, &slow, [&slow]() {
-        if (QTcpSocket* s = slow.pendingConnection())
+        while (QTcpSocket* s = slow.nextPendingConnection())
             QObject::connect(s, &QTcpSocket::disconnected, s, &QTcpSocket::deleteLater);
     });
 

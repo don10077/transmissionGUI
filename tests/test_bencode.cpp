@@ -20,8 +20,8 @@ TEST(Bencode, EncodeListAndDict)
     EXPECT_EQ(encode(Value::list({Value::integer(0), Value::integer(1), Value::integer(2)})),
               "li0ei1ei2ee");
 
-    // d3:bar4:spam3:baz12:another keyi42ee  (ключи отсортированы)
-    const std::string expected = "d3:bar4:spam3:baz12:another keyi42ee";
+    // d3:bar4:spam3:baz11:another key4:spami42ee  (ключи отсортированы)
+    const std::string expected = "d3:bar4:spam3:baz11:another key4:spami42ee";
     EXPECT_EQ(encode(Value::dictionary({{"bar", Value::string("spam")},
                                         {"baz", Value::string("another key")},
                                         {"spam", Value::integer(42)}})),

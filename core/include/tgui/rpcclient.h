@@ -12,7 +12,7 @@
 namespace tgui {
 
 // Высокоуровневый асинхронный RPC-клиент Transmission (QObject, сигналы в
-// потоке-владельце). Порт TRpc + RPC-действий TMainForm из transgui.
+// потоке-владельце).
 class RpcClient : public QObject {
     Q_OBJECT
 public:
@@ -25,7 +25,7 @@ public:
         bool ignoreSslErrors = false;
     };
 
-    // Параметры torrent-add (transgui DoAddTorrent/_AddTorrent).
+    // Параметры torrent-add.
     struct AddTorrent {
         enum class Source { File, Base64, Url };
         Source source = Source::File;
@@ -48,7 +48,7 @@ public:
     // Поддержка возможности по версии RPC (labels ≥ 16, sequential ≥ 18 …).
     bool supports(int minRpcVersion) const { return m_rpcVersion >= minRpcVersion; }
 
-    // --- Соединение (session-get, как transgui Connect) ---
+    // --- Соединение (session-get) ---
     void connectToDaemon();
     void disconnectFromDaemon();
 

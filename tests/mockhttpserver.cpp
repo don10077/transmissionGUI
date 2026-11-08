@@ -61,7 +61,7 @@ int MockRpcServer::requestCount() const
 
 void MockRpcServer::onNewConnection()
 {
-    for (QTcpSocket* socket : pendingConnectionList()) {
+    while (QTcpSocket* socket = nextPendingConnection()) {
         if (socket == nullptr)
             continue;
         connect(socket, &QTcpSocket::readyRead, this,
@@ -75,17 +75,21 @@ void MockRpcServer::handleSocket(QTcpSocket* socket)
     if (socket == nullptr || socket->state() != QAbstractSocket::ConnectedState)
         return;
 
-    QByteArray& buffer = socket->property("buffer").toByteArray();
+    QByteArray buffer = socket->property("buffer").toByteArray();
     buffer.append(socket->readAll());
 
     while (true) {
         const int headerEnd = buffer.indexOf("\r\n\r\n");
-        if (headerEnd < 0)
+        if (headerEnd < 0) {
+            socket->setProperty("buffer", buffer);
             return;
+        }
 
         const QList<QByteArray> lines = buffer.left(headerEnd).split('\n');
-        if (lines.isEmpty() || !lines.first().startsWith("POST "))
+        if (lines.isEmpty() || !lines.first().startsWith("POST ")) {
+            socket->setProperty("buffer", buffer);
             return;
+        }
 
         QMap<QString, QByteArray> headers;
         for (int i = 1; i < lines.size(); ++i) {
@@ -100,19 +104,26 @@ void MockRpcServer::handleSocket(QTcpSocket* socket)
 
         const int contentLength = headers.value("content-length").toInt();
         const int needed = headerEnd + 4 + contentLength;
-        if (buffer.size() < needed)
+        if (buffer.size() < needed) {
+            socket->setProperty("buffer", buffer);
             return;
+        }
         const QByteArray body = buffer.mid(headerEnd + 4, contentLength);
         buffer.remove(0, needed);
-        dispatch(socket, headers, body);
+        socket->setProperty("buffer", buffer);
+        // Путь — из request line: "POST /transmission/rpc HTTP/1.1".
+        const QList<QByteArray> requestParts = lines.first().split(' ');
+        const QByteArray path = requestParts.size() >= 2 ? requestParts.at(1) : QByteArray();
+        dispatch(socket, headers, body, path);
     }
 }
 
 void MockRpcServer::dispatch(QTcpSocket* socket,
-                             const QMap<QString, QByteArray>& headers, const QByteArray& body)
+                             const QMap<QString, QByteArray>& headers, const QByteArray& body,
+                              const QByteArray& path)
 {
     RecordedRequest rec;
-    rec.path = headers.value("path");
+    rec.path = path;
     rec.headers = headers;
     rec.body = body;
     const QJsonDocument doc = QJsonDocument::fromJson(body);

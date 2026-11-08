@@ -23,7 +23,7 @@ struct JsonRpcResult {
     QJsonObject arguments; // body["arguments"], когда ok
 };
 
-// Низкоуровневый JSON-RPC транспорт (аналог TRpc.SendRequest из transgui):
+// Низкоуровневый JSON-RPC транспорт демона Transmission:
 // POST application/json на url+rpcPath, заголовок x-transmission-session-id
 // (409 → новый id из ответа, повтор; макс. 2 попытки), HTTP Basic auth,
 // перенос rpcPath при 301 (Transmission 4.x: "/web/" → "/web/rpc").
@@ -44,8 +44,7 @@ public:
 
     void setTimeout(std::chrono::milliseconds timeout);
 
-    // Асинхронный вызов метода. Пустой arguments — без ключа "arguments"
-    // (как в transgui).
+    // Асинхронный вызов метода. Пустой arguments — без ключа "arguments".
     void call(const QString& method, const QJsonObject& arguments, Callback cb);
 
     // Синхронный вызов (блокирует локальный event loop до ответа или timeout).

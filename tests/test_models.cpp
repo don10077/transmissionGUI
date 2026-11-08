@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "tgui/models.h"
+#include "tgui/util.h"
 
 using namespace tgui;
 
@@ -36,18 +37,18 @@ TEST(ModelTorrent, ParseFull)
         {"isFinished", false},
         {"isStalled", false},
         {"sequential_download", true},
-        {"labels", QJsonArray({"linux", "iso"})},
+        {"labels", QJsonArray{"linux", "iso"}},
         {"downloadDir", "/downloads"},
         {"trackerStats",
-         QJsonArray({QJsonObject{{"announce", "http://tracker/announce"},
-                                 {"announceState", 2},
-                                 {"hasAnnounced", true},
-                                 {"lastAnnounceSucceeded", true},
-                                 {"lastAnnounceResult", "Success"},
-                                 {"lastAnnounceTime", 1730003000},
-                                 {"seederCount", 7},
-                                 {"leecherCount", 31},
-                                 {"torrentId", 42}})}},
+         QJsonArray{QJsonObject{{"announce", "http://tracker/announce"},
+                                {"announceState", 2},
+                                {"hasAnnounced", true},
+                                {"lastAnnounceSucceeded", true},
+                                {"lastAnnounceResult", "Success"},
+                                {"lastAnnounceTime", 1730003000},
+                                {"seederCount", 7},
+                                {"leecherCount", 31},
+                                {"torrentId", 42}}}},
     };
     Torrent t;
     ASSERT_TRUE(parseTorrent(j, t));
@@ -97,19 +98,19 @@ TEST(ModelTorrents, ParseArraySkipsNonObjects)
     EXPECT_EQ(list.last().id, 2);
 }
 
-TEST(ModelTorrentsTable, ParseTransguiTranslate)
+TEST(ModelTorrentsTable, ParseTable)
 {
     // Ответ torrent-get с format=table (rpc >= 16): [0] — поля, [1..] — строки.
     const QJsonObject body = {
         {"result", "success"},
         {"arguments",
-         {{"torrents",
-           QJsonArray({QJsonArray({"id", "name", "status", "sequential_download"}),
-                        QJsonArray({1, "one", 4, true}),
-                        QJsonArray({2, "two", 0, false}),
-                        QJsonArray({3, "three", 6, true})})}}},
+         QJsonObject{{"torrents",
+           QJsonArray{QJsonArray{"id", "name", "status", "sequential_download"},
+                        QJsonArray{1, "one", 4, true},
+                        QJsonArray{2, "two", 0, false},
+                        QJsonArray{3, "three", 6, true}}}}},
     };
-    const QVector<Torrent> list = parseTorrentsTable(body.arguments());
+    const QVector<Torrent> list = parseTorrentsTable(body.value("arguments").toObject());
     ASSERT_EQ(list.size(), 3);
     EXPECT_EQ(list.first().id, 1);
     EXPECT_EQ(*list.first().name, "one");
@@ -143,9 +144,9 @@ TEST(ModelFiles, ParseWithPrioritiesAndWanted)
     const QJsonObject torrent = {
         {"id", 5},
         {"downloadDir", "/downloads/ubuntu"},
-        {"files", QJsonArray({QJsonObject{{"name", "dir/part1"}, {"size", 1000}},
-                              QJsonObject{{"name", "dir/part2"}, {"size", 2000}},
-                              QJsonObject{{"name", "dir/skip.bin"}, {"size", 3000}}})},
+        {"files", QJsonArray{QJsonObject{{"name", "dir/part1"}, {"length", 1000}},
+                             QJsonObject{{"name", "dir/part2"}, {"length", 2000}},
+                             QJsonObject{{"name", "dir/skip.bin"}, {"length", 3000}}}},
         {"priorities", QJsonArray({1, 0, 0})},
         {"wanted", QJsonArray({true, true, false})},
     };
@@ -213,11 +214,11 @@ TEST(ModelSessionStats, ParseValid)
 {
     const QJsonObject j = {
         {"current-stats",
-         {{"downloadedBytes", 1000}, {"uploadedBytes", 500},
-          {"filesAdded", 3}, {"secondsActive", 120}}},
+         QJsonObject{{"downloadedBytes", 1000}, {"uploadedBytes", 500},
+                     {"filesAdded", 3}, {"secondsActive", 120}}},
         {"cumulative-stats",
-         {{"downloadedBytes", 9000}, {"uploadedBytes", 4500},
-          {"filesAdded", 10}, {"secondsActive", 5000}}},
+         QJsonObject{{"downloadedBytes", 9000}, {"uploadedBytes", 4500},
+                     {"filesAdded", 10}, {"secondsActive", 5000}}},
     };
     SessionStats stats;
     ASSERT_TRUE(parseSessionStats(j, stats));
@@ -229,21 +230,22 @@ TEST(ModelSessionStats, ParseValid)
 
 TEST(ModelSessionStats, RejectInvalid)
 {
-    // transgui FillStatistics: отрицательные/невалидные значения → invalid.
+    // session-stats: отрицательные/невалидные значения → invalid.
     QJsonObject bad = {
         {"current-stats",
-         {{"downloadedBytes", -1}, {"uploadedBytes", 500},
-          {"filesAdded", 3}, {"secondsActive", 120}}},
+         QJsonObject{{"downloadedBytes", -1}, {"uploadedBytes", 500},
+                     {"filesAdded", 3}, {"secondsActive", 120}}},
         {"cumulative-stats",
-         {{"downloadedBytes", 1}, {"uploadedBytes", 500},
-          {"filesAdded", 3}, {"secondsActive", 120}}},
+         QJsonObject{{"downloadedBytes", 1}, {"uploadedBytes", 500},
+                     {"filesAdded", 3}, {"secondsActive", 120}}},
     };
-    EXPECT_FALSE(parseSessionStats(bad, SessionStats{}));
+    SessionStats stats;
+    EXPECT_FALSE(parseSessionStats(bad, stats));
 
     bad["current-stats"] = QJsonValue(123); // не объект
-    EXPECT_FALSE(parseSessionStats(bad, SessionStats{}));
+    EXPECT_FALSE(parseSessionStats(bad, stats));
 
-    EXPECT_FALSE(parseSessionStats(QJsonObject{}, SessionStats{}));
+    EXPECT_FALSE(parseSessionStats(QJsonObject{}, stats));
 }
 
 TEST(ModelStatus, Helpers)
@@ -262,4 +264,114 @@ TEST(ModelStatus, Helpers)
     EXPECT_TRUE(torrentIsActive(1, 0));
     EXPECT_TRUE(torrentIsActive(0, 1));
     EXPECT_FALSE(torrentIsActive(0, 0));
+}
+
+#include <QCoreApplication>
+#include <QVector>
+
+#include "groupedproxy.h"
+#include "torrentmodel.h"
+
+namespace {
+
+tgui::Torrent makeUiTorrent(int id, const QString& dir, const QString& name, int status = 0)
+{
+    tgui::Torrent t;
+    t.id = id;
+    t.name = name;
+    t.status = status;
+    t.downloadDir = dir;
+    t.sizeWhenDone = 100.0;
+    t.leftUntilDone = 50.0;
+    return t;
+}
+
+} // namespace
+
+TEST(GuiListChain, ListVisibleAfterModelReset)
+{
+    TorrentModel model;
+    TorrentFilterProxy filter;
+    filter.setSourceModel(&model);
+    GroupedTorrentProxy groups;
+    groups.setSourceProxy(&filter);
+    groups.setGroupBy(GroupedTorrentProxy::GroupNone);
+
+    // До получения списка — пусто.
+    EXPECT_EQ(groups.rowCount(), 0);
+
+    // Имитация получения списка из демона: полный сброс модели.
+    QVector<tgui::Torrent> torrents = {
+        makeUiTorrent(1, "/Shares/A", "alpha", 0),
+        makeUiTorrent(2, "/Shares/B", "beta", 6),
+        makeUiTorrent(3, "/Shares/A", "gamma", 4),
+    };
+    model.setTorrents(torrents);
+    qApp->processEvents();
+
+    EXPECT_EQ(model.rowCount(), 3);
+    EXPECT_EQ(filter.rowCount(), 3);
+    EXPECT_EQ(groups.rowCount(), 3)
+        << "групповое прокси не пересобрано после modelReset → таблица пустая";
+
+    // Данные проходят через всю цепочку.
+    const QModelIndex idx = groups.index(0, TorrentModel::ColName, QModelIndex());
+    EXPECT_TRUE(idx.isValid());
+    EXPECT_FALSE(idx.data(Qt::DisplayRole).toString().isEmpty());
+
+    // Обновление списка (автообновление) тоже отражается.
+    torrents.append(makeUiTorrent(4, "/Shares/C", "delta"));
+    model.setTorrents(torrents);
+    qApp->processEvents();
+    EXPECT_EQ(groups.rowCount(), 4);
+
+    // Группировка по папке: A(2) + B(1) + C(1).
+    groups.setGroupBy(GroupedTorrentProxy::GroupFolder);
+    qApp->processEvents();
+    EXPECT_EQ(groups.rowCount(), 3);
+}
+
+#include <QPixmap>
+#include <QTreeView>
+
+// Рендер QTreeView с полной цепочкой (regress: пустая таблица после подключения).
+// Известные грабли: hasChildren(root) == false ломает QTreeView::layout(),
+// поэтому у плоского прокси корень обязан иметь строки.
+TEST(GuiListChain, OffscreenTreeViewRendersRows)
+{
+    TorrentModel model;
+    TorrentFilterProxy filter;
+    filter.setSourceModel(&model);
+    GroupedTorrentProxy groups;
+    groups.setSourceProxy(&filter);
+
+    QTreeView view;
+    view.setModel(&groups);
+    view.setSortingEnabled(true); // как в приложении
+    view.setRootIsDecorated(false);
+    view.resize(900, 400);
+    view.show();
+    qApp->processEvents();
+
+    QVector<tgui::Torrent> torrents = {
+        makeUiTorrent(1, "/A", "alpha", 0),
+        makeUiTorrent(2, "/B", "beta", 6),
+        makeUiTorrent(3, "/A", "gamma", 4),
+    };
+    model.setTorrents(torrents);
+    qApp->processEvents();
+
+    EXPECT_EQ(groups.rowCount(), 3) << "прокси не видит строки после modelReset";
+    const QModelIndex first = groups.index(0, TorrentModel::ColName, QModelIndex());
+    EXPECT_TRUE(first.isValid());
+    EXPECT_FALSE(groups.data(first, Qt::DisplayRole).toString().isEmpty());
+    EXPECT_TRUE(groups.hasChildren(QModelIndex())) << "у корня должны быть строки";
+    EXPECT_FALSE(groups.hasChildren(first)) << "строки не имеют детей";
+    EXPECT_EQ(groups.headerData(0, Qt::Horizontal, Qt::DisplayRole).toString(),
+              QObject::tr("Имя"));
+
+    view.viewport()->update();
+    qApp->processEvents();
+    const QPixmap pm = view.grab();
+    EXPECT_TRUE(pm.width() > 0 && pm.height() > 0);
 }

@@ -6,6 +6,9 @@ add_library(tgui_core STATIC
     src/models.cpp
     src/jsonrpc.cpp
     src/rpcclient.cpp
+    # Явное перечисление Q_OBJECT-заголовков — надёжный путь для AUTOMOC
+    # (в проекте заголовки лежат в include/, а не рядом с .cpp).
+    include/tgui/rpcclient.h
 )
 target_include_directories(tgui_core PUBLIC include)
 target_link_libraries(tgui_core PUBLIC Qt6::Core Qt6::Network)

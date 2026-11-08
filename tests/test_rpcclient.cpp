@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <memory>
 
+#include <QDir>
 #include <QEventLoop>
+#include <QFile>
 #include <QTimer>
 
 #include <gtest/gtest.h>
@@ -100,7 +102,7 @@ TEST_F(RpcClientTest, ConnectAndSessionInfo)
     EXPECT_EQ(*info.downloadDirFreeSpace, 4294967296);
     EXPECT_TRUE(info.altSpeedEnabled);
 
-    // session-get без "arguments" (как transgui), затем free-space c path.
+    // session-get без "arguments", затем free-space c path.
     ASSERT_GE(server.requestCount(), 2);
     EXPECT_EQ(server.requests().at(0).rpcMethod, "session-get");
     EXPECT_FALSE(server.requests().at(0).json.contains("arguments"));
@@ -168,14 +170,18 @@ TEST_F(RpcClientTest, GetTorrentsRpc18FieldsAndTable)
     const auto req = server.requests().last();
     EXPECT_EQ(req.rpcMethod, "torrent-get");
     EXPECT_EQ(req.arguments.value("format").toString(), "table");
-    const QStringList fields =
-        req.arguments.value("fields").toArray().toVariant().toStringList();
+    const QStringList fields = [&]() {
+        QStringList out;
+        for (const auto& v : req.arguments.value("fields").toArray())
+            out << v.toString();
+        return out;
+    }();
     EXPECT_TRUE(fields.contains("labels"));
     EXPECT_TRUE(fields.contains("sequential_download"));
     EXPECT_TRUE(fields.contains("downloadDir"));
     EXPECT_TRUE(fields.contains("trackerStats"));
     EXPECT_TRUE(fields.contains("uploadRatio"));
-    // сортировка (transgui sl.Sort)
+    // сортировка полей
     QStringList sorted = fields;
     std::sort(sorted.begin(), sorted.end());
     EXPECT_EQ(fields, sorted);
@@ -214,8 +220,12 @@ TEST_F(RpcClientTest, GetTorrentsOldRpcGates)
 
     const auto req = server.requests().last();
     EXPECT_FALSE(req.arguments.contains("format"));
-    const QStringList fields =
-        req.arguments.value("fields").toArray().toVariant().toStringList();
+    const QStringList fields = [&]() {
+        QStringList out;
+        for (const auto& v : req.arguments.value("fields").toArray())
+            out << v.toString();
+        return out;
+    }();
     EXPECT_FALSE(fields.contains("labels"));
     EXPECT_FALSE(fields.contains("sequential_download"));
 }
@@ -343,7 +353,7 @@ TEST_F(RpcClientTest, StartAllWithoutIds)
 
     const auto req = server.requests().last();
     EXPECT_EQ(req.rpcMethod, "torrent-start-now");
-    // transgui TorrentAction(NULL, …) — без ids (все торренты).
+    // Без ids — все торренты.
     EXPECT_FALSE(req.arguments.contains("ids"));
 }
 
@@ -369,12 +379,91 @@ TEST_F(RpcClientTest, SetLabelsVersionGate)
                      });
     timer.start(5000);
     client->setLabels(1, {"a", "b"});
-    loop.exec();
+    // Gate RPC-версии отвечает синхронно — loop может не понадобиться.
+    if (!done)
+        loop.exec();
 
     ASSERT_TRUE(done);
     EXPECT_FALSE(ok);
     EXPECT_NE(error.indexOf("16"), -1);
     EXPECT_EQ(server.requestCount(), before); // запрос в сеть не уходил
+}
+
+TEST_F(RpcClientTest, AddTorrentLocalFileSendsMetainfo)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{
+        200,
+        "{\"result\": \"success\", \"arguments\": {\"torrent-added\": {\"id\": 9}}}", {}});
+
+    // Файл существует локально → клиент шлёт метаданные (base64), а не путь:
+    // демону (на другой машине) путь клиента недоступен.
+    const QByteArray content = "d4:infol6:lengthi1024e4:name14:test-file.bine12:piece "
+                               "lengthi16384e6:pieces20:0000000000000000000000000000ee";
+    const QString path = QDir::tempPath() + QStringLiteral("/tgui-test-add.torrent");
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        ASSERT_EQ(f.write(content), static_cast<qint64>(content.size()));
+    }
+
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&,
+                                    const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    RpcClient::AddTorrent add;
+    add.source = RpcClient::AddTorrent::Source::File;
+    add.file = path;
+    client->addTorrent(add);
+    loop.exec();
+
+    ASSERT_TRUE(done);
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "torrent-add");
+    EXPECT_EQ(req.arguments.value("metainfo").toString(),
+              QString::fromLatin1(content.toBase64()));
+    EXPECT_FALSE(req.arguments.contains("filename"));
+    QFile::remove(path);
+}
+
+TEST_F(RpcClientTest, AddTorrentMissingFileSendsPath)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{
+        200,
+        "{\"result\": \"success\", \"arguments\": {\"torrent-added\": {\"id\": 9}}}", {}});
+
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&,
+                                    const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    RpcClient::AddTorrent add;
+    add.source = RpcClient::AddTorrent::Source::File;
+    add.file = QStringLiteral("C:\\no-such\\path.torrent"); // не существует
+    client->addTorrent(add);
+    loop.exec();
+
+    ASSERT_TRUE(done);
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.arguments.value("filename").toString(),
+              QStringLiteral("C:\\no-such\\path.torrent"));
+    EXPECT_FALSE(req.arguments.contains("metainfo"));
 }
 
 TEST_F(RpcClientTest, PeersReceived)

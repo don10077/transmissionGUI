@@ -59,7 +59,7 @@ private slots:
 private:
     void handleSocket(QTcpSocket* socket);
     void dispatch(QTcpSocket* socket, const QMap<QString, QByteArray>& headers,
-                  const QByteArray& body);
+                  const QByteArray& body, const QByteArray& path);
     void sendResponse(QTcpSocket* socket, int code, const QByteArray& body,
                       const QMap<QByteArray, QByteArray>& extraHeaders);
 

@@ -80,10 +80,13 @@ void JsonRpcClient::doRequest(const QJsonObject& payload, int attempt, Callback 
     QNetworkRequest request(fullUrl);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("Accept", "application/json");
+    // Редиректы обрабатываем сами (301 → новый RPC-путь, Transmission 4.x).
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
     if (!m_sessionId.isEmpty())
         request.setRawHeader("x-transmission-session-id", m_sessionId.toUtf8());
     if (!m_user.isEmpty()) {
-        // HTTP Basic auth (transgui: Http.UserName/Password).
+        // HTTP Basic auth.
         const QByteArray credentials = (m_user + ":" + m_password).toUtf8();
         request.setRawHeader("Authorization",
                              "Basic " + credentials.toBase64());
@@ -107,53 +110,58 @@ void JsonRpcClient::doRequest(const QJsonObject& payload, int attempt, Callback 
                 res.httpCode =
                     reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 
-                // 409: нет/протух session id — взять новый и повторить (transgui: 2 попытки).
+                // 409: нет/протух session id — взять новый из заголовка ответа
+                // и повторить 1 раз; повторный 409 — "Session ID error.";
+                // 409 без заголовка — обычная HTTP-ошибка.
                 if (res.httpCode == 409) {
                     const QByteArray header = reply->rawHeader("x-transmission-session-id");
-                    m_sessionId.clear();
                     if (!header.isEmpty() && attempt < 2) {
+                        m_sessionId.clear();
                         m_sessionId = QString::fromUtf8(header);
                         reply->deleteLater();
                         doRequest(makePayload(method, arguments), attempt + 1, std::move(cb));
                         return;
                     }
-                    res.error = QStringLiteral("Session ID error.");
-                    reply->deleteLater();
-                    cb(res);
-                    return;
+                    if (!header.isEmpty()) {
+                        res.error = QStringLiteral("Session ID error.");
+                        reply->deleteLater();
+                        cb(res);
+                        return;
+                    }
+                    // Без заголовка — обработаем ниже как HTTP-ошибку (тело/статус).
                 }
 
-                // 301: демон перенёс RPC (Transmission 4.x: …/web/ → …/web/rpc).
+                // 301: демон перенёс RPC (Location «/web/» → «/web/rpc»).
                 if (res.httpCode == 301 && attempt == 1) {
-                    const QString location =
-                        reply->header(QNetworkRequest::LocationHeader).toString();
-                    if (location.startsWith('/') && !location.startsWith("//") &&
-                        (location.endsWith("/web/") || location.endsWith("/web"))) {
-                        QString path = location;
-                        if (path.endsWith('/'))
-                            path.chop(1);
-                        if (!path.endsWith("rpc"))
-                            path += "rpc";
-                        m_rpcPath = path;
-                        reply->deleteLater();
-                        doRequest(makePayload(method, arguments), attempt + 1, std::move(cb));
-                        return;
+                    const QString location = QString::fromUtf8(reply->rawHeader("Location")).trimmed();
+                    if (location.startsWith('/') && !location.startsWith("//")) {
+                        QString path;
+                        if (location.endsWith("/web/"))
+                            path = location.left(location.size() - 4) + "rpc";
+                        else if (location.endsWith("/web"))
+                            path = location.left(location.size() - 3) + "rpc";
+                        if (!path.isEmpty()) {
+                            m_rpcPath = path;
+                            reply->deleteLater();
+                            doRequest(makePayload(method, arguments), attempt + 1, std::move(cb));
+                            return;
+                        }
                     }
                 }
 
-                if (reply->error() != QNetworkReply::NoError) {
-                    res.error = res.httpCode == 0
-                                    ? reply->errorString()
-                                    : QStringLiteral("HTTP error: %1 — %2").arg(res.httpCode).arg(
-                                          reply->errorString());
-                    reply->deleteLater();
-                    cb(res);
-                    return;
-                }
-
+                // Остальные HTTP-статусы/ошибки: сначала пробуем разобрать
+                // тело (демон отвечает JSON даже при 401/500), иначе —
+                // текст ошибки Qt при HTTP-ошибке.
                 const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-                if (!doc.isObject()) {
-                    res.error = QStringLiteral("Invalid server response.");
+                if (!doc.isObject() || !doc.object().contains("result")) {
+                    if (reply->error() != QNetworkReply::NoError)
+                        res.error = res.httpCode == 0
+                                       ? reply->errorString()
+                                       : QStringLiteral("HTTP error: %1 — %2")
+                                             .arg(res.httpCode)
+                                             .arg(reply->errorString());
+                    else
+                        res.error = QStringLiteral("Invalid server response.");
                     reply->deleteLater();
                     cb(res);
                     return;
