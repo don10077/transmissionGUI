@@ -655,6 +655,54 @@ Are you sure to start verification of %1 torrents?</source>
       <source>Exit</source>
       <translation>Выход</translation>
     </message>
+    <message>
+      <source>Open folder containing object</source>
+      <translation>Открыть папку содержащую объект</translation>
+    </message>
+    <message>
+      <source>Force start</source>
+      <translation>Запустить принудительно</translation>
+    </message>
+    <message>
+      <source>Remove with data…</source>
+      <translation>Удалить с данными…</translation>
+    </message>
+    <message>
+      <source>Move to bottom</source>
+      <translation>В конец очереди</translation>
+    </message>
+    <message>
+      <source>Announce (get more peers)</source>
+      <translation>Анонсировать (получить больше пиров)</translation>
+    </message>
+    <message>
+      <source>Copy magnet link</source>
+      <translation>Копировать magnet ссылку</translation>
+    </message>
+    <message>
+      <source>Set location…</source>
+      <translation>Задать расположение…</translation>
+    </message>
+    <message>
+      <source>Rename…</source>
+      <translation>Переименовать…</translation>
+    </message>
+    <message>
+      <source>Magnet link copied</source>
+      <translation>Magnet-ссылка скопирована</translation>
+    </message>
+    <message>
+      <source>Remove the selected torrent(s) AND delete their downloaded data files?</source>
+      <translation>Удалить выбранный(е) торрент(ы) И их скачанные данные?</translation>
+    </message>
+    <message>
+      <source>This cannot be undone.</source>
+      <translation>Это действие нельзя отменить.</translation>
+    </message>
+    <message>
+      <source>Add from link…</source>
+      <translation>Добавить по ссылке…</translation>
+    </message>
   </context>
   <context>
     <name>MoveDialog</name>
@@ -1226,6 +1274,29 @@ Are you sure to start verification of %1 torrents?</source>
       <location filename="../app/src/statsform.cpp" line="102" />
       <source>Active for</source>
       <translation>Активность</translation>
+    </message>
+  </context>
+  <context>
+    <name>AddLinkDialog</name>
+    <message>
+      <source>Add from link</source>
+      <translation>Добавить по ссылке</translation>
+    </message>
+    <message>
+      <source>Link</source>
+      <translation>Ссылка</translation>
+    </message>
+    <message>
+      <source>Start when added</source>
+      <translation>Запустить при добавлении</translation>
+    </message>
+    <message>
+      <source>No link was specified.</source>
+      <translation>Ссылка не указана.</translation>
+    </message>
+    <message>
+      <source>magnet:?xt=… or http(s)://… .torrent</source>
+      <translation>magnet:?xt=… или http(s)://… .torrent</translation>
     </message>
   </context>
 </TS>
