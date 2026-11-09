@@ -10,13 +10,47 @@
 #include <QScrollBar>
 #include <QTabWidget>
 #include <QTreeView>
+#include <QTreeWidget>
+#include <QWheelEvent>
 
 #include "mainwindow.h"
+#include "filterpanel.h"
 #include "propsform.h"
 #include "statsform.h"
 #include "tgui/models.h"
 
 using namespace tgui;
+
+TEST(FilterPanel, WheelAndRefreshKeepFolderSelection)
+{
+    FilterPanel panel;
+    panel.resize(280, 240);
+    panel.setEnabledUi(true);
+    QVector<QPair<QString, int>> folders;
+    for (int i = 0; i < 50; ++i)
+        folders.push_back({QStringLiteral("/folder/%1").arg(i), 1});
+    panel.setCounts(50, 0, 0, 0, 0, 0, 0, 0, folders, {});
+    panel.show();
+    QCoreApplication::processEvents();
+    auto* tree = panel.findChild<QTreeWidget*>();
+    ASSERT_NE(tree, nullptr);
+    tree->setCurrentItem(tree->topLevelItem(8)->child(0));
+    auto* bar = tree->verticalScrollBar();
+    const int before = bar->value();
+    const QPoint pos = tree->viewport()->rect().center();
+    QWheelEvent wheel(pos, tree->viewport()->mapToGlobal(pos), QPoint(),
+                      QPoint(0, -120), Qt::NoButton, Qt::NoModifier,
+                      Qt::NoScrollPhase, false);
+    QApplication::sendEvent(tree->viewport(), &wheel);
+    ASSERT_GT(bar->value(), before);
+    const int scrolled = bar->value();
+    folders[0].second = 2;
+    panel.setCounts(51, 0, 0, 0, 0, 0, 0, 0, folders, {});
+    QCoreApplication::processEvents();
+    EXPECT_EQ(bar->value(), scrolled);
+    EXPECT_EQ(panel.selectedFolder(), QStringLiteral("/folder/0"));
+    EXPECT_EQ(tree->currentItem(), tree->topLevelItem(8)->child(0));
+}
 
 namespace {
 
@@ -139,6 +173,105 @@ TEST(StatsForm, RendersStats)
 
     s.clear();
     EXPECT_EQ(s.stats(), nullptr);
+}
+
+TEST(MainWindowLayout, RefreshKeepsSelectionAndDetails)
+{
+    QCoreApplication::setOrganizationName(QStringLiteral("tgui-test"));
+    QCoreApplication::setApplicationName(QStringLiteral("tgui-test"));
+
+    MainWindow w;
+    w.torrentView()->sortByColumn(TorrentModel::ColName, Qt::AscendingOrder);
+    auto mk = [](int id, const char* name) {
+        Torrent t;
+        t.id = id;
+        t.name = name;
+        t.status = 4;
+        return t;
+    };
+    QVector<Torrent> torrents = {mk(1, "alpha"), mk(2, "beta"), mk(3, "gamma")};
+
+    // Первая загрузка: выбирается первая строка (как в эталоне).
+    w.applyTorrentsUpdate(torrents);
+    ASSERT_EQ(w.currentId(), 1);
+
+    // Пользователь выбирает третью строку.
+    auto* view = w.torrentView();
+    view->setCurrentIndex(view->model()->index(2, 0));
+    ASSERT_EQ(w.currentId(), 3);
+    ASSERT_NE(w.generalForm()->torrent(), nullptr);
+
+    // Автообновление (раз в 2 с): модель пересоздаётся — выбранное,
+    // строка и «General» должны остаться на том же торренте, а не
+    // сброситься на первую строку.
+    w.applyTorrentsUpdate(torrents);
+    ASSERT_EQ(w.currentId(), 3);
+    ASSERT_NE(w.generalForm()->torrent(), nullptr);
+    EXPECT_EQ(w.generalForm()->torrent()->id, 3);
+
+    const auto sel = view->selectionModel()->selectedRows();
+    ASSERT_EQ(sel.size(), 1);
+    EXPECT_EQ(sel.first().row(), 2);
+}
+
+TEST(MainWindowLayout, RefreshClearsDetailsWhenTorrentGone)
+{
+    QCoreApplication::setOrganizationName(QStringLiteral("tgui-test"));
+    QCoreApplication::setApplicationName(QStringLiteral("tgui-test"));
+
+    MainWindow w;
+    w.torrentView()->sortByColumn(TorrentModel::ColName, Qt::AscendingOrder);
+    Torrent a;
+    a.id = 1;
+    a.name = "alpha";
+    Torrent b;
+    b.id = 2;
+    b.name = "beta";
+    w.applyTorrentsUpdate({a, b});
+    w.torrentView()->setCurrentIndex(w.torrentView()->model()->index(0, 0));
+    ASSERT_EQ(w.currentId(), 1);
+
+    // Выбранный торрент удалён из списка — вкладки деталей очищаются.
+    w.applyTorrentsUpdate({b});
+    EXPECT_EQ(w.currentId(), -1);
+    EXPECT_EQ(w.generalForm()->torrent(), nullptr);
+}
+
+TEST(MainWindowLayout, RefreshKeepsListScrollPosition)
+{
+    QCoreApplication::setOrganizationName(QStringLiteral("tgui-test"));
+    QCoreApplication::setApplicationName(QStringLiteral("tgui-test"));
+
+    MainWindow w;
+    w.resize(900, 500);
+    w.show();
+    QVector<Torrent> torrents;
+    for (int i = 0; i < 100; ++i) {
+        Torrent t;
+        t.id = i + 1;
+        t.name = QStringLiteral("torrent-%1").arg(i, 3, 10, QLatin1Char('0'));
+        torrents.push_back(t);
+    }
+    w.applyTorrentsUpdate(torrents);
+    QCoreApplication::processEvents();
+
+    auto* bar = w.torrentView()->verticalScrollBar();
+    ASSERT_GT(bar->maximum(), 0);
+    const int target = bar->maximum() / 2;
+    bar->setValue(target);
+
+    torrents[0].rateDownload = 1024;
+    w.applyTorrentsUpdate(torrents);
+    QCoreApplication::processEvents();
+    EXPECT_EQ(bar->value(), target);
+
+    Torrent added;
+    added.id = 101;
+    added.name = QStringLiteral("torrent-100");
+    torrents.push_back(added);
+    w.applyTorrentsUpdate(torrents);
+    QCoreApplication::processEvents();
+    EXPECT_EQ(bar->value(), target);
 }
 
 TEST(MainWindowLayout, GridTopTabsBottom)

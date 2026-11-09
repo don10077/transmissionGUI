@@ -50,6 +50,12 @@ public:
     PropsForm* generalForm() const { return m_general; }
     StatsForm* statsForm() const { return m_statsForm; }
     FilterPanel* filterPanel() const { return m_filterPanel; }
+    // Публичный вызов обновления списка (обёртка над onTorrentsReceived) —
+    // для регресс-тестов: симуляция сигнала torrentsReceived без живого демона.
+    void applyTorrentsUpdate(const QVector<tgui::Torrent>& torrents)
+    {
+        onTorrentsReceived(torrents);
+    }
 
 private slots:
     void onConnect();
@@ -142,6 +148,9 @@ private:
     QTreeView* m_view = nullptr;
     // ID торрента, для которого загружаются вкладки Файлы/Пиры/Трекеры.
     int m_currentId = -1;
+    // true только в момент modelReset при автообновлении: onSelectionChanged
+    // в этот момент не должен сбрасывать m_currentId и детали.
+    bool m_refreshing = false;
     tgui::SessionInfo m_sessionInfo; // session-get для лимитов в «General»
     QLabel* m_daemonLabel = nullptr;
     QLabel* m_speedLabel = nullptr;

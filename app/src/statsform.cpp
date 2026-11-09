@@ -42,6 +42,22 @@ StatsForm::StatsForm(QWidget* parent) : QWidget(parent)
 
 void StatsForm::setStats(const tgui::SessionStats& stats)
 {
+    // Автообновление приходит раз в 2 секунды: если данные не изменились,
+    // не пересобираем панель (без мерцания, сохраняем выделение текста
+    // и позицию прокрутки).
+    if (m_stats.has_value()) {
+        const auto& a = *m_stats;
+        const auto& b = stats;
+        if (a.current.downloadedBytes == b.current.downloadedBytes &&
+            a.current.uploadedBytes == b.current.uploadedBytes &&
+            a.current.filesAdded == b.current.filesAdded &&
+            a.current.secondsActive == b.current.secondsActive &&
+            a.cumulative.downloadedBytes == b.cumulative.downloadedBytes &&
+            a.cumulative.uploadedBytes == b.cumulative.uploadedBytes &&
+            a.cumulative.filesAdded == b.cumulative.filesAdded &&
+            a.cumulative.secondsActive == b.cumulative.secondsActive)
+            return;
+    }
     m_stats = stats;
     rebuild();
 }

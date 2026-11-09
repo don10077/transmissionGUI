@@ -5,6 +5,7 @@
 #include <QLineEdit>
 #include <QPainter>
 #include <QPainterPath>
+#include <QScrollBar>
 #include <QStyledItemDelegate>
 #include <QStyleOptionViewItem>
 #include <QTreeWidget>
@@ -266,6 +267,7 @@ void FilterPanel::setCounts(int all, int downloading, int completed, int active,
                             const QVector<QPair<QString, int>>& folders,
                             const QVector<QPair<QString, int>>& trackers)
 {
+    const int scrollPosition = m_tree->verticalScrollBar()->value();
     const int counts[] = {all, downloading, completed, active, inactive,
                           stopped, error, waiting};
     for (int i = 0; i < 8; ++i) {
@@ -282,20 +284,39 @@ void FilterPanel::setCounts(int all, int downloading, int completed, int active,
         QTreeWidgetItem* section = itemAt(row);
         if (!section)
             return;
-        while (section->childCount() > 0)
-            delete section->takeChild(0);
+        // Reuse rows by their key so an RPC refresh retains the selection.
+        int rowIndex = 0;
         for (const auto& [name, count] : items) {
-            auto* it = new QTreeWidgetItem(section);
+            QTreeWidgetItem* it = nullptr;
+            for (int i = rowIndex; i < section->childCount(); ++i) {
+                if (section->child(i)->data(0, role).toString() == name) {
+                    it = section->child(i);
+                    if (i != rowIndex) {
+                        section->takeChild(i);
+                        section->insertChild(rowIndex, it);
+                    }
+                    break;
+                }
+            }
+            if (!it) {
+                it = new QTreeWidgetItem;
+                section->insertChild(rowIndex, it);
+            }
+            ++rowIndex;
             it->setText(0, QStringLiteral("%1 (%2)").arg(name).arg(count));
             it->setData(0, kRoleBase, name);
             it->setData(0, kRoleCount, count);
             it->setData(0, role, name);
             it->setToolTip(0, name);
         }
+        while (section->childCount() > rowIndex)
+            delete section->takeChild(rowIndex);
         // Секции всегда раскрыты: стрелки у заголовков скрыты (rootIsDecorated
         // = false), поэтому свёрнутое состояние сделало бы строки недоступными.
         section->setExpanded(!items.isEmpty());
     };
     fillSection(8, folders, kRoleFolder);
     fillSection(9, trackers, kRoleTracker);
+    m_tree->doItemsLayout();
+    m_tree->verticalScrollBar()->setValue(scrollPosition);
 }

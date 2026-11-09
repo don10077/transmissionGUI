@@ -8,6 +8,17 @@ TorrentModel::TorrentModel(QObject* parent) : QAbstractTableModel(parent) {}
 
 void TorrentModel::setTorrents(const QVector<tgui::Torrent>& torrents)
 {
+    // Most RPC updates change values, not the set of rows. Keep the model's
+    // indexes and the view's scroll position intact in that common case.
+    bool sameRows = m_torrents.size() == torrents.size();
+    for (int i = 0; sameRows && i < torrents.size(); ++i)
+        sameRows = m_torrents.at(i).id == torrents.at(i).id;
+    if (sameRows) {
+        m_torrents = torrents;
+        if (!m_torrents.isEmpty())
+            emit dataChanged(index(0, 0), index(m_torrents.size() - 1, ColumnCount - 1));
+        return;
+    }
     beginResetModel();
     m_torrents = torrents;
     endResetModel();

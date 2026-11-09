@@ -79,6 +79,19 @@ tools/  — tgui_daemon_check: CLI-проверка соединения с ре
 
 ## Сборка (Windows, MSYS2 MinGW64)
 
+Для сборки приложения запустите `build.cmd` двойным щелчком: он настроит CMake,
+соберёт Debug в `build/win-debug` и оставит окно с результатом открытым.
+Перед пересборкой закройте запущенное приложение.
+
+```bat
+build.cmd release
+build.cmd debug --no-pause
+```
+
+По умолчанию используется MSYS2 из `D:\Install\MSYS2`. Для другой установки
+задайте переменную `MSYS2_ROOT`. Нужны пакеты MinGW64: CMake, Ninja, GCC,
+Qt 6 и GoogleTest. Скрипт собирает приложение, но не запускает его или тесты.
+
 Нужны: MSYS2 `mingw64` (g++ 16.x), Qt 6 (Core/Network/Widgets), CMake ≥ 3.28.
 Пресеты берутся из `CMakeUserPresets.json` (при отсутствии — скопируйте
 `CMakeUserPresets.json.example`).

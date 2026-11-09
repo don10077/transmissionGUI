@@ -158,6 +158,7 @@ void PropsForm::clear()
 
 void PropsForm::rebuild()
 {
+    const int rebuildSerial = ++m_rebuildSerial;
     // Контент целиком пересоздаётся в scroll-контейнере: никакого ручного
     // обхода findChildren (см. комментарий в истории проекта).
     // Позицию прокрутки сохраняем только при обновлении того же торрента:
@@ -168,8 +169,6 @@ void PropsForm::rebuild()
         m_pendingScroll = -1;
     else if (m_pendingScroll < 0)
         m_pendingScroll = m_scroll->verticalScrollBar()->value();
-    const int prevMinHeight =
-        (sameTorrent && m_content) ? m_content->minimumHeight() : 0;
     m_builtTorrentId = torrentId;
 
     if (m_content) {
@@ -183,13 +182,16 @@ void PropsForm::rebuild()
     auto* contentLayout = new QVBoxLayout(m_content);
     contentLayout->setContentsMargins(12, 12, 12, 12);
     contentLayout->setSpacing(12);
-    m_scroll->setWidget(m_content);
+    // Let the scroll area use the content's real minimum height, including
+    // labels whose height changes when the panel is resized.
+    contentLayout->setSizeConstraint(QLayout::SetMinimumSize);
 
     if (!m_torrent.has_value()) {
         auto* placeholder = new QLabel(tr("Torrent not selected"), m_content);
         placeholder->setObjectName(QStringLiteral("fieldLabel"));
         contentLayout->addWidget(placeholder);
         contentLayout->addStretch(1);
+        m_scroll->setWidget(m_content);
         m_pendingScroll = -1;
         m_scroll->verticalScrollBar()->setValue(0);
         return;
@@ -410,26 +412,16 @@ void PropsForm::rebuild()
 
     Q_UNUSED(torrentCard);
     contentLayout->addStretch(1);
-
-    if (prevMinHeight > 0)
-        m_content->setMinimumHeight(prevMinHeight);
-
-    // Не даём QScrollArea сжимать карточки: при нехватке высоты панель
-    // должна прокручиваться, а не сплющивать содержимое. sizeHint корректен
-    // только после первой раскладки, поэтому фиксируем высоту следующим тиком.
-    QTimer::singleShot(0, this, [this] {
-        if (!m_content)
+    contentLayout->activate();
+    m_scroll->setWidget(m_content);
+    // Geometry and the scrollbar range settle after setWidget(). Do not let
+    // a later refresh overwrite the position captured from the user's scroll.
+    const int scrollToRestore = sameTorrent ? m_pendingScroll : 0;
+    QTimer::singleShot(0, this, [this, scrollToRestore, rebuildSerial] {
+        if (rebuildSerial != m_rebuildSerial)
             return;
-        m_content->setMinimumHeight(m_content->sizeHint().height());
-
-        // Возвращаем прокрутку после пересборки (автообновление раз в 2 с).
-        if (m_pendingScroll > 0) {
-            QTimer::singleShot(0, this, [this] {
-                if (m_pendingScroll > 0) {
-                    m_scroll->verticalScrollBar()->setValue(m_pendingScroll);
-                    m_pendingScroll = -1;
-                }
-            });
-        }
+        if (scrollToRestore > 0)
+            m_scroll->verticalScrollBar()->setValue(scrollToRestore);
+        m_pendingScroll = -1;
     });
 }

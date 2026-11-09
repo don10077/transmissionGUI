@@ -31,6 +31,7 @@
 #include <QPen>
 #include <QPixmap>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSplitter>
 #include <QStatusBar>
@@ -99,6 +100,7 @@ void MainWindow::createUi()
     m_view->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_view->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_view->setUniformRowHeights(true);
+    m_view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_view->setMouseTracking(true);
     m_view->setWordWrap(false);
     m_view->setFrameShape(QFrame::NoFrame);
@@ -380,6 +382,7 @@ void MainWindow::createActions()
 
 void MainWindow::setConnectedUi(bool on)
 {
+    m_filterPanel->setEnabledUi(on);
     m_actConnect->setEnabled(!on);
     m_actDisconnect->setEnabled(on);
     m_actAdd->setEnabled(on);
@@ -528,12 +531,25 @@ void MainWindow::onRefresh()
 
 void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
 {
+    // setTorrents() (modelReset) сбрасывает выделение и текущий индекс вью,
+    // а вью прокручивается к началу. Запоминаем предыдущее состояние ДО
+    // сброса, чтобы после восстановления не «сбрасывалось» ни выделение,
+    // ни позиция прокрутки, ни вкладки деталей при каждом автообновлении
+    // (раз в 2 секунды).
+    const int prevId = m_currentId;
+    const int prevScroll = m_view->verticalScrollBar()->value();
+
+    // modelReset синхронно шлёт selectionChanged/currentChanged — не даём
+    // onSelectionChanged сбросить текущий торрент посреди обновления.
+    m_refreshing = true;
     m_model.setTorrents(torrents);
+    m_refreshing = false;
+
     updateFilterPanel(torrents);
     // Панель «General» подтягивается к актуальному состоянию выбранного.
-    if (m_currentId >= 0) {
+    if (prevId >= 0) {
         for (const auto& t : torrents) {
-            if (t.id == m_currentId) {
+            if (t.id == prevId) {
                 m_general->setTorrent(t);
                 if (m_sessionInfo.rpcVersion > 0)
                     m_general->setSession(m_sessionInfo);
@@ -548,14 +564,12 @@ void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
     if (!m_view->selectionModel())
         return;
 
-    // setTorrents() пересоздаёт модель, а с ней сбрасывается выделение вью.
-    // Возвращаем подсветку выбранного торрента, чтобы она не пропадала при
-    // автообновлении раз в 2 секунды.
-    if (m_currentId >= 0) {
+    // Восстанавливаем выделение и позицию прокрутки выбранного торрента.
+    if (prevId >= 0) {
         int srcRow = -1;
         const auto& list = m_model.torrents();
         for (int i = 0; i < list.size(); ++i) {
-            if (list.at(i).id == m_currentId) {
+            if (list.at(i).id == prevId) {
                 srcRow = i;
                 break;
             }
@@ -564,24 +578,36 @@ void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
             const QModelIndex src = m_model.index(srcRow, TorrentModel::ColName);
             const QModelIndex proxyIdx = m_proxy.mapFromSource(src);
             if (proxyIdx.isValid()) {
-                m_view->setCurrentIndex(proxyIdx);
+                // select() шлёт onSelectionChanged: id == m_currentId → no-op
+                // (без очистки «General» и лишних RPC-запросов).
                 m_view->selectionModel()->select(
                     QItemSelection(proxyIdx, proxyIdx),
                     QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+                // Refresh the scrollbar range before restoring its offset.
+                m_view->doItemsLayout();
+                m_view->verticalScrollBar()->setValue(prevScroll);
                 return;
             }
         }
+        // Торрент исчез (удалён) либо скрыт фильтром — снимаем выделение
+        // и очищаем вкладки деталей.
+        m_currentId = -1;
+        m_general->clear();
+        m_view->doItemsLayout();
+        m_view->verticalScrollBar()->setValue(prevScroll);
+        return;
     }
 
     // Первая загрузка: выбираем первую строку, как в эталоне, — иначе вкладка
     // General остаётся пустой до ручного клика.
-    if (m_currentId < 0 && m_proxy.rowCount() > 0) {
+    if (m_proxy.rowCount() > 0) {
         const QModelIndex first = m_proxy.index(0, TorrentModel::ColName);
-        m_view->setCurrentIndex(first);
         m_view->selectionModel()->select(
             QItemSelection(first, first),
             QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     }
+    m_view->doItemsLayout();
+    m_view->verticalScrollBar()->setValue(prevScroll);
 }
 
 void MainWindow::onFilterChanged(int group, const QString& folder, const QString& tracker)
@@ -1189,13 +1215,14 @@ void MainWindow::onTrackersReceived(int id, const QVector<tgui::TrackerStat>& tr
 
 void MainWindow::onSelectionChanged()
 {
+    // modelReset при автообновлении временно «сбрасывает» выделение —
+    // это обрабатывается onTorrentsReceived (восстановление по prevId).
+    if (m_refreshing)
+        return;
     int id = -1;
     if (m_view->selectionModel()) {
         for (const QModelIndex& vi : m_view->selectionModel()->selectedIndexes()) {
-            const QModelIndex fi = m_proxy.mapToSource(vi);
-            if (!fi.isValid())
-                continue;
-            const QModelIndex src = m_proxy.mapToSource(fi);
+            const QModelIndex src = m_proxy.mapToSource(vi);
             if (!src.isValid())
                 continue;
             id = m_model.torrentAt(src.row()).id;

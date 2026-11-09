@@ -37,4 +37,5 @@ private:
     // Сохранение прокрутки между пересборками (автообновление раз в 2 с).
     int m_builtTorrentId = -1;
     int m_pendingScroll = -1;
+    int m_rebuildSerial = 0;
 };
