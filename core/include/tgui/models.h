@@ -31,6 +31,7 @@ enum class BandwidthPriority : int { Low = -1, Normal = 0, High = 1 };
 
 // trackerStats[] из torrent-get.
 struct TrackerStat {
+    int id = -1;                    // tr_tracker_id_t (для trackerAdd/Remove/Replace)
     QString announce;               // URL трекера
     int announceState = 0;          // 0 none, 1 queued, 2 active, 3 fetching
     bool hasAnnounced = false;

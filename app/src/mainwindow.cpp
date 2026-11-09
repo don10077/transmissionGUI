@@ -10,7 +10,9 @@
 #include <QDateTime>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QDesktopServices>
 #include <QFile>
+#include <QUrl>
 #include <QFrame>
 #include <QHash>
 #include <QHBoxLayout>
@@ -19,6 +21,7 @@
 #include <QClipboard>
 #include <QHeaderView>
 #include <QIcon>
+#include <QInputDialog>
 #include <QItemSelectionModel>
 #include <QLabel>
 #include <QLineEdit>
@@ -35,6 +38,7 @@
 #include <QSettings>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QStyle>
 #include <QSystemTrayIcon>
 #include <QTabBar>
 #include <QTabWidget>
@@ -45,6 +49,7 @@
 #include <QWidget>
 #include <algorithm>
 
+#include "addlinkdialog.h"
 #include "adddialog.h"
 #include "connectdialog.h"
 #include "delegates.h"
@@ -174,6 +179,10 @@ void MainWindow::createUi()
     filesView->setColumnWidth(FileListModel::ColPriority, 90);
     filesView->setColumnWidth(FileListModel::ColWanted, 70);
     connect(&m_fileModel, &FileListModel::wantChanged, this, &MainWindow::onFileWantToggled);
+    // Контекстное меню вкладки «Файлы» (референс — pmFiles): приоритет high/normal/low
+    // и want/skip для выделенных строк.
+    filesView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(filesView, &QWidget::customContextMenuRequested, this, &MainWindow::onFilesContextMenu);
 
     auto* peersView = makeTable(&m_peerModel);
     peersView->setColumnWidth(PeerListModel::ColAddress, 190);
@@ -186,6 +195,10 @@ void MainWindow::createUi()
     trackersView->setColumnWidth(TrackerListModel::ColTier, 50);
     trackersView->setColumnWidth(TrackerListModel::ColSeeders, 70);
     trackersView->setColumnWidth(TrackerListModel::ColLeechers, 70);
+    // Контекстное меню вкладки «Трекеры» (референс — pmTrackers): Add/Edit/Remove.
+    trackersView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(trackersView, &QWidget::customContextMenuRequested,
+            this, &MainWindow::onTrackersContextMenu);
 
     // Нижний уровень: вкладки выбранного торрента.
     m_general = new PropsForm(this);
@@ -365,9 +378,22 @@ void MainWindow::createActions()
     tb->addAction(m_actDisconnect);
     tb->addSeparator();
     tb->addAction(m_actAdd);
+    {
+        auto* tbAddLink = tb->addAction(tr("Add link"));
+        tbAddLink->setIcon(m_actAdd->icon());
+        connect(tbAddLink, &QAction::triggered, this, &MainWindow::onAddFromLink);
+    }
     tb->addSeparator();
     tb->addAction(m_actStart);
     tb->addAction(m_actStop);
+    {
+        auto* tbQueueUp = tb->addAction(tr("Queue up"));
+        tbQueueUp->setIcon(style()->standardIcon(QStyle::SP_ArrowUp));
+        connect(tbQueueUp, &QAction::triggered, this, &MainWindow::onQueueUp);
+        auto* tbQueueDown = tb->addAction(tr("Queue down"));
+        tbQueueDown->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
+        connect(tbQueueDown, &QAction::triggered, this, &MainWindow::onQueueDown);
+    }
     tb->addAction(m_actStartAll);
     tb->addAction(m_actStopAll);
     tb->addAction(m_actRemove);
@@ -421,6 +447,8 @@ void MainWindow::startConnect(const tgui::RpcClient::Options& opts)
     connect(m_rpc.get(), &tgui::RpcClient::connected, this, &MainWindow::onConnected);
     connect(m_rpc.get(), &tgui::RpcClient::connectionFailed, this,
             &MainWindow::onConnectionFailed);
+    connect(m_rpc.get(), &tgui::RpcClient::authenticationFailed, this,
+            &MainWindow::onAuthenticationFailed);
     connect(m_rpc.get(), &tgui::RpcClient::torrentsReceived, this,
             &MainWindow::onTorrentsReceived);
     connect(m_rpc.get(), &tgui::RpcClient::torrentDetailsReceived, this,
@@ -518,6 +546,34 @@ void MainWindow::onConnectionFailed(const QString& error)
         QMessageBox::critical(this, tr("Connection failed"),
                               tr("Address: %1\n\nReason: %2").arg(url, error));
         statusBar()->showMessage(tr("Disconnected"), 5000);
+    });
+}
+
+void MainWindow::onAuthenticationFailed(const QString& error)
+{
+    Q_UNUSED(error);
+    m_refreshTimer.stop();
+    m_connected = false;
+    setConnectedUi(false);
+    setConnectionState(tr("Authentication required"), tgui::theme::color::red);
+    // Откладываем: даём развернуться стеку сигнала, чтобы безопасно показать
+    // диалог повторной авторизации и переподключиться (старый клиент уничтожится).
+    QTimer::singleShot(0, this, [this] {
+        if (!m_rpc)
+            return;
+        const auto opts = m_rpc->options();
+        ConnectDialog dlg(opts, this);
+        if (dlg.exec() != QDialog::Accepted) {
+            onConnectionFailed(tr("Authentication failed (HTTP 401). Rejected by user."));
+            return;
+        }
+        const auto newOpts = dlg.options();
+        if (newOpts.url.isEmpty()) {
+            onConnectionFailed(tr("Authentication failed (HTTP 401)."));
+            return;
+        }
+        saveSettings(newOpts);
+        startConnect(newOpts); // повторное подключение с новыми учётными данными
     });
 }
 
@@ -857,37 +913,101 @@ void MainWindow::onAbout()
 
 void MainWindow::onContextMenu(const QPoint& pos)
 {
-    Q_UNUSED(pos);
     auto* menu = new QMenu(this);
-    auto* actStart = menu->addAction(tr("Start"));
-    auto* actStop = menu->addAction(tr("Stop"));
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+
+    const bool hasSel = m_connected && !selectedTorrentIds().isEmpty();
+    using tgui::theme::Icon;
+    auto stdIcon = [this](QStyle::StandardPixmap sp) { return style()->standardIcon(sp); };
+
+    // Открыть (папку, содержащую объект) — как в образце.
+    auto* actOpen = menu->addAction(tgui::theme::icon(Icon::Folder), tr("Open folder containing object"));
+    actOpen->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Return));
+    actOpen->setEnabled(hasSel);
+    QObject::connect(actOpen, &QAction::triggered, this, &MainWindow::onOpenFolder);
     menu->addSeparator();
-    auto* actRemove = menu->addAction(tr("Remove…"));
+
+    auto* actStart = menu->addAction(tgui::theme::icon(Icon::Start), tr("Start"));
+    actStart->setShortcut(QKeySequence(Qt::Key_F3));
+    actStart->setEnabled(hasSel);
+    QObject::connect(actStart, &QAction::triggered, this, &MainWindow::onStartSelected);
+    auto* actForce = menu->addAction(stdIcon(QStyle::SP_MediaPlay), tr("Force start"));
+    actForce->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F3));
+    actForce->setEnabled(hasSel);
+    QObject::connect(actForce, &QAction::triggered, this, &MainWindow::onStartForceSelected);
+    auto* actStop = menu->addAction(tgui::theme::icon(Icon::Stop), tr("Stop"));
+    actStop->setShortcut(QKeySequence(Qt::Key_F4));
+    actStop->setEnabled(hasSel);
+    QObject::connect(actStop, &QAction::triggered, this, &MainWindow::onStopSelected);
     menu->addSeparator();
-    auto* actProperties = menu->addAction(tr("Properties…"));
-    auto* actMove = menu->addAction(tr("Move…"));
+
+    auto* actRemove = menu->addAction(tgui::theme::icon(Icon::Remove), tr("Remove…"));
+    actRemove->setShortcut(QKeySequence(Qt::Key_Delete));
+    actRemove->setEnabled(hasSel);
+    QObject::connect(actRemove, &QAction::triggered, this, &MainWindow::onRemoveSelected);
+    auto* actRemoveData = menu->addAction(tr("Remove with data…"));
+    actRemoveData->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_Delete));
+    actRemoveData->setEnabled(hasSel);
+    QObject::connect(actRemoveData, &QAction::triggered, this, &MainWindow::onRemoveWithDataSelected);
     menu->addSeparator();
-    auto* actRefresh = menu->addAction(tr("Refresh"));
+
+    auto* mPriority = menu->addMenu(tr("Priority"));
+    mPriority->setEnabled(hasSel);
+    auto* priHigh = mPriority->addAction(tr("High"));
+    auto* priNormal = mPriority->addAction(tr("Normal"));
+    auto* priLow = mPriority->addAction(tr("Low"));
+    QObject::connect(priHigh, &QAction::triggered, this, &MainWindow::onPriorityHigh);
+    QObject::connect(priNormal, &QAction::triggered, this, &MainWindow::onPriorityNormal);
+    QObject::connect(priLow, &QAction::triggered, this, &MainWindow::onPriorityLow);
+
+    auto* mQueue = menu->addMenu(tr("Queue"));
+    mQueue->setEnabled(hasSel);
+    auto* qTop = mQueue->addAction(tr("Move to top"));
+    auto* qUp = mQueue->addAction(tr("Move up"));
+    auto* qDown = mQueue->addAction(tr("Move down"));
+    auto* qBottom = mQueue->addAction(tr("Move to bottom"));
+    QObject::connect(qTop, &QAction::triggered, this, &MainWindow::onQueueTop);
+    QObject::connect(qUp, &QAction::triggered, this, &MainWindow::onQueueUp);
+    QObject::connect(qDown, &QAction::triggered, this, &MainWindow::onQueueDown);
+    QObject::connect(qBottom, &QAction::triggered, this, &MainWindow::onQueueBottom);
+    menu->addSeparator();
+
+    auto* actAnnounce = menu->addAction(tr("Announce (get more peers)"));
+    actAnnounce->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
+    actAnnounce->setEnabled(hasSel);
+    QObject::connect(actAnnounce, &QAction::triggered, this, &MainWindow::onReannounceSelected);
+    auto* actVerify = menu->addAction(tr("Verify…"));
+    actVerify->setEnabled(hasSel);
+    QObject::connect(actVerify, &QAction::triggered, this, &MainWindow::onVerifySelected);
+    menu->addSeparator();
+
+    auto* actCopyMagnet = menu->addAction(tr("Copy magnet link"));
+    actCopyMagnet->setEnabled(hasSel);
+    QObject::connect(actCopyMagnet, &QAction::triggered, this, &MainWindow::onCopyMagnet);
+    auto* actMove = menu->addAction(tgui::theme::icon(Icon::Move), tr("Set location…"));
+    actMove->setShortcut(QKeySequence(Qt::Key_F6));
+    actMove->setEnabled(hasSel);
+    QObject::connect(actMove, &QAction::triggered, this, &MainWindow::onMoveSelected);
+    auto* actRename = menu->addAction(tr("Rename…"));
+    actRename->setShortcut(QKeySequence(Qt::Key_F2));
+    actRename->setEnabled(hasSel);
+    QObject::connect(actRename, &QAction::triggered, this, &MainWindow::onRenameSelected);
+    menu->addSeparator();
+
+    auto* actProperties = menu->addAction(tgui::theme::icon(Icon::Properties), tr("Properties…"));
+    actProperties->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Return));
+    actProperties->setEnabled(hasSel);
+    QObject::connect(actProperties, &QAction::triggered, this, &MainWindow::onShowProperties);
+    menu->addSeparator();
+
+    auto* actRefresh = menu->addAction(tgui::theme::icon(Icon::Refresh), tr("Refresh"));
+    actRefresh->setEnabled(m_connected);
+    QObject::connect(actRefresh, &QAction::triggered, this, &MainWindow::onRefresh);
     auto* actSelectAll = menu->addAction(tr("Select all"));
+    actSelectAll->setEnabled(m_connected);
+    QObject::connect(actSelectAll, &QAction::triggered, this, &MainWindow::onSelectAll);
 
-    const bool on = m_connected;
-    actStart->setEnabled(on);
-    actStop->setEnabled(on);
-    actRemove->setEnabled(on);
-    actProperties->setEnabled(on);
-    actMove->setEnabled(on);
-    actRefresh->setEnabled(on);
-
-    const QPoint global = m_view->mapToGlobal(pos);
-    QObject::connect(actSelectAll, &QAction::triggered, this, [this] { m_view->selectAll(); });
-    QObject::connect(actStart, &QAction::triggered, this, [this] { onStartSelected(); });
-    QObject::connect(actStop, &QAction::triggered, this, [this] { onStopSelected(); });
-    QObject::connect(actRemove, &QAction::triggered, this, [this] { onRemoveSelected(); });
-    QObject::connect(actProperties, &QAction::triggered, this, [this] { onShowProperties(); });
-    QObject::connect(actMove, &QAction::triggered, this, [this] { onMoveSelected(); });
-    QObject::connect(actRefresh, &QAction::triggered, this, [this] { onRefresh(); });
-    menu->exec(global);
-    menu->deleteLater();
+    menu->exec(m_view->mapToGlobal(pos));
 }
 
 void MainWindow::onAddTorrent()
@@ -938,9 +1058,13 @@ void MainWindow::createMenus()
     mTorrent->addAction(m_actDisconnect);
     mTorrent->addSeparator();
     mTorrent->addAction(m_actAdd);
+    auto* actAddLink = mTorrent->addAction(tr("Add from link…"));
+    connect(actAddLink, &QAction::triggered, this, &MainWindow::onAddFromLink);
     mTorrent->addSeparator();
     mTorrent->addAction(m_actStart);
     mTorrent->addAction(m_actStop);
+    auto* actForceStart = mTorrent->addAction(tr("Force start"));
+    connect(actForceStart, &QAction::triggered, this, &MainWindow::onStartForceSelected);
     mTorrent->addSeparator();
     mTorrent->addAction(m_actStartAll);
     mTorrent->addAction(m_actStopAll);
@@ -958,24 +1082,33 @@ void MainWindow::createMenus()
     auto* qTop = mQueue->addAction(tr("Move to top"));
     auto* qUp = mQueue->addAction(tr("Move up"));
     auto* qDown = mQueue->addAction(tr("Move down"));
+    auto* qBottom = mQueue->addAction(tr("Move to bottom"));
     connect(qTop, &QAction::triggered, this, &MainWindow::onQueueTop);
     connect(qUp, &QAction::triggered, this, &MainWindow::onQueueUp);
     connect(qDown, &QAction::triggered, this, &MainWindow::onQueueDown);
+    connect(qBottom, &QAction::triggered, this, &MainWindow::onQueueBottom);
 
     mTorrent->addSeparator();
     auto* actVerify = mTorrent->addAction(tr("Verify…"));
     auto* actReannounce = mTorrent->addAction(tr("Update trackers"));
+    auto* actSeq = mTorrent->addAction(tr("Sequential download"));
     connect(actVerify, &QAction::triggered, this, &MainWindow::onVerifySelected);
     connect(actReannounce, &QAction::triggered, this, &MainWindow::onReannounceSelected);
+    connect(actSeq, &QAction::triggered, this, &MainWindow::onToggleSequential);
     mTorrent->addSeparator();
     mTorrent->addAction(m_actProperties);
     mTorrent->addAction(m_actMove);
+    auto* actRename = mTorrent->addAction(tr("Rename…"));
+    connect(actRename, &QAction::triggered, this, &MainWindow::onRenameSelected);
     auto* actCopyPath = mTorrent->addAction(tr("Copy path"));
     connect(actCopyPath, &QAction::triggered, this, &MainWindow::onCopyPath);
     mTorrent->addSeparator();
     auto* actSelectAll = mTorrent->addAction(tr("Select all"));
     connect(actSelectAll, &QAction::triggered, this, &MainWindow::onSelectAll);
     mTorrent->addAction(m_actRefresh);
+    mTorrent->addSeparator();
+    auto* actExit = mTorrent->addAction(tr("Exit"));
+    connect(actExit, &QAction::triggered, this, &MainWindow::onExit);
 
     // --- View ---
     auto* mView = menuBar()->addMenu(tr("View"));
@@ -1003,16 +1136,57 @@ void MainWindow::createMenus()
         statusBar()->setVisible(on);
     });
 
+    // W04b — переключатели вида (по образцу acToolbarShow/acMenuShow/acInfoPane/acStatusBarSizes).
+    mView->addSeparator();
+    auto* actToolbar = mView->addAction(tr("Toolbar"));
+    actToolbar->setCheckable(true);
+    actToolbar->setChecked(QSettings().value("ui/showToolbar", true).toBool());
+    connect(actToolbar, &QAction::toggled, this, [this, actToolbar](bool on) {
+        if (auto* tb = this->findChild<QToolBar*>(QStringLiteral("mainToolBar")))
+            tb->setVisible(on);
+        QSettings().setValue("ui/showToolbar", on);
+    });
+    auto* actMenu = mView->addAction(tr("Menu"));
+    actMenu->setCheckable(true);
+    actMenu->setChecked(QSettings().value("ui/showMenu", true).toBool());
+    connect(actMenu, &QAction::toggled, this, [this, actMenu](bool on) {
+        menuBar()->setVisible(on);
+        QSettings().setValue("ui/showMenu", on);
+    });
+    auto* actInfoPane = mView->addAction(tr("Info pane"));
+    actInfoPane->setCheckable(true);
+    actInfoPane->setChecked(QSettings().value("ui/infoPane", true).toBool());
+    connect(actInfoPane, &QAction::toggled, this, [this, actInfoPane](bool on) {
+        m_tabs->setVisible(on);
+        QSettings().setValue("ui/infoPane", on);
+    });
+    auto* actStatusSizes = mView->addAction(tr("Status bar sizes"));
+    actStatusSizes->setCheckable(true);
+    actStatusSizes->setChecked(QSettings().value("ui/statusSizes", true).toBool());
+    connect(actStatusSizes, &QAction::toggled, this, [this, actStatusSizes](bool on) {
+        m_speedLabel->setVisible(on);
+        QSettings().setValue("ui/statusSizes", on);
+    });
+
     // --- Tools ---
     auto* mTools = menuBar()->addMenu(tr("Tools"));
     mTools->addAction(m_actAltSpeed);
     auto* actPortTest = mTools->addAction(tr("Test port"));
     connect(actPortTest, &QAction::triggered, this, &MainWindow::onPortTest);
+    auto* actBlocklist = mTools->addAction(tr("Update blocklist"));
+    connect(actBlocklist, &QAction::triggered, this, &MainWindow::onUpdateBlocklist);
     auto* actDaemonOpts = mTools->addAction(tr("Daemon options"));
     connect(actDaemonOpts, &QAction::triggered, this, &MainWindow::onDaemonOptions);
 
     // --- Help ---
     auto* mHelp = menuBar()->addMenu(tr("Help"));
+    auto* actHome = mHelp->addAction(tr("Visit home page"));
+    connect(actHome, &QAction::triggered, this, &MainWindow::onHome);
+    auto* actDev = mHelp->addAction(tr("Development site"));
+    connect(actDev, &QAction::triggered, this, &MainWindow::onDevSite);
+    auto* actCheck = mHelp->addAction(tr("Check for new version"));
+    connect(actCheck, &QAction::triggered, this, &MainWindow::onCheckUpdate);
+    mHelp->addSeparator();
     mHelp->addAction(m_actAbout);
 }
 
@@ -1038,6 +1212,63 @@ void MainWindow::onCopyPath()
             return;
         }
     }
+}
+
+void MainWindow::onOpenFolder()
+{
+    const auto ids = selectedTorrentIds();
+    if (ids.size() != 1)
+        return;
+    for (const auto& t : m_model.torrents()) {
+        if (t.id == ids.first()) {
+            const QString dir = t.downloadDir.value_or(QString());
+            if (dir.isEmpty())
+                return;
+            QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+            return;
+        }
+    }
+}
+
+void MainWindow::onCopyMagnet()
+{
+    const auto ids = selectedTorrentIds();
+    if (ids.size() != 1)
+        return;
+    for (const auto& t : m_model.torrents()) {
+        if (t.id == ids.first()) {
+            QString magnet = t.magnetLink.value_or(QString());
+            if (magnet.isEmpty() && t.hashString.has_value())
+                magnet = QStringLiteral("magnet:?xt=urn:btih:%1").arg(t.hashString.value());
+            if (magnet.isEmpty())
+                return;
+            QApplication::clipboard()->setText(magnet);
+            statusBar()->showMessage(tr("Magnet link copied"), 3000);
+            return;
+        }
+    }
+}
+
+void MainWindow::onRemoveWithDataSelected()
+{
+    if (!m_rpc)
+        return;
+    const auto ids = selectedTorrentIds();
+    if (ids.isEmpty())
+        return;
+    auto* box = new QMessageBox(this);
+    box->setWindowTitle(tr("Remove with data"));
+    box->setIcon(QMessageBox::Warning);
+    box->setText(tr("Remove the selected torrent(s) AND delete their downloaded data files?"));
+    box->setInformativeText(tr("This cannot be undone."));
+    box->setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+    const int r = box->exec();
+    box->deleteLater();
+    if (r != QMessageBox::Yes)
+        return;
+    for (int id : ids)
+        m_rpc->removeTorrent(id, true);
+    m_rpc->getTorrents();
 }
 
 void MainWindow::onVerifySelected()
@@ -1094,6 +1325,120 @@ void MainWindow::onQueueDown()
     for (int id : ids)
         m_rpc->queueMoveDown(id);
     m_rpc->getTorrents();
+}
+
+void MainWindow::onQueueBottom()
+{
+    const auto ids = selectedTorrentIds();
+    if (ids.isEmpty() || !m_rpc || !m_connected)
+        return;
+    for (int id : ids)
+        m_rpc->queueMoveBottom(id);
+    m_rpc->getTorrents();
+}
+
+void MainWindow::onStartForceSelected()
+{
+    const auto ids = selectedTorrentIds();
+    if (ids.isEmpty() || !m_rpc || !m_connected)
+        return;
+    for (int id : ids)
+        m_rpc->startTorrent(id, true); // torrent-start-now
+    m_rpc->getTorrents();
+}
+
+void MainWindow::onToggleSequential()
+{
+    const auto ids = selectedTorrentIds();
+    if (ids.isEmpty() || !m_rpc || !m_connected)
+        return;
+    for (int id : ids) {
+        bool current = false;
+        for (const auto& t : m_model.torrents())
+            if (t.id == id && t.sequentialDownload.has_value()) {
+                current = *t.sequentialDownload;
+                break;
+            }
+        m_rpc->setSequential(id, !current);
+    }
+    m_rpc->getTorrents();
+}
+
+void MainWindow::onAddFromLink()
+{
+    if (!m_rpc || !m_connected)
+        return;
+    AddLinkDialog dlg(QSettings().value("lastAddLink").toString(), this);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+    const QString link = dlg.link();
+    if (link.isEmpty())
+        return;
+    QSettings().setValue("lastAddLink", link);
+    tgui::RpcClient::AddTorrent at;
+    at.source = tgui::RpcClient::AddTorrent::Source::Url;
+    at.url = link;
+    at.start = dlg.startWhenAdded();
+    m_rpc->addTorrent(at);
+    m_rpc->getTorrents();
+}
+
+void MainWindow::onUpdateBlocklist()
+{
+    if (m_rpc && m_connected)
+        m_rpc->updateBlocklist();
+}
+
+void MainWindow::onExit()
+{
+    close();
+}
+
+void MainWindow::onRenameSelected()
+{
+    const auto ids = selectedTorrentIds();
+    if (ids.size() != 1 || !m_rpc || !m_connected) {
+        if (ids.size() > 1)
+            QMessageBox::warning(this, tr("Rename"), tr("Only one torrent can be renamed."));
+        return;
+    }
+    const int id = ids.first();
+    const tgui::Torrent* found = nullptr;
+    for (const auto& t : m_model.torrents())
+        if (t.id == id) {
+            found = &t;
+            break;
+        }
+    if (!found || !found->name.has_value())
+        return;
+    const QString currentName = found->name.value();
+    if (currentName.isEmpty())
+        return;
+    bool ok = false;
+    const QString newName = QInputDialog::getText(
+        this, tr("Rename"), tr("New name:"),
+        QLineEdit::Normal, currentName, &ok);
+    const QString trimmed = newName.trimmed();
+    if (!ok || trimmed.isEmpty() || trimmed == currentName)
+        return;
+    // path = корень (текущее имя), name = новое имя (torrent-rename-path).
+    m_rpc->renamePath(id, currentName, trimmed);
+    m_rpc->getTorrents();
+}
+
+void MainWindow::onHome()
+{
+    QDesktopServices::openUrl(QUrl(QStringLiteral("https://transmissionbt.com")));
+}
+
+void MainWindow::onDevSite()
+{
+    QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/transmissionbt/transmission")));
+}
+
+void MainWindow::onCheckUpdate()
+{
+    QDesktopServices::openUrl(QUrl(QStringLiteral("https://transmissionbt.com/#release-notes")));
 }
 
 void MainWindow::onPriorityHigh()
@@ -1268,6 +1613,153 @@ void MainWindow::onFileWantToggled(int, bool)
         (f.wanted ? wanted : unwanted).push_back(f.index);
     m_rpc->setFilesWanted(m_currentId, wanted, unwanted);
     statusBar()->showMessage(tr("want/skip updated"), 4000);
+}
+
+void MainWindow::onFilesContextMenu(const QPoint& pos)
+{
+    if (!m_rpc || m_currentId < 0)
+        return;
+    auto* view = qobject_cast<QTableView*>(sender());
+    if (!view || !view->selectionModel())
+        return;
+    const auto selected = view->selectionModel()->selectedRows();
+    const auto& files = m_fileModel.files();
+    QVector<int> fileIds;
+    for (const QModelIndex& idx : selected) {
+        if (idx.row() >= 0 && idx.row() < files.size())
+            fileIds.append(files.at(idx.row()).index);
+    }
+    if (fileIds.isEmpty())
+        return;
+
+    auto* menu = new QMenu(this);
+    auto* aHigh = menu->addAction(tr("High priority"));
+    auto* aNormal = menu->addAction(tr("Normal priority"));
+    auto* aLow = menu->addAction(tr("Low priority"));
+    menu->addSeparator();
+    auto* aWant = menu->addAction(tr("Wanted"));
+    auto* aSkip = menu->addAction(tr("Skip (don't download)"));
+
+    const QPoint global = view->mapToGlobal(pos);
+    QObject::connect(aHigh, &QAction::triggered, this, [this, fileIds] { onFilePriority(fileIds, 1); });
+    QObject::connect(aNormal, &QAction::triggered, this, [this, fileIds] { onFilePriority(fileIds, 0); });
+    QObject::connect(aLow, &QAction::triggered, this, [this, fileIds] { onFilePriority(fileIds, -1); });
+    QObject::connect(aWant, &QAction::triggered, this, [this, fileIds] { onFileWantSelected(fileIds); });
+    QObject::connect(aSkip, &QAction::triggered, this, [this, fileIds] { onFileSkipSelected(fileIds); });
+    menu->exec(global);
+    menu->deleteLater();
+}
+
+void MainWindow::onFilePriority(const QVector<int>& fileIds, int priority)
+{
+    if (!m_rpc || m_currentId < 0 || fileIds.isEmpty())
+        return;
+    m_rpc->setFilePriority(m_currentId, fileIds, priority);
+    m_rpc->getTorrentDetails(m_currentId); // перечитать детали (приоритет/статус)
+}
+
+void MainWindow::onFileWantSelected(const QVector<int>& fileIds)
+{
+    if (!m_rpc || m_currentId < 0 || fileIds.isEmpty())
+        return;
+    m_rpc->setFilesWanted(m_currentId, fileIds, {}); // только выделенные → wanted
+    m_rpc->getTorrentDetails(m_currentId);
+}
+
+void MainWindow::onFileSkipSelected(const QVector<int>& fileIds)
+{
+    if (!m_rpc || m_currentId < 0 || fileIds.isEmpty())
+        return;
+    m_rpc->setFilesWanted(m_currentId, {}, fileIds); // только выделенные → skip
+    m_rpc->getTorrentDetails(m_currentId);
+}
+
+void MainWindow::onTrackersContextMenu(const QPoint& pos)
+{
+    if (!m_rpc || m_currentId < 0)
+        return;
+    auto* view = qobject_cast<QTableView*>(sender());
+    if (!view || !view->selectionModel())
+        return;
+    const auto selected = view->selectionModel()->selectedRows();
+    const auto& trackers = m_trackerModel.trackers();
+    bool hasSel = false;
+    int trackerId = -1;
+    QString announce;
+    if (!selected.isEmpty()) {
+        const int row = selected.first().row();
+        if (row >= 0 && row < trackers.size()) {
+            hasSel = true;
+            trackerId = trackers.at(row).id;
+            announce = trackers.at(row).announce;
+        }
+    }
+
+    auto* menu = new QMenu(this);
+    auto* aAdd = menu->addAction(tr("Add tracker…"));
+    auto* aEdit = menu->addAction(tr("Edit tracker…"));
+    auto* aRemove = menu->addAction(tr("Remove tracker…"));
+    aEdit->setEnabled(hasSel);
+    aRemove->setEnabled(hasSel);
+
+    const QPoint global = view->mapToGlobal(pos);
+    QObject::connect(aAdd, &QAction::triggered, this, [this] { onAddTracker(); });
+    QObject::connect(aEdit, &QAction::triggered, this,
+                     [this, trackerId, announce] { onEditTracker(trackerId, announce); });
+    QObject::connect(aRemove, &QAction::triggered, this,
+                     [this, trackerId, announce] { onRemoveTracker(trackerId, announce); });
+    menu->exec(global);
+    menu->deleteLater();
+}
+
+void MainWindow::onAddTracker()
+{
+    if (!m_rpc || m_currentId < 0)
+        return;
+    bool ok = false;
+    const QString url = QInputDialog::getText(
+                           this, tr("Add tracker"), tr("Tracker URL:"),
+                           QLineEdit::Normal, QString(), &ok)
+                           .trimmed();
+    if (!ok)
+        return;
+    if (url.isEmpty()) {
+        QMessageBox::warning(this, tr("Add tracker"), tr("No tracker URL was specified."));
+        return;
+    }
+    m_rpc->addTracker(m_currentId, url);
+    m_rpc->getTrackers(m_currentId); // обновить список
+}
+
+void MainWindow::onEditTracker(int trackerId, const QString& announce)
+{
+    if (!m_rpc || m_currentId < 0 || trackerId < 0)
+        return;
+    bool ok = false;
+    const QString url = QInputDialog::getText(
+                           this, tr("Edit tracker"), tr("New tracker URL:"),
+                           QLineEdit::Normal, announce, &ok)
+                           .trimmed();
+    if (!ok)
+        return;
+    if (url.isEmpty()) {
+        QMessageBox::warning(this, tr("Edit tracker"), tr("No tracker URL was specified."));
+        return;
+    }
+    m_rpc->replaceTracker(m_currentId, trackerId, url);
+    m_rpc->getTrackers(m_currentId);
+}
+
+void MainWindow::onRemoveTracker(int trackerId, const QString& announce)
+{
+    if (!m_rpc || m_currentId < 0 || trackerId < 0)
+        return;
+    const auto ret = QMessageBox::question(
+        this, tr("Remove tracker"), tr("Remove tracker “%1”?").arg(announce));
+    if (ret != QMessageBox::Yes)
+        return;
+    m_rpc->removeTracker(m_currentId, trackerId);
+    m_rpc->getTrackers(m_currentId);
 }
 
 void MainWindow::finishAdd()

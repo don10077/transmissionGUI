@@ -12,6 +12,7 @@ add_executable(tgui_tests
     test_panels.cpp
     test_e2e_tabs.cpp
     test_rpcclient.cpp
+    test_addlinkdialog.cpp
     # GUI-модели списка (regress: пустая таблица после подключения).
     ${CMAKE_SOURCE_DIR}/app/src/torrentmodel.cpp
     ${CMAKE_SOURCE_DIR}/app/src/groupedproxy.cpp
@@ -24,6 +25,7 @@ add_executable(tgui_tests
     ${CMAKE_SOURCE_DIR}/app/src/propsform.cpp
     ${CMAKE_SOURCE_DIR}/app/src/statsform.cpp
     ${CMAKE_SOURCE_DIR}/app/src/adddialog.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/addlinkdialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/connectdialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/fileselectdialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/propsdialog.cpp
@@ -31,6 +33,7 @@ add_executable(tgui_tests
     ${CMAKE_SOURCE_DIR}/app/src/mainwindow.h
     ${CMAKE_SOURCE_DIR}/app/src/theme.h
     ${CMAKE_SOURCE_DIR}/app/src/adddialog.h
+    ${CMAKE_SOURCE_DIR}/app/src/addlinkdialog.h
     ${CMAKE_SOURCE_DIR}/app/src/connectdialog.h
     ${CMAKE_SOURCE_DIR}/app/src/fileselectdialog.h
     ${CMAKE_SOURCE_DIR}/app/src/propsdialog.h

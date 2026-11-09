@@ -73,11 +73,20 @@ public:
     void queueMoveTop(int id);
     void queueMoveUp(int id);
     void queueMoveDown(int id);
+    void queueMoveBottom(int id);
     void setStarted(int id, bool started);
+    void setSequential(int id, bool enabled); // sequential_download, требует rpc >= 18
+    void renamePath(int id, const QString& path, const QString& newName); // torrent-rename-path, требует rpc >= 15
     void setTorrent(int id, const QJsonObject& params); // общий torrent-set
     void setLabels(int id, const QStringList& labels);  // требует rpc >= 16
-    void setPriority(int id, int priority);             // -1 / 0 / 1
+    void setPriority(int id, int priority);             // -1 / 0 / 1 (весь торрент)
     void setFilesWanted(int id, const QVector<int>& wanted, const QVector<int>& unwanted);
+    // Per-file приоритет (legacy): files-wanted + priority-{low|normal|high}.
+    void setFilePriority(int id, const QVector<int>& files, int priority); // -1 / 0 / +1
+    // Трекеры (legacy): trackerAdd / trackerRemove / trackerReplace; требует RPC >= 10.
+    void addTracker(int id, const QString& url);
+    void removeTracker(int id, int trackerId);
+    void replaceTracker(int id, int trackerId, const QString& newUrl);
     void addTorrent(const AddTorrent& params);
 
     // --- Демон (session-set и прочее) ---
@@ -90,6 +99,8 @@ signals:
     // Соединение
     void connected(const SessionInfo& info);
     void connectionFailed(const QString& error);
+    // HTTP 401 (неверные/протухшие учётные данные) — предложить повторную авторизацию
+    void authenticationFailed(const QString& error);
 
     // Чтение
     void torrentsReceived(const QVector<Torrent>& torrents);

@@ -196,6 +196,7 @@ QVector<TrackerStat> parseTrackerStats(const QJsonArray& array)
             continue;
         const QJsonObject j = e.toObject();
         TrackerStat s;
+        s.id = j.contains("id") ? j.value("id").toInt() : -1;
         s.announce = j.value("announce").toString();
         s.announceState = j.value("announceState").toInt();
         s.hasAnnounced = j.value("hasAnnounced").toBool();

@@ -4,6 +4,7 @@ add_executable(transmissiongui WIN32
     src/theme.cpp
     src/mainwindow.cpp
     src/torrentmodel.cpp
+    src/addlinkdialog.cpp
     src/connectdialog.cpp
     src/adddialog.cpp
     src/fileselectdialog.cpp
@@ -19,6 +20,7 @@ add_executable(transmissiongui WIN32
     src/mainwindow.h
     src/theme.h
     src/torrentmodel.h
+    src/addlinkdialog.h
     src/connectdialog.h
     src/adddialog.h
     src/fileselectdialog.h

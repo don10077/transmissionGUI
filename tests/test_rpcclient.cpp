@@ -357,6 +357,500 @@ TEST_F(RpcClientTest, StartAllWithoutIds)
     EXPECT_FALSE(req.arguments.contains("ids"));
 }
 
+TEST_F(RpcClientTest, SetFilePriorityHigh)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{200, "{\"result\": \"success\", \"arguments\": {}}", {}});
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->setFilePriority(7, {2, 4}, 1); // high
+    loop.exec();
+    ASSERT_TRUE(done);
+
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "torrent-set");
+    EXPECT_EQ(req.arguments.value("ids").toArray().first().toInt(), 7);
+    // high → files-wanted + priority-high (тот же массив индексов), без остальных.
+    EXPECT_EQ(req.arguments.value("files-wanted").toArray().size(), 2);
+    EXPECT_TRUE(req.arguments.contains("priority-high"));
+    EXPECT_EQ(req.arguments.value("priority-high").toArray().size(), 2);
+    EXPECT_FALSE(req.arguments.contains("priority-normal"));
+    EXPECT_FALSE(req.arguments.contains("priority-low"));
+}
+
+TEST_F(RpcClientTest, SetFilePriorityLow)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{200, "{\"result\": \"success\", \"arguments\": {}}", {}});
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->setFilePriority(7, {1}, -1);
+    loop.exec();
+    ASSERT_TRUE(done);
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "torrent-set");
+    EXPECT_TRUE(req.arguments.contains("priority-low"));
+    EXPECT_FALSE(req.arguments.contains("priority-high"));
+    EXPECT_FALSE(req.arguments.contains("priority-normal"));
+}
+
+TEST_F(RpcClientTest, SetFilePriorityNormal)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{200, "{\"result\": \"success\", \"arguments\": {}}", {}});
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->setFilePriority(7, {1, 3}, 0);
+    loop.exec();
+    ASSERT_TRUE(done);
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "torrent-set");
+    EXPECT_TRUE(req.arguments.contains("priority-normal"));
+    EXPECT_FALSE(req.arguments.contains("priority-low"));
+    EXPECT_FALSE(req.arguments.contains("priority-high"));
+}
+
+TEST_F(RpcClientTest, SetFilePriorityEmptyIsNoop)
+{
+    connectWith(18);
+    const int before = server.requestCount();
+    client->setFilePriority(7, {}, 1); // пустой список — запрос не шлём
+    EXPECT_EQ(server.requestCount(), before);
+}
+
+TEST_F(RpcClientTest, SetFilePriorityVersionGate)
+{
+    connectWith(4); // приоритет файлов — только от RPC 5
+    const int before = server.requestCount();
+
+    QEventLoop loop;
+    bool done = false;
+    bool ok = true;
+    QString error;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &ok, &error, &loop](const QString&, bool o, const QString& e,
+                                                 const QJsonObject&) {
+                         done = true;
+                         ok = o;
+                         error = e;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->setFilePriority(7, {1}, 1);
+    // Gate RPC-версии отвечает синхронно — loop может не понадобиться.
+    if (!done)
+        loop.exec();
+
+    ASSERT_TRUE(done);
+    EXPECT_FALSE(ok);
+    EXPECT_NE(error.indexOf("5"), -1);
+    EXPECT_EQ(server.requestCount(), before); // запрос в сеть не уходил
+}
+
+TEST_F(RpcClientTest, QueueMoveBottom)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{200, "{\"result\": \"success\", \"arguments\": {}}", {}});
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->queueMoveBottom(7);
+    loop.exec();
+    ASSERT_TRUE(done);
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "queue-move-bottom");
+    EXPECT_EQ(req.arguments.value("ids").toArray().first().toInt(), 7);
+}
+
+TEST_F(RpcClientTest, StartTorrentForce)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{200, "{\"result\": \"success\", \"arguments\": {}}", {}});
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->startTorrent(7, true); // force → torrent-start-now
+    loop.exec();
+    ASSERT_TRUE(done);
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "torrent-start-now");
+    EXPECT_EQ(req.arguments.value("ids").toArray().first().toInt(), 7);
+}
+
+TEST_F(RpcClientTest, UpdateBlocklist)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{200, "{\"result\": \"success\", \"arguments\": {}}", {}});
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->updateBlocklist();
+    loop.exec();
+    ASSERT_TRUE(done);
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "blocklist-update");
+}
+
+TEST_F(RpcClientTest, SetSequentialEnabled)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{200, "{\"result\": \"success\", \"arguments\": {}}", {}});
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->setSequential(7, true);
+    loop.exec();
+    ASSERT_TRUE(done);
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "torrent-set");
+    EXPECT_EQ(req.arguments.value("ids").toArray().first().toInt(), 7);
+    EXPECT_TRUE(req.arguments.value("sequential_download").toBool());
+}
+
+TEST_F(RpcClientTest, SetSequentialDisabled)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{200, "{\"result\": \"success\", \"arguments\": {}}", {}});
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->setSequential(7, false);
+    loop.exec();
+    ASSERT_TRUE(done);
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "torrent-set");
+    EXPECT_TRUE(req.arguments.contains("sequential_download"));
+    EXPECT_FALSE(req.arguments.value("sequential_download").toBool());
+}
+
+TEST_F(RpcClientTest, SetSequentialVersionGate)
+{
+    connectWith(17); // sequential_download — только от RPC 18
+    const int before = server.requestCount();
+
+    QEventLoop loop;
+    bool done = false;
+    bool ok = true;
+    QString error;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &ok, &error, &loop](const QString&, bool o, const QString& e,
+                                                 const QJsonObject&) {
+                         done = true;
+                         ok = o;
+                         error = e;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->setSequential(7, true);
+    // Gate RPC-версии отвечает синхронно — loop может не понадобиться.
+    if (!done)
+        loop.exec();
+
+    ASSERT_TRUE(done);
+    EXPECT_FALSE(ok);
+    EXPECT_NE(error.indexOf("18"), -1);
+    EXPECT_EQ(server.requestCount(), before); // запрос в сеть не уходил
+}
+
+TEST_F(RpcClientTest, RenamePath)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{200, "{\"result\": \"success\", \"arguments\": {}}", {}});
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->renamePath(7, "Old Name", "New Name");
+    loop.exec();
+    ASSERT_TRUE(done);
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "torrent-rename-path");
+    EXPECT_EQ(req.arguments.value("ids").toArray().first().toInt(), 7);
+    EXPECT_EQ(req.arguments.value("path").toString(), "Old Name");
+    EXPECT_EQ(req.arguments.value("name").toString(), "New Name");
+}
+
+TEST_F(RpcClientTest, RenamePathVersionGate)
+{
+    connectWith(14); // torrent-rename-path — только от RPC 15
+    const int before = server.requestCount();
+
+    QEventLoop loop;
+    bool done = false;
+    bool ok = true;
+    QString error;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &ok, &error, &loop](const QString&, bool o, const QString& e,
+                                                 const QJsonObject&) {
+                         done = true;
+                         ok = o;
+                         error = e;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->renamePath(7, "Old", "New");
+    if (!done)
+        loop.exec();
+    ASSERT_TRUE(done);
+    EXPECT_FALSE(ok);
+    EXPECT_NE(error.indexOf("15"), -1);
+    EXPECT_EQ(server.requestCount(), before); // запрос в сеть не уходил
+}
+
+TEST_F(RpcClientTest, ConnectAuth401)
+{
+    // 401 на session-get → authenticationFailed (а не connectionFailed).
+    server.enqueue(MockRpcServer::Response{401, "Unauthorized", {}});
+    QEventLoop loop;
+    bool authFailed = false;
+    bool connFailed = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::authenticationFailed,
+                     [&authFailed, &loop](const QString&) { authFailed = true; loop.quit(); });
+    QObject::connect(client.get(), &RpcClient::connectionFailed,
+                     [&connFailed, &loop](const QString&) { connFailed = true; loop.quit(); });
+    timer.start(5000);
+    client->connectToDaemon();
+    loop.exec();
+    EXPECT_TRUE(authFailed);
+    EXPECT_FALSE(connFailed);
+}
+
+TEST_F(RpcClientTest, ReportAuth401)
+{
+    connectWith(18);
+    // 401 на изменяющем запросе → authenticationFailed (а не requestCompleted).
+    server.enqueue(MockRpcServer::Response{401, "Unauthorized", {}});
+    QEventLoop loop;
+    bool authFailed = false;
+    bool completed = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::authenticationFailed,
+                     [&authFailed, &loop](const QString&) { authFailed = true; loop.quit(); });
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&completed, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         completed = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->startTorrent(7);
+    loop.exec();
+    EXPECT_TRUE(authFailed);
+    EXPECT_FALSE(completed);
+}
+
+TEST_F(RpcClientTest, AddTracker)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{200, "{\"result\": \"success\", \"arguments\": {}}", {}});
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->addTracker(7, "http://tracker.example/announce");
+    loop.exec();
+    ASSERT_TRUE(done);
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "torrent-set");
+    EXPECT_EQ(req.arguments.value("ids").toArray().first().toInt(), 7);
+    auto urls = req.arguments.value("trackerAdd").toArray();
+    ASSERT_EQ(urls.size(), 1);
+    EXPECT_EQ(urls.first().toString(), "http://tracker.example/announce");
+    EXPECT_FALSE(req.arguments.contains("trackerRemove"));
+    EXPECT_FALSE(req.arguments.contains("trackerReplace"));
+}
+
+TEST_F(RpcClientTest, RemoveTracker)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{200, "{\"result\": \"success\", \"arguments\": {}}", {}});
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->removeTracker(7, 2); // trackerId = 2
+    loop.exec();
+    ASSERT_TRUE(done);
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "torrent-set");
+    EXPECT_EQ(req.arguments.value("ids").toArray().first().toInt(), 7);
+    auto ids = req.arguments.value("trackerRemove").toArray();
+    ASSERT_EQ(ids.size(), 1);
+    EXPECT_EQ(ids.first().toInt(), 2);
+    EXPECT_FALSE(req.arguments.contains("trackerAdd"));
+    EXPECT_FALSE(req.arguments.contains("trackerReplace"));
+}
+
+TEST_F(RpcClientTest, ReplaceTracker)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{200, "{\"result\": \"success\", \"arguments\": {}}", {}});
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->replaceTracker(7, 2, "http://new.example/announce");
+    loop.exec();
+    ASSERT_TRUE(done);
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "torrent-set");
+    EXPECT_EQ(req.arguments.value("ids").toArray().first().toInt(), 7);
+    auto pair = req.arguments.value("trackerReplace").toArray();
+    ASSERT_EQ(pair.size(), 2); // [trackerId, newUrl]
+    EXPECT_EQ(pair.at(0).toInt(), 2);
+    EXPECT_EQ(pair.at(1).toString(), "http://new.example/announce");
+    EXPECT_FALSE(req.arguments.contains("trackerAdd"));
+    EXPECT_FALSE(req.arguments.contains("trackerRemove"));
+}
+
+TEST_F(RpcClientTest, AddTrackerEmptyUrlNoop)
+{
+    connectWith(18);
+    const int before = server.requestCount();
+    client->addTracker(7, "   "); // пустой URL — запрос не шлём
+    EXPECT_EQ(server.requestCount(), before);
+}
+
+TEST_F(RpcClientTest, TrackerVersionGate)
+{
+    connectWith(9); // трекеры — только от RPC 10
+    const int before = server.requestCount();
+
+    QEventLoop loop;
+    bool done = false;
+    bool ok = true;
+    QString error;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &ok, &error, &loop](const QString&, bool o, const QString& e,
+                                                 const QJsonObject&) {
+                         done = true;
+                         ok = o;
+                         error = e;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->addTracker(7, "http://tracker.example/announce");
+    // Gate RPC-версии отвечает синхронно — loop может не понадобиться.
+    if (!done)
+        loop.exec();
+
+    ASSERT_TRUE(done);
+    EXPECT_FALSE(ok);
+    EXPECT_NE(error.indexOf("10"), -1);
+    EXPECT_EQ(server.requestCount(), before); // запрос в сеть не уходил
+}
+
 TEST_F(RpcClientTest, SetLabelsVersionGate)
 {
     connectWith(15); // labels — только от RPC 16
