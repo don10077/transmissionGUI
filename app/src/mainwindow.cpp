@@ -24,6 +24,7 @@
 #include <QClipboard>
 #include <QHeaderView>
 #include <QIcon>
+#include <QFileDialog>
 #include <QInputDialog>
 #include <QItemSelectionModel>
 #include <QLabel>
@@ -66,6 +67,7 @@
 #include "aboutdialog.h"
 #include "daemonprofile.h"
 #include "optionsdialog.h"
+#include "pathmap.h"
 #include "propsdialog.h"
 #include "propsform.h"
 #include "statsform.h"
@@ -289,7 +291,7 @@ void MainWindow::createActions()
     m_actConnect->setToolTip(tr("Connect to daemon (Ctrl+K)"));
     connect(m_actConnect, &QAction::triggered, this, &MainWindow::onConnect);
 
-    m_actDisconnect = new QAction(tr("Disconnect"), this);
+    m_actDisconnect = new QAction(tr("Disconnect from Transmission"), this);
     m_actDisconnect->setIcon(tgui::theme::icon(Icon::Disconnect));
     m_actDisconnect->setToolTip(tr("Disconnect from Transmission"));
     connect(m_actDisconnect, &QAction::triggered, this, &MainWindow::onDisconnect);
@@ -1078,38 +1080,24 @@ void MainWindow::startAdd(const tgui::RpcClient::AddTorrent& params, bool doSave
 void MainWindow::createMenus()
 {
     // --- Torrent (пункты и порядок — по референсу transgui) ---
-    auto* mTorrent = menuBar()->addMenu(tr("Torrent"));
+    auto* mTorrent = menuBar()->addMenu(tr("&Torrent"));
 
-    // «Connect to Transmission» — единый центр управления серверами (референс: miConnect):
-    // список сохранённых (активный — с галочкой), New/Manage, Disconnect, быстрое подключение.
+    // Connect to Transmission (подменю: New / Manage — как в OLD miConnect)
     auto* mConnect = mTorrent->addMenu(tr("Connect to Transmission"));
     connect(mConnect, &QMenu::aboutToShow, this, [this, mConnect]() {
         mConnect->clear();
-        ProfileStore store;
-        const QStringList names = store.names();
-        const QString cur = store.currentName();
-        for (const QString& n : names) {
-            auto* a = mConnect->addAction(n);
-            a->setCheckable(true);
-            a->setChecked(m_connected && n == cur);
-            connect(a, &QAction::triggered, this, [this, n]() { switchToProfile(n); });
-        }
-        if (!names.isEmpty())
-            mConnect->addSeparator();
         auto* aNew = mConnect->addAction(tr("New connection…"));
         connect(aNew, &QAction::triggered, this, &MainWindow::onConnectionOptions);
         auto* aManage = mConnect->addAction(tr("Manage connections…"));
         connect(aManage, &QAction::triggered, this, &MainWindow::onConnectionOptions);
-        mConnect->addAction(m_actDisconnect);
-        mConnect->addSeparator();
-        mConnect->addAction(m_actConnect);  // быстрое подключение к активному серверу (Ctrl+K)
     });
+    // Disconnect — сестринский пункт (как в OLD, не внутри подменю)
+    mTorrent->addAction(m_actDisconnect);
 
     mTorrent->addSeparator();
-    mTorrent->addAction(m_actAdd);  // "Add torrent…"
+    mTorrent->addAction(m_actAdd);
     auto* actAddLink = mTorrent->addAction(tr("Add torrent link…"));
     connect(actAddLink, &QAction::triggered, this, &MainWindow::onAddFromLink);
-    mTorrent->addSeparator();
     mTorrent->addAction(m_actStart);
     auto* actForceStart = mTorrent->addAction(tr("Force start"));
     connect(actForceStart, &QAction::triggered, this, &MainWindow::onStartForceSelected);
@@ -1117,7 +1105,7 @@ void MainWindow::createMenus()
     mTorrent->addAction(m_actStop);
     mTorrent->addAction(m_actStopAll);
     mTorrent->addAction(m_actRemove);
-    auto* actRemoveData = mTorrent->addAction(tr("Remove torrent and data"));
+    auto* actRemoveData = mTorrent->addAction(tr("Remove torrent and Data"));
     connect(actRemoveData, &QAction::triggered, this, &MainWindow::onRemoveWithDataSelected);
     mTorrent->addSeparator();
 
@@ -1141,87 +1129,112 @@ void MainWindow::createMenus()
 
     auto* actReannounce = mTorrent->addAction(tr("Reannounce (get more peers)"));
     auto* actSeq = mTorrent->addAction(tr("Sequential download"));
-    auto* actVerify = mTorrent->addAction(tr("Verify…"));
+    auto* actVerify = mTorrent->addAction(tr("Verify"));
     connect(actReannounce, &QAction::triggered, this, &MainWindow::onReannounceSelected);
     connect(actSeq, &QAction::triggered, this, &MainWindow::onToggleSequential);
     connect(actVerify, &QAction::triggered, this, &MainWindow::onVerifySelected);
-    mTorrent->addAction(m_actMove);  // "Set data location…"
+    mTorrent->addAction(m_actMove);  // "Set data location..."
+    auto* actLabels = mTorrent->addAction(tr("Set labels…"));
+    connect(actLabels, &QAction::triggered, this, &MainWindow::onSetLabels);
     auto* actRename = mTorrent->addAction(tr("Rename"));
     connect(actRename, &QAction::triggered, this, &MainWindow::onRenameSelected);
     mTorrent->addAction(m_actProperties);
     mTorrent->addSeparator();
-    // NEW-удобства (в OLD нет в меню, но пригодятся):
-    auto* actCopyPath = mTorrent->addAction(tr("Copy path"));
-    connect(actCopyPath, &QAction::triggered, this, &MainWindow::onCopyPath);
-    auto* actSelectAll = mTorrent->addAction(tr("Select all"));
-    connect(actSelectAll, &QAction::triggered, this, &MainWindow::onSelectAll);
-    mTorrent->addAction(m_actRefresh);
+    auto* actExport = mTorrent->addAction(tr("Export settings…"));
+    connect(actExport, &QAction::triggered, this, &MainWindow::onExportSettings);
+    auto* actImport = mTorrent->addAction(tr("Import settings…"));
+    connect(actImport, &QAction::triggered, this, &MainWindow::onImportSettings);
     mTorrent->addSeparator();
-    auto* actExit = mTorrent->addAction(tr("Exit"));
+    auto* actExit = mTorrent->addAction(tr("E&xit"));
+    actExit->setShortcut(QKeySequence(Qt::ALT | Qt::Key_F4));
     connect(actExit, &QAction::triggered, this, &MainWindow::onExit);
 
-    // --- View (порядок — по референсу transgui) ---
-    auto* mView = menuBar()->addMenu(tr("View"));
-    // W10: настройка колонок (порядок/видимость) — персистентно (QSettings).
+    // --- View (порядок — точное соответствие OLD) ---
+    auto* mView = menuBar()->addMenu(tr("&View"));
+    auto* actSelectAll = mView->addAction(tr("Select all"));
+    actSelectAll->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_A));
+    connect(actSelectAll, &QAction::triggered, this, &MainWindow::onSelectAll);
     auto* actColumns = mView->addAction(tr("Setup columns…"));
     connect(actColumns, &QAction::triggered, this, &MainWindow::onColumns);
     mView->addSeparator();
     auto* actFolders = mView->addAction(tr("Folder grouping"));
     actFolders->setCheckable(true);
     actFolders->setChecked(QSettings().value("ui/folderGrouping", true).toBool());
-    auto* actTrackers = mView->addAction(tr("Tracker grouping"));
-    actTrackers->setCheckable(true);
-    actTrackers->setChecked(QSettings().value("ui/trackerGrouping", true).toBool());
-    connect(actFolders, &QAction::toggled, this, [this, actFolders](bool on) {
+    connect(actFolders, &QAction::toggled, this, [this](bool on) {
         m_filterPanel->setFolderGroupingEnabled(on);
         QSettings().setValue("ui/folderGrouping", on);
     });
-    connect(actTrackers, &QAction::toggled, this, [this, actTrackers](bool on) {
+    auto* actLabelGrp = mView->addAction(tr("Label grouping"));
+    actLabelGrp->setCheckable(true);
+    actLabelGrp->setChecked(QSettings().value("ui/labelGrouping", false).toBool());
+    connect(actLabelGrp, &QAction::toggled, this, [this](bool on) {
+        QSettings().setValue("ui/labelGrouping", on);
+        // TODO: группировка по меткам в FilterPanel — реализовать.
+    });
+    auto* actTrackers = mView->addAction(tr("Tracker grouping"));
+    actTrackers->setCheckable(true);
+    actTrackers->setChecked(QSettings().value("ui/trackerGrouping", true).toBool());
+    connect(actTrackers, &QAction::toggled, this, [this](bool on) {
         m_filterPanel->setTrackerGroupingEnabled(on);
         QSettings().setValue("ui/trackerGrouping", on);
     });
     mView->addSeparator();
-    mView->addAction(m_actAutoRefresh);  // NEW: автообновление списка
-    mView->addSeparator();
-    auto* actToolbar = mView->addAction(tr("Toolbar"));
-    actToolbar->setCheckable(true);
-    actToolbar->setChecked(QSettings().value("ui/showToolbar", true).toBool());
-    connect(actToolbar, &QAction::toggled, this, [this, actToolbar](bool on) {
-        if (auto* tb = this->findChild<QToolBar*>(QStringLiteral("mainToolBar")))
-            tb->setVisible(on);
-        QSettings().setValue("ui/showToolbar", on);
-    });
-    auto* actMenu = mView->addAction(tr("Menu"));
-    actMenu->setCheckable(true);
-    actMenu->setChecked(QSettings().value("ui/showMenu", true).toBool());
-    connect(actMenu, &QAction::toggled, this, [this, actMenu](bool on) {
-        menuBar()->setVisible(on);
-        QSettings().setValue("ui/showMenu", on);
+    auto* actFilterPane = mView->addAction(tr("Filter pane"));
+    actFilterPane->setCheckable(true);
+    actFilterPane->setChecked(QSettings().value("ui/filterPane", true).toBool());
+    connect(actFilterPane, &QAction::toggled, this, [this](bool on) {
+        m_filterPanel->setVisible(on);
+        QSettings().setValue("ui/filterPane", on);
     });
     auto* actInfoPane = mView->addAction(tr("Info pane"));
     actInfoPane->setCheckable(true);
     actInfoPane->setChecked(QSettings().value("ui/infoPane", true).toBool());
-    connect(actInfoPane, &QAction::toggled, this, [this, actInfoPane](bool on) {
+    connect(actInfoPane, &QAction::toggled, this, [this](bool on) {
         m_tabs->setVisible(on);
         QSettings().setValue("ui/infoPane", on);
     });
+    auto* actToolbar = mView->addAction(tr("Toolbar"));
+    actToolbar->setCheckable(true);
+    actToolbar->setChecked(QSettings().value("ui/showToolbar", true).toBool());
+    connect(actToolbar, &QAction::toggled, this, [this](bool on) {
+        if (auto* tb = this->findChild<QToolBar*>(QStringLiteral("mainToolBar")))
+            tb->setVisible(on);
+        QSettings().setValue("ui/showToolbar", on);
+    });
+    auto* actBigToolbar = mView->addAction(tr("Big Toolbar"));
+    actBigToolbar->setCheckable(true);
+    actBigToolbar->setChecked(QSettings().value("ui/bigToolbar", false).toBool());
+    connect(actBigToolbar, &QAction::toggled, this, [this](bool on) {
+        if (auto* tb = this->findChild<QToolBar*>(QStringLiteral("mainToolBar")))
+            tb->setIconSize(QSize(on ? 32 : 16, on ? 32 : 16));
+        QSettings().setValue("ui/bigToolbar", on);
+    });
+    auto* actMenu = mView->addAction(tr("Menu"));
+    actMenu->setCheckable(true);
+    actMenu->setChecked(QSettings().value("ui/showMenu", true).toBool());
+    connect(actMenu, &QAction::toggled, this, [this](bool on) {
+        menuBar()->setVisible(on);
+        QSettings().setValue("ui/showMenu", on);
+    });
     auto* actStatusBar = mView->addAction(tr("Status bar"));
     actStatusBar->setCheckable(true);
-    actStatusBar->setChecked(true);
-    connect(actStatusBar, &QAction::toggled, this, [this, actStatusBar](bool on) {
+    actStatusBar->setChecked(QSettings().value("ui/statusBar", true).toBool());
+    connect(actStatusBar, &QAction::toggled, this, [this](bool on) {
         statusBar()->setVisible(on);
+        QSettings().setValue("ui/statusBar", on);
     });
     auto* actStatusSizes = mView->addAction(tr("Status bar - Sizes"));
     actStatusSizes->setCheckable(true);
     actStatusSizes->setChecked(QSettings().value("ui/statusSizes", true).toBool());
-    connect(actStatusSizes, &QAction::toggled, this, [this, actStatusSizes](bool on) {
+    connect(actStatusSizes, &QAction::toggled, this, [this](bool on) {
         m_speedLabel->setVisible(on);
         QSettings().setValue("ui/statusSizes", on);
     });
 
-    // --- Tools (порядок — по референсу; «Connection options» убран — теперь в подменю Torrent) ---
-    auto* mTools = menuBar()->addMenu(tr("Tools"));
+    // --- Tools (порядок — точное соответствие OLD) ---
+    auto* mTools = menuBar()->addMenu(tr("T&ools"));
     auto* actDaemonOpts = mTools->addAction(tr("Transmission options…"));
+    actDaemonOpts->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_T));
     connect(actDaemonOpts, &QAction::triggered, this, &MainWindow::onDaemonOptions);
     auto* actOptions = mTools->addAction(tr("Application options…"));
     actOptions->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_O));
@@ -1230,11 +1243,13 @@ void MainWindow::createMenus()
     mTools->addAction(m_actAltSpeed);  // "Use alternate bandwidth settings"
     auto* actBlocklist = mTools->addAction(tr("Update blocklist"));
     connect(actBlocklist, &QAction::triggered, this, &MainWindow::onUpdateBlocklist);
-    auto* actPortTest = mTools->addAction(tr("Test port"));  // NEW
-    connect(actPortTest, &QAction::triggered, this, &MainWindow::onPortTest);
+    auto* actGeoIP = mTools->addAction(tr("Update GeoIP database"));
+    connect(actGeoIP, &QAction::triggered, this, [this]() {
+        statusBar()->showMessage(tr("GeoIP update is not available in this build."), 4000);
+    });
 
     // --- Help (порядок — по референсу transgui) ---
-    auto* mHelp = menuBar()->addMenu(tr("Help"));
+    auto* mHelp = menuBar()->addMenu(tr("&Help"));
     auto* actCheck = mHelp->addAction(tr("Check for updates"));
     connect(actCheck, &QAction::triggered, this, &MainWindow::onCheckUpdate);
     auto* actHome = mHelp->addAction(tr("Visit home page"));
@@ -1243,6 +1258,73 @@ void MainWindow::createMenus()
     connect(actDev, &QAction::triggered, this, &MainWindow::onDevSite);
     mHelp->addSeparator();
     mHelp->addAction(m_actAbout);
+}
+
+void MainWindow::onSetLabels()
+{
+    const auto ids = selectedTorrentIds();
+    if (ids.isEmpty() || !m_rpc || !m_connected)
+        return;
+    // Стартовый текст — метки первого выбранного торрента.
+    QStringList current;
+    for (const auto& t : m_model.torrents()) {
+        if (t.id == ids.first()) {
+            if (t.labels)
+                current = *t.labels;
+            break;
+        }
+    }
+    bool ok = false;
+    const QString text = QInputDialog::getText(
+        this, tr("Set labels"), tr("Labels (comma-separated):"),
+        QLineEdit::Normal, current.join(QStringLiteral(", ")), &ok);
+    if (!ok)
+        return;
+    QStringList labels;
+    for (const QString& piece : text.split(',', Qt::SkipEmptyParts)) {
+        const QString s = piece.trimmed();
+        if (!s.isEmpty())
+            labels << s;
+    }
+    for (const int id : ids)
+        m_rpc->setLabels(id, labels);
+}
+
+void MainWindow::onExportSettings()
+{
+    const QString path = QFileDialog::getSaveFileName(
+        this, tr("Export settings"), QStringLiteral("transmissiongui.ini"),
+        tr("INI files (*.ini)"));
+    if (path.isEmpty())
+        return;
+    QSettings cur;
+    const QStringList keys = cur.allKeys();
+    QSettings out(path, QSettings::IniFormat);
+    for (const QString& k : keys)
+        out.setValue(k, cur.value(k));
+    out.sync();
+    statusBar()->showMessage(tr("Settings exported to: %1").arg(path), 4000);
+}
+
+void MainWindow::onImportSettings()
+{
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Import settings"), QString(), tr("INI files (*.ini)"));
+    if (path.isEmpty() || !QFileInfo(path).exists())
+        return;
+    if (QMessageBox::question(this, tr("Import settings"),
+            tr("Import settings from file? Current settings will be overwritten.\n"
+               "Restart the application to apply the changes."))
+            != QMessageBox::Yes)
+        return;
+    QSettings in(path, QSettings::IniFormat);
+    QSettings cur;
+    for (const QString& k : cur.allKeys())
+        cur.remove(k);
+    for (const QString& k : in.allKeys())
+        cur.setValue(k, in.value(k));
+    cur.sync();
+    statusBar()->showMessage(tr("Settings imported. Restart to apply."), 4000);
 }
 
 void MainWindow::onSelectAll()
@@ -1350,7 +1432,12 @@ void MainWindow::openLocalPath(const QString& path, bool selectFile)
 {
     if (path.isEmpty())
         return;
-    const QFileInfo fi(path);
+    // Маппинг remote→local: путь демона (на сервере) → локальный.
+    // Правила задаются в Application options → Paths (строки "remote=local").
+    const QStringList mappings = QSettings().value("paths/mappings").toStringList();
+    const QString local = tgui::mapRemoteToLocal(path, mappings);
+
+    const QFileInfo fi(local);
     if (fi.exists() && (fi.isDir() || !selectFile)) {
         QDesktopServices::openUrl(QUrl::fromLocalFile(fi.filePath()));
         return;
@@ -1360,7 +1447,7 @@ void MainWindow::openLocalPath(const QString& path, bool selectFile)
         QDesktopServices::openUrl(QUrl::fromLocalFile(d.absolutePath()));
         return;
     }
-    statusBar()->showMessage(tr("Path not found: %1").arg(path), 4000);
+    statusBar()->showMessage(tr("Path not found: %1").arg(local), 4000);
 }
 
 // Двойной клик в списках (файлы / торренты). QAbstractItemView не имеет сигнала

@@ -5,9 +5,13 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QGroupBox>
+#include <QLabel>
+#include <QPlainTextEdit>
 #include <QSettings>
 #include <QSpinBox>
 #include <QVBoxLayout>
+
+#include "pathmap.h"
 
 namespace {
 constexpr char kKeyLanguage[] = "ui/language";
@@ -17,6 +21,7 @@ constexpr char kKeyCloseToTray[] = "ui/closeToTray";
 constexpr char kKeyMinimizeToTray[] = "ui/minimizeToTray";
 constexpr char kKeyTrayIcon[] = "ui/trayIcon";
 constexpr char kKeyTrayNotify[] = "ui/trayNotify";
+constexpr char kKeyPaths[] = "paths/mappings";
 }  // namespace
 
 OptionsDialog::OptionsDialog(QWidget* parent)
@@ -68,6 +73,23 @@ OptionsDialog::OptionsDialog(QWidget* parent)
     for (QCheckBox* cb : {m_closeToTray, m_minimizeToTray, m_trayIcon, m_trayNotify})
         trayLayout->addWidget(cb);
 
+    // --- Пути: маппинг remote→local (референс — вкладка Paths transgui) -----
+    // Сервер хранит файлы в своём пути (напр. /var/downloads/music); чтобы двойным
+    // кликом открыть их локально, задаём "remote=local" — префикс заменяется.
+    auto* paths = new QGroupBox(tr("Paths (remote→local mapping)"), this);
+    auto* pathsLayout = new QVBoxLayout(paths);
+    auto* pathsHint = new QLabel(
+        tr("Map the daemon's (remote) paths to local ones, one per line: "
+           "remote=local\n"
+           "Example: /var/downloads/music=Z:/music\n"
+           "Used when opening files/torrents with double-click."),
+        paths);
+    pathsHint->setWordWrap(true);
+    m_paths = new QPlainTextEdit(paths);
+    m_paths->setPlainText(QSettings().value(kKeyPaths, QStringList()).toStringList().join(QLatin1Char('\n')));
+    pathsLayout->addWidget(pathsHint);
+    pathsLayout->addWidget(m_paths);
+
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, [this] {
         apply();
@@ -78,6 +100,7 @@ OptionsDialog::OptionsDialog(QWidget* parent)
     auto* root = new QVBoxLayout(this);
     root->addWidget(iface);
     root->addWidget(tray);
+    root->addWidget(paths);
     root->addStretch(1);
     root->addWidget(buttons);
 }
@@ -114,6 +137,16 @@ void OptionsDialog::setRefreshIntervalSec(int sec)
     m_refresh->setValue(sec);
 }
 
+QString OptionsDialog::pathMappingsText() const
+{
+    return m_paths->toPlainText();
+}
+
+void OptionsDialog::setPathMappingsText(const QString& text)
+{
+    m_paths->setPlainText(text);
+}
+
 void OptionsDialog::apply()
 {
     QSettings s;
@@ -129,5 +162,6 @@ void OptionsDialog::apply()
     s.setValue(kKeyMinimizeToTray, m_minimizeToTray->isChecked());
     s.setValue(kKeyTrayIcon, m_trayIcon->isChecked());
     s.setValue(kKeyTrayNotify, m_trayNotify->isChecked());
+    s.setValue(kKeyPaths, tgui::pathMappingsFromText(pathMappingsText()));
     s.sync();
 }

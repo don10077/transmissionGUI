@@ -5,6 +5,7 @@
 class QComboBox;
 class QSpinBox;
 class QCheckBox;
+class QPlainTextEdit;
 
 // W07: диалог «Параметры» (образец transgui/options.pas) — интерфейс и трей.
 // Значения читаются/пишутся в QSettings (раздел ui/*):
@@ -22,6 +23,9 @@ public:
     void setScale(int percent);
     int refreshIntervalSec() const;
     void setRefreshIntervalSec(int sec);
+    // Маппинг remote→local путей (референс — вкладка Paths transgui): текст "remote=local" в строке.
+    QString pathMappingsText() const;
+    void setPathMappingsText(const QString& text);
 
     // Записывает все значения в QSettings и считает, нужен ли перезапуск.
     void apply();
@@ -32,6 +36,7 @@ private:
     QComboBox* m_language = nullptr;
     QSpinBox* m_scale = nullptr;
     QSpinBox* m_refresh = nullptr;
+    QPlainTextEdit* m_paths = nullptr;
     QCheckBox* m_closeToTray = nullptr;
     QCheckBox* m_minimizeToTray = nullptr;
     QCheckBox* m_trayIcon = nullptr;

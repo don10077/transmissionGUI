@@ -123,6 +123,9 @@ private slots:
     void onDaemonOptions();
     void onOptions();
     void onConnectionOptions();
+    void onSetLabels();
+    void onExportSettings();
+    void onImportSettings();
     void downloadAndAdd(const tgui::RpcClient::AddTorrent& params, const QString& dst);
 
 protected:

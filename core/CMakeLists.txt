@@ -6,6 +6,7 @@ add_library(tgui_core STATIC
     src/models.cpp
     src/jsonrpc.cpp
     src/rpcclient.cpp
+    src/geoip.cpp
     # Явное перечисление Q_OBJECT-заголовков — надёжный путь для AUTOMOC
     # (в проекте заголовки лежат в include/, а не рядом с .cpp).
     include/tgui/rpcclient.h

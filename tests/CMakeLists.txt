@@ -19,6 +19,8 @@ add_executable(tgui_tests
     test_daemonoptions.cpp
     test_colsetup.cpp
     test_about.cpp
+    tst_pathmap.cpp
+    tst_geoip.cpp
     # GUI-модели списка (regress: пустая таблица после подключения).
     ${CMAKE_SOURCE_DIR}/app/src/torrentmodel.cpp
     ${CMAKE_SOURCE_DIR}/app/src/groupedproxy.cpp

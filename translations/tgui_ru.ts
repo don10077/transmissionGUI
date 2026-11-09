@@ -835,6 +835,80 @@ Are you sure to start verification of %1 torrents?</source>
       <source>Language or interface scale changed. Restart the application to apply the new value.</source>
       <translation>Изменены язык или масштаб интерфейса. Перезапустите приложение, чтобы применить новое значение.</translation>
     </message>
+    <message>
+      <source>Disconnect from Transmission</source>
+      <translation>Отключиться от Transmission</translation>
+    </message>
+    <message>
+      <source>Set labels…</source>
+      <translation>Установить метки…</translation>
+    </message>
+    <message>
+      <source>Set labels</source>
+      <translation>Метки</translation>
+    </message>
+    <message>
+      <source>Labels (comma-separated):</source>
+      <translation>Метки (через запятую):</translation>
+    </message>
+    <message>
+      <source>Export settings…</source>
+      <translation>Экспорт настроек…</translation>
+    </message>
+    <message>
+      <source>Export settings</source>
+      <translation>Экспорт настроек</translation>
+    </message>
+    <message>
+      <source>Import settings…</source>
+      <translation>Импорт настроек…</translation>
+    </message>
+    <message>
+      <source>Import settings</source>
+      <translation>Импорт настроек</translation>
+    </message>
+    <message>
+      <source>Settings exported to: %1</source>
+      <translation>Настройки экспортированы: %1</translation>
+    </message>
+    <message>
+      <source>Settings imported. Restart to apply.</source>
+      <translation>Настройки импортированы. Перезапустите для применения.</translation>
+    </message>
+    <message>
+      <source>Import settings from file? Current settings will be overwritten.
+Restart the application to apply the changes.</source>
+      <translation>Импортировать настройки из файла? Текущие настройки будут перезаписаны.
+Перезапустите приложение, чтобы применить изменения.</translation>
+    </message>
+    <message>
+      <source>Verify</source>
+      <translation>Проверить</translation>
+    </message>
+    <message>
+      <source>Filter pane</source>
+      <translation>Панель фильтров</translation>
+    </message>
+    <message>
+      <source>Big Toolbar</source>
+      <translation>Большая панель инструментов</translation>
+    </message>
+    <message>
+      <source>Info pane</source>
+      <translation>Панель информации</translation>
+    </message>
+    <message>
+      <source>Menu</source>
+      <translation>Меню</translation>
+    </message>
+    <message>
+      <source>Update GeoIP database</source>
+      <translation>Обновить базу GeoIP</translation>
+    </message>
+    <message>
+      <source>GeoIP update is not available in this build.</source>
+      <translation>Обновление GeoIP недоступно в этой сборке.</translation>
+    </message>
   </context>
   <context>
     <name>MoveDialog</name>
@@ -1476,6 +1550,18 @@ Are you sure to start verification of %1 torrents?</source>
     <message>
       <source>English</source>
       <translation>English</translation>
+    </message>
+    <message>
+      <source>Paths (remote→local mapping)</source>
+      <translation>Пути (маппинг remote→local)</translation>
+    </message>
+    <message>
+      <source>Map the daemon's (remote) paths to local ones, one per line: remote=local
+Example: /var/downloads/music=Z:/music
+Used when opening files/torrents with double-click.</source>
+      <translation>Задайте соответствие путей демона (на сервере) локальным, по одному в строке: remote=local
+Пример: /var/downloads/music=Z:/music
+Используется при открытии файлов/торрентов двойным кликом.</translation>
     </message>
   </context>
   <context>
