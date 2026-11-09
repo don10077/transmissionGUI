@@ -11,12 +11,15 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QDesktopServices>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QUrl>
 #include <QFrame>
 #include <QHash>
 #include <QHBoxLayout>
 #include <QMenuBar>
+#include <QMouseEvent>
 #include <QApplication>
 #include <QClipboard>
 #include <QHeaderView>
@@ -40,6 +43,7 @@
 #include <QStatusBar>
 #include <QStyle>
 #include <QSystemTrayIcon>
+#include <QWindowStateChangeEvent>
 #include <QTabBar>
 #include <QTabWidget>
 #include <QTableView>
@@ -56,6 +60,12 @@
 #include "fileselectdialog.h"
 #include "filterpanel.h"
 #include "movedialog.h"
+#include "connoptionsdialog.h"
+#include "daemonoptionsdialog.h"
+#include "colsetup.h"
+#include "aboutdialog.h"
+#include "daemonprofile.h"
+#include "optionsdialog.h"
 #include "propsdialog.h"
 #include "propsform.h"
 #include "statsform.h"
@@ -78,7 +88,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     createMenus();
     createTray();
 
-    m_refreshTimer.setInterval(kRefreshIntervalMs);
+    // W07: интервал обновления из настроек (секунды), по умолчанию 2 (ранее 2000 ms).
+    m_refreshTimer.setInterval(QSettings().value("ui/refreshInterval", kRefreshIntervalMs / 1000).toInt() * 1000);
     connect(&m_refreshTimer, &QTimer::timeout, this, &MainWindow::onRefresh);
 
     {
@@ -111,23 +122,18 @@ void MainWindow::createUi()
     m_view->setFrameShape(QFrame::NoFrame);
     m_view->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_view, &QWidget::customContextMenuRequested, this, &MainWindow::onContextMenu);
+    m_view->installEventFilter(this);  // двойной клик по торренту → открыть файл/папку
     m_view->header()->setStretchLastSection(false);
     m_view->header()->setSectionResizeMode(QHeaderView::Interactive);
     m_view->header()->setHighlightSections(false);
     m_view->header()->setMinimumSectionSize(44);
-    // Дефолтные ширины и видимый набор колонок — по референсу (main.lfm:
-    // видны Name..ETA, остальные — Visible = False).
-    m_view->setColumnWidth(TorrentModel::ColName, 280);
-    m_view->setColumnWidth(TorrentModel::ColSize, 72);
-    m_view->setColumnWidth(TorrentModel::ColDone, 108);
-    m_view->setColumnWidth(TorrentModel::ColStatus, 96);
-    m_view->setColumnWidth(TorrentModel::ColSeeds, 58);
-    m_view->setColumnWidth(TorrentModel::ColPeers, 58);
-    m_view->setColumnWidth(TorrentModel::ColRateDown, 82);
-    m_view->setColumnWidth(TorrentModel::ColRateUp, 82);
-    m_view->setColumnWidth(TorrentModel::ColEta, 80);
-    for (int col = TorrentModel::ColRatio; col < TorrentModel::ColumnCount; ++col)
-        m_view->header()->hideSection(col);
+    // W10: раскладка колонок (порядок/видимость/ширины) — из QSettings (иначе дефолт Name..ETA).
+    ColumnLayout::fromSettings(TorrentModel::ColumnCount).applyToView(m_view);
+    // W10: сохраняем ширину при ресайзе, чтобы она восстанавливалась при старте.
+    connect(m_view->header(), &QHeaderView::sectionResized, this,
+            [](int logical, int, int newWidth) {
+                QSettings().setValue(QStringLiteral("columns/width_%1").arg(logical), newWidth);
+            });
     // Единый делегат: фон строки, статус-иконка, статус-точка, прогресс, скорости.
     m_view->setItemDelegate(new TorrentDelegate(this));
 
@@ -173,6 +179,8 @@ void MainWindow::createUi()
     };
 
     auto* filesView = makeTable(&m_fileModel);
+    m_filesView = filesView;
+    filesView->installEventFilter(this);  // двойной клик по файлу/папке → открыть
     filesView->setColumnWidth(FileListModel::ColName, 420);
     filesView->setColumnWidth(FileListModel::ColSize, 100);
     filesView->setColumnWidth(FileListModel::ColProgress, 90);
@@ -283,7 +291,7 @@ void MainWindow::createActions()
 
     m_actDisconnect = new QAction(tr("Disconnect"), this);
     m_actDisconnect->setIcon(tgui::theme::icon(Icon::Disconnect));
-    m_actDisconnect->setToolTip(tr("Disconnect from daemon"));
+    m_actDisconnect->setToolTip(tr("Disconnect from Transmission"));
     connect(m_actDisconnect, &QAction::triggered, this, &MainWindow::onDisconnect);
 
     m_actAdd = new QAction(tr("Add torrent…"), this);
@@ -303,12 +311,12 @@ void MainWindow::createActions()
     m_actStop->setToolTip(tr("Stop selected torrents"));
     connect(m_actStop, &QAction::triggered, this, &MainWindow::onStopSelected);
 
-    m_actStartAll = new QAction(tr("Start all"), this);
+    m_actStartAll = new QAction(tr("Start all torrents"), this);
     m_actStartAll->setIcon(tgui::theme::icon(Icon::StartAll));
     m_actStartAll->setToolTip(tr("Start all torrents"));
     connect(m_actStartAll, &QAction::triggered, this, &MainWindow::onStartAll);
 
-    m_actStopAll = new QAction(tr("Stop all"), this);
+    m_actStopAll = new QAction(tr("Stop all torrents"), this);
     m_actStopAll->setIcon(tgui::theme::icon(Icon::StopAll));
     m_actStopAll->setToolTip(tr("Stop all torrents"));
     connect(m_actStopAll, &QAction::triggered, this, &MainWindow::onStopAll);
@@ -326,7 +334,7 @@ void MainWindow::createActions()
     m_actProperties->setEnabled(false);
     connect(m_actProperties, &QAction::triggered, this, &MainWindow::onShowProperties);
 
-    m_actMove = new QAction(tr("Move…"), this);
+    m_actMove = new QAction(tr("Set data location…"), this);
     m_actMove->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_M));
     m_actMove->setIcon(tgui::theme::icon(Icon::Move));
     m_actMove->setToolTip(tr("Move torrent data (Ctrl+M)"));
@@ -352,7 +360,7 @@ void MainWindow::createActions()
         QSettings().setValue("ui/autoRefresh", on);
     });
 
-    m_actAltSpeed = new QAction(tr("Alt speed limit"), this);
+    m_actAltSpeed = new QAction(tr("Use alternate bandwidth settings"), this);
     m_actAltSpeed->setCheckable(true);
     m_actAltSpeed->setChecked(QSettings().value("ui/altSpeed", false).toBool());
     m_actAltSpeed->setIcon(tgui::theme::icon(Icon::AltSpeed));
@@ -426,19 +434,15 @@ void MainWindow::setConnectedUi(bool on)
 
 void MainWindow::onConnect()
 {
-    tgui::RpcClient::Options opts;
-    loadSettings(opts);
-
-    ConnectDialog dlg(opts, this);
-    if (dlg.exec() != QDialog::Accepted)
-        return;
-    opts = dlg.options();
-    if (opts.url.isEmpty()) {
-        QMessageBox::warning(this, tr("Connection"), tr("Enter the daemon address."));
+    // Единая модель (по OLD): «Connect» подключает к активному серверу (профилю).
+    // Серверов нет — открыть управление, чтобы добавить (сначала задают в
+    // «Manage connections…», затем переключаются из подменю «Connect to Transmission»).
+    ProfileStore store;
+    if (store.hasCurrent()) {
+        switchToProfile(store.currentName());
         return;
     }
-    saveSettings(opts);
-    startConnect(opts);
+    onConnectionOptions();
 }
 
 void MainWindow::startConnect(const tgui::RpcClient::Options& opts)
@@ -482,10 +486,19 @@ void MainWindow::setAutoConnect(const tgui::RpcClient::Options& opts)
 
 void MainWindow::maybeAutoConnect()
 {
-    if (m_autoConnectOpts.url.isEmpty())
+    // W08: приоритет — параметры из командной строки; иначе — текущий профиль (ConnOptions).
+    tgui::RpcClient::Options opts;
+    if (!m_autoConnectOpts.url.isEmpty()) {
+        opts = m_autoConnectOpts;
+    } else {
+        ProfileStore store;
+        if (store.hasCurrent())
+            opts = store.currentProfile().toOptions();
+    }
+    if (opts.url.isEmpty())
         return;
-    saveSettings(m_autoConnectOpts);
-    startConnect(m_autoConnectOpts);
+    saveSettings(opts);
+    startConnect(opts);
 }
 
 void MainWindow::onDisconnect()
@@ -902,13 +915,25 @@ void MainWindow::onMoveSelected()
 
 void MainWindow::onAbout()
 {
-    QMessageBox::about(
-        this, tr("About"),
-        tr("<b>transmissionGUI</b> %1<br/>"
-           "GUI client for the Transmission daemon (C++/Qt 6).<br/><br/>"
-           "License: GPL v3<br/>"
-           "Mail: <a href=\"mailto:don10077@mail.ru\">don10077@mail.ru</a>")
-            .arg(QApplication::applicationVersion()));
+    AboutDialog dlg(this);
+    dlg.exec();
+}
+
+void MainWindow::onColumns()
+{
+    const int count = TorrentModel::ColumnCount;
+    QStringList titles;
+    if (auto* model = m_view->model())
+        for (int i = 0; i < count; ++i)
+            titles << model->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
+    ColumnLayout cur = ColumnLayout::fromSettings(count);
+    ColSetupDialog dlg(cur, titles, this);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+    const ColumnLayout nl = dlg.layout();
+    nl.applyToView(m_view);
+    nl.saveToSettings();
+    statusBar()->showMessage(tr("Column layout updated."), 3000);
 }
 
 void MainWindow::onContextMenu(const QPoint& pos)
@@ -1052,57 +1077,82 @@ void MainWindow::startAdd(const tgui::RpcClient::AddTorrent& params, bool doSave
 // пункты — main.lfm).
 void MainWindow::createMenus()
 {
-    // --- Torrent ---
+    // --- Torrent (пункты и порядок — по референсу transgui) ---
     auto* mTorrent = menuBar()->addMenu(tr("Torrent"));
-    mTorrent->addAction(m_actConnect);
-    mTorrent->addAction(m_actDisconnect);
+
+    // «Connect to Transmission» — единый центр управления серверами (референс: miConnect):
+    // список сохранённых (активный — с галочкой), New/Manage, Disconnect, быстрое подключение.
+    auto* mConnect = mTorrent->addMenu(tr("Connect to Transmission"));
+    connect(mConnect, &QMenu::aboutToShow, this, [this, mConnect]() {
+        mConnect->clear();
+        ProfileStore store;
+        const QStringList names = store.names();
+        const QString cur = store.currentName();
+        for (const QString& n : names) {
+            auto* a = mConnect->addAction(n);
+            a->setCheckable(true);
+            a->setChecked(m_connected && n == cur);
+            connect(a, &QAction::triggered, this, [this, n]() { switchToProfile(n); });
+        }
+        if (!names.isEmpty())
+            mConnect->addSeparator();
+        auto* aNew = mConnect->addAction(tr("New connection…"));
+        connect(aNew, &QAction::triggered, this, &MainWindow::onConnectionOptions);
+        auto* aManage = mConnect->addAction(tr("Manage connections…"));
+        connect(aManage, &QAction::triggered, this, &MainWindow::onConnectionOptions);
+        mConnect->addAction(m_actDisconnect);
+        mConnect->addSeparator();
+        mConnect->addAction(m_actConnect);  // быстрое подключение к активному серверу (Ctrl+K)
+    });
+
     mTorrent->addSeparator();
-    mTorrent->addAction(m_actAdd);
-    auto* actAddLink = mTorrent->addAction(tr("Add from link…"));
+    mTorrent->addAction(m_actAdd);  // "Add torrent…"
+    auto* actAddLink = mTorrent->addAction(tr("Add torrent link…"));
     connect(actAddLink, &QAction::triggered, this, &MainWindow::onAddFromLink);
     mTorrent->addSeparator();
     mTorrent->addAction(m_actStart);
-    mTorrent->addAction(m_actStop);
     auto* actForceStart = mTorrent->addAction(tr("Force start"));
     connect(actForceStart, &QAction::triggered, this, &MainWindow::onStartForceSelected);
-    mTorrent->addSeparator();
     mTorrent->addAction(m_actStartAll);
+    mTorrent->addAction(m_actStop);
     mTorrent->addAction(m_actStopAll);
+    mTorrent->addAction(m_actRemove);
+    auto* actRemoveData = mTorrent->addAction(tr("Remove torrent and data"));
+    connect(actRemoveData, &QAction::triggered, this, &MainWindow::onRemoveWithDataSelected);
     mTorrent->addSeparator();
 
     auto* mPriority = mTorrent->addMenu(tr("Priority"));
-    auto* priHigh = mPriority->addAction(tr("High"));
-    auto* priNormal = mPriority->addAction(tr("Normal"));
-    auto* priLow = mPriority->addAction(tr("Low"));
+    auto* priHigh = mPriority->addAction(tr("High priority"));
+    auto* priNormal = mPriority->addAction(tr("Normal priority"));
+    auto* priLow = mPriority->addAction(tr("Low priority"));
     connect(priHigh, &QAction::triggered, this, &MainWindow::onPriorityHigh);
     connect(priNormal, &QAction::triggered, this, &MainWindow::onPriorityNormal);
     connect(priLow, &QAction::triggered, this, &MainWindow::onPriorityLow);
 
     auto* mQueue = mTorrent->addMenu(tr("Queue"));
-    auto* qTop = mQueue->addAction(tr("Move to top"));
+    auto* qTop = mQueue->addAction(tr("Move top"));
     auto* qUp = mQueue->addAction(tr("Move up"));
     auto* qDown = mQueue->addAction(tr("Move down"));
-    auto* qBottom = mQueue->addAction(tr("Move to bottom"));
+    auto* qBottom = mQueue->addAction(tr("Move bottom"));
     connect(qTop, &QAction::triggered, this, &MainWindow::onQueueTop);
     connect(qUp, &QAction::triggered, this, &MainWindow::onQueueUp);
     connect(qDown, &QAction::triggered, this, &MainWindow::onQueueDown);
     connect(qBottom, &QAction::triggered, this, &MainWindow::onQueueBottom);
 
-    mTorrent->addSeparator();
-    auto* actVerify = mTorrent->addAction(tr("Verify…"));
-    auto* actReannounce = mTorrent->addAction(tr("Update trackers"));
+    auto* actReannounce = mTorrent->addAction(tr("Reannounce (get more peers)"));
     auto* actSeq = mTorrent->addAction(tr("Sequential download"));
-    connect(actVerify, &QAction::triggered, this, &MainWindow::onVerifySelected);
+    auto* actVerify = mTorrent->addAction(tr("Verify…"));
     connect(actReannounce, &QAction::triggered, this, &MainWindow::onReannounceSelected);
     connect(actSeq, &QAction::triggered, this, &MainWindow::onToggleSequential);
-    mTorrent->addSeparator();
-    mTorrent->addAction(m_actProperties);
-    mTorrent->addAction(m_actMove);
-    auto* actRename = mTorrent->addAction(tr("Rename…"));
+    connect(actVerify, &QAction::triggered, this, &MainWindow::onVerifySelected);
+    mTorrent->addAction(m_actMove);  // "Set data location…"
+    auto* actRename = mTorrent->addAction(tr("Rename"));
     connect(actRename, &QAction::triggered, this, &MainWindow::onRenameSelected);
+    mTorrent->addAction(m_actProperties);
+    mTorrent->addSeparator();
+    // NEW-удобства (в OLD нет в меню, но пригодятся):
     auto* actCopyPath = mTorrent->addAction(tr("Copy path"));
     connect(actCopyPath, &QAction::triggered, this, &MainWindow::onCopyPath);
-    mTorrent->addSeparator();
     auto* actSelectAll = mTorrent->addAction(tr("Select all"));
     connect(actSelectAll, &QAction::triggered, this, &MainWindow::onSelectAll);
     mTorrent->addAction(m_actRefresh);
@@ -1110,12 +1160,16 @@ void MainWindow::createMenus()
     auto* actExit = mTorrent->addAction(tr("Exit"));
     connect(actExit, &QAction::triggered, this, &MainWindow::onExit);
 
-    // --- View ---
+    // --- View (порядок — по референсу transgui) ---
     auto* mView = menuBar()->addMenu(tr("View"));
-    auto* actFolders = mView->addAction(tr("Group by folder"));
+    // W10: настройка колонок (порядок/видимость) — персистентно (QSettings).
+    auto* actColumns = mView->addAction(tr("Setup columns…"));
+    connect(actColumns, &QAction::triggered, this, &MainWindow::onColumns);
+    mView->addSeparator();
+    auto* actFolders = mView->addAction(tr("Folder grouping"));
     actFolders->setCheckable(true);
     actFolders->setChecked(QSettings().value("ui/folderGrouping", true).toBool());
-    auto* actTrackers = mView->addAction(tr("Group by tracker"));
+    auto* actTrackers = mView->addAction(tr("Tracker grouping"));
     actTrackers->setCheckable(true);
     actTrackers->setChecked(QSettings().value("ui/trackerGrouping", true).toBool());
     connect(actFolders, &QAction::toggled, this, [this, actFolders](bool on) {
@@ -1127,16 +1181,7 @@ void MainWindow::createMenus()
         QSettings().setValue("ui/trackerGrouping", on);
     });
     mView->addSeparator();
-    mView->addAction(m_actAutoRefresh);
-    mView->addSeparator();
-    auto* actStatusBar = mView->addAction(tr("Status bar"));
-    actStatusBar->setCheckable(true);
-    actStatusBar->setChecked(true);
-    connect(actStatusBar, &QAction::toggled, this, [this, actStatusBar](bool on) {
-        statusBar()->setVisible(on);
-    });
-
-    // W04b — переключатели вида (по образцу acToolbarShow/acMenuShow/acInfoPane/acStatusBarSizes).
+    mView->addAction(m_actAutoRefresh);  // NEW: автообновление списка
     mView->addSeparator();
     auto* actToolbar = mView->addAction(tr("Toolbar"));
     actToolbar->setCheckable(true);
@@ -1160,7 +1205,13 @@ void MainWindow::createMenus()
         m_tabs->setVisible(on);
         QSettings().setValue("ui/infoPane", on);
     });
-    auto* actStatusSizes = mView->addAction(tr("Status bar sizes"));
+    auto* actStatusBar = mView->addAction(tr("Status bar"));
+    actStatusBar->setCheckable(true);
+    actStatusBar->setChecked(true);
+    connect(actStatusBar, &QAction::toggled, this, [this, actStatusBar](bool on) {
+        statusBar()->setVisible(on);
+    });
+    auto* actStatusSizes = mView->addAction(tr("Status bar - Sizes"));
     actStatusSizes->setCheckable(true);
     actStatusSizes->setChecked(QSettings().value("ui/statusSizes", true).toBool());
     connect(actStatusSizes, &QAction::toggled, this, [this, actStatusSizes](bool on) {
@@ -1168,24 +1219,28 @@ void MainWindow::createMenus()
         QSettings().setValue("ui/statusSizes", on);
     });
 
-    // --- Tools ---
+    // --- Tools (порядок — по референсу; «Connection options» убран — теперь в подменю Torrent) ---
     auto* mTools = menuBar()->addMenu(tr("Tools"));
-    mTools->addAction(m_actAltSpeed);
-    auto* actPortTest = mTools->addAction(tr("Test port"));
-    connect(actPortTest, &QAction::triggered, this, &MainWindow::onPortTest);
+    auto* actDaemonOpts = mTools->addAction(tr("Transmission options…"));
+    connect(actDaemonOpts, &QAction::triggered, this, &MainWindow::onDaemonOptions);
+    auto* actOptions = mTools->addAction(tr("Application options…"));
+    actOptions->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_O));
+    connect(actOptions, &QAction::triggered, this, &MainWindow::onOptions);
+    mTools->addSeparator();
+    mTools->addAction(m_actAltSpeed);  // "Use alternate bandwidth settings"
     auto* actBlocklist = mTools->addAction(tr("Update blocklist"));
     connect(actBlocklist, &QAction::triggered, this, &MainWindow::onUpdateBlocklist);
-    auto* actDaemonOpts = mTools->addAction(tr("Daemon options"));
-    connect(actDaemonOpts, &QAction::triggered, this, &MainWindow::onDaemonOptions);
+    auto* actPortTest = mTools->addAction(tr("Test port"));  // NEW
+    connect(actPortTest, &QAction::triggered, this, &MainWindow::onPortTest);
 
-    // --- Help ---
+    // --- Help (порядок — по референсу transgui) ---
     auto* mHelp = menuBar()->addMenu(tr("Help"));
+    auto* actCheck = mHelp->addAction(tr("Check for updates"));
+    connect(actCheck, &QAction::triggered, this, &MainWindow::onCheckUpdate);
     auto* actHome = mHelp->addAction(tr("Visit home page"));
     connect(actHome, &QAction::triggered, this, &MainWindow::onHome);
     auto* actDev = mHelp->addAction(tr("Development site"));
     connect(actDev, &QAction::triggered, this, &MainWindow::onDevSite);
-    auto* actCheck = mHelp->addAction(tr("Check for new version"));
-    connect(actCheck, &QAction::triggered, this, &MainWindow::onCheckUpdate);
     mHelp->addSeparator();
     mHelp->addAction(m_actAbout);
 }
@@ -1228,6 +1283,104 @@ void MainWindow::onOpenFolder()
             return;
         }
     }
+}
+
+// Двойной клик по строке во вкладке «Файлы» (референс: lvFilesDblClick → acOpenFile):
+// папка — открыть; файл, полностью скачанный — запустить; иначе — открыть каталог.
+void MainWindow::onFilesDoubleClicked(int row)
+{
+    if (!m_rpc || m_currentId < 0)
+        return;
+    const auto& files = m_fileModel.files();
+    if (row < 0 || row >= files.size())
+        return;
+    const tgui::Torrent* t = nullptr;
+    for (const auto& x : m_model.torrents()) {
+        if (x.id == m_currentId) {
+            t = &x;
+            break;
+        }
+    }
+    const QString dir = (t && t->downloadDir.has_value()) ? t->downloadDir.value() : QString();
+    if (dir.isEmpty())
+        return;
+    const QString rel = files.at(row).name;
+    if (rel.endsWith(QLatin1Char('/'))) {
+        openLocalPath(dir + rel, /*selectFile=*/false);  // папка
+        return;
+    }
+    const QString path = dir + QStringLiteral("/") + rel;
+    // Не скачанный до конца файл не имеет смысла запускать — открываем каталог.
+    openLocalPath(path, /*selectFile=*/files.at(row).completion < 1.0);
+}
+
+// Двойной клик по строке списка торрентов (референс: gTorrentsDblClick):
+// открыть файл (однофайловый) / папку торрента; fallback — каталог загрузки.
+void MainWindow::onTorrentsDoubleClicked()
+{
+    if (m_currentId < 0)
+        return;
+    const tgui::Torrent* t = nullptr;
+    for (const auto& x : m_model.torrents()) {
+        if (x.id == m_currentId) {
+            t = &x;
+            break;
+        }
+    }
+    if (!t)
+        return;
+    const QString dir = t->downloadDir.value_or(QString());
+    if (dir.isEmpty())
+        return;
+    const QString name = t->name.value_or(QString());
+    // Готовый торрент (leftUntilDone == 0) — открыть его файл/папку;
+    // не готовый — просто каталог (файл ещё не скачан, запускать нечего).
+    const bool finished = t->leftUntilDone.has_value() && t->leftUntilDone.value() <= 0.0
+                          && (t->sizeWhenDone.value_or(0.0) > 0.0);
+    if (finished && !name.isEmpty())
+        openLocalPath(dir + QStringLiteral("/") + name, /*selectFile=*/false);
+    else
+        openLocalPath(dir, /*selectFile=*/false);
+}
+
+// Открыть локальный путь: каталог — в проводнике; файл — по умолчанию запустить;
+// файла нет (или нужен «выбрать») — открыть родительский каталог. (аналог OLD
+// ExecRemoteFile/OpenURL: SelectFile=false → ShellExecute "open"; else → каталог).
+void MainWindow::openLocalPath(const QString& path, bool selectFile)
+{
+    if (path.isEmpty())
+        return;
+    const QFileInfo fi(path);
+    if (fi.exists() && (fi.isDir() || !selectFile)) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(fi.filePath()));
+        return;
+    }
+    const QDir d = fi.dir();
+    if (d.exists()) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(d.absolutePath()));
+        return;
+    }
+    statusBar()->showMessage(tr("Path not found: %1").arg(path), 4000);
+}
+
+// Двойной клик в списках (файлы / торренты). QAbstractItemView не имеет сигнала
+// doubleClicked — ловим MouseButtonDblClick через event-filter.
+bool MainWindow::eventFilter(QObject* obj, QEvent* ev)
+{
+    if (ev->type() == QEvent::MouseButtonDblClick) {
+        if (obj == m_filesView) {
+            auto* me = static_cast<QMouseEvent*>(ev);
+            const QModelIndex idx = m_filesView->indexAt(me->position().toPoint());
+            if (idx.isValid())
+                onFilesDoubleClicked(idx.row());
+            return true;
+        }
+        if (obj == m_view) {
+            onTorrentsDoubleClicked();
+            return true;
+        }
+    }
+    return QMainWindow::eventFilter(obj, ev);
 }
 
 void MainWindow::onCopyMagnet()
@@ -1478,24 +1631,75 @@ void MainWindow::onPortTest()
     m_rpc->portTest();
 }
 
+void MainWindow::onOptions()
+{
+    // W07: диалог параметров (интерфейс: язык/масштаб/интервал; трей).
+    OptionsDialog dlg(this);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    // Интервал обновления — применяем сразу (запущенный таймер подхватит новый интервал).
+    m_refreshTimer.setInterval(QSettings().value("ui/refreshInterval", kRefreshIntervalMs / 1000).toInt() * 1000);
+    // Иконка трея — применяем сразу (показать/скрыть существующую).
+    if (m_tray)
+        m_tray->setVisible(QSettings().value("ui/trayIcon", true).toBool());
+
+    // Язык/масштаб — применяются при следующем запуске (см. main.cpp).
+    if (dlg.restartRequired())
+        QMessageBox::information(this, tr("Options"),
+                                 tr("Language or interface scale changed. Restart the application to apply the new value."));
+}
+
+void MainWindow::onConnectionOptions()
+{
+    // W08: диалог параметров соединений (несколько демонов, TLS, RPC-путь, прокси).
+    ConnOptionsDialog dlg(this);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+    // Профиль, над которым работали, сделан текущим (saveCurrent) — переключаемся
+    // на него (работает и при активном соединении; аналог OLD ConnectionSettingsChanged).
+    ProfileStore store;
+    if (store.hasCurrent())
+        switchToProfile(store.currentName());
+}
+
+// Переключение на другой сервер (аналог OLD DoConnectToHost): отключиться,
+// сделать профиль активным, подключиться к нему.
+void MainWindow::switchToProfile(const QString& name)
+{
+    if (name.isEmpty())
+        return;
+    ProfileStore store;
+    if (!store.exists(name))
+        return;
+    // Уже подключены к этому серверу — не переключаем (OLD: DoConnectToHost
+    // выходит, если FCurConn == выбранное имя).
+    if (m_connected && store.currentName() == name)
+        return;
+    onDisconnect();
+    store.setCurrent(name);
+    const auto opts = store.profile(name).toOptions();
+    if (opts.url.isEmpty()) {
+        statusBar()->showMessage(tr("Server '%1' has no host set.").arg(name), 4000);
+        return;
+    }
+    saveSettings(opts);
+    startConnect(opts);
+}
+
 void MainWindow::onDaemonOptions()
 {
-    if (!m_rpc || !m_connected)
+    // W09: редактируемые настройки демона (session-set), применяются к живому демону.
+    if (!m_rpc || !m_connected) {
+        QMessageBox::information(this, tr("Daemon options"), tr("Not connected to the daemon."));
         return;
-    const auto& s = m_rpc->sessionInfo();
-    const QString text = tr("<b>Transmission</b> %1 (RPC %2)<br/>")
-                             .arg(s.version)
-                             .arg(s.rpcVersion) +
-         tr("Alt speed: %1 (down %2 KB/s, up %3 KB/s)<br/>")
-             .arg(s.altSpeedEnabled ? tr("on") : tr("off"))
-             .arg(s.altSpeedDown)
-             .arg(s.altSpeedUp) +
-         tr("Speed limit down: %1<br/>Speed limit up: %2<br/>")
-             .arg(s.speedLimitDownEnabled ? QString::number(s.speedLimitDown) + " KB/s"
-                                          : tr("Unlimited"))
-             .arg(s.speedLimitUpEnabled ? QString::number(s.speedLimitUp) + " KB/s"
-                                        : tr("Unlimited"));
-    QMessageBox::information(this, tr("Daemon options"), text);
+    }
+    DaemonOptionsDialog dlg(m_rpc->sessionInfo(), this);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+    const QJsonObject params = dlg.sessionSet();
+    m_rpc->setSession(params); // фидбек — через onRequestCompleted (status bar)
+    statusBar()->showMessage(tr("Applying daemon options…"), 3000);
 }
 
 void MainWindow::onToggleAltSpeed()
@@ -1827,6 +2031,9 @@ void MainWindow::createTray()
 {
     if (!QSystemTrayIcon::isSystemTrayAvailable())
         return;
+    // W07: не создавать иконку, если в настройках выключен «always show tray icon».
+    if (!QSettings().value("ui/trayIcon", true).toBool())
+        return;
     m_tray = new QSystemTrayIcon(this);
     m_tray->setIcon(makeTrayIcon());
     setWindowIcon(makeTrayIcon());
@@ -1864,13 +2071,33 @@ void MainWindow::createTray()
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
-    // Закрытие = сворачивание в трей; выход — по пункту меню.
-    if (m_tray && m_tray->isVisible()) {
+    // W07: «close to tray» из настроек; иначе — выход.
+    const bool closeToTray = QSettings().value("ui/closeToTray", true).toBool();
+    if (closeToTray && m_tray && m_tray->isVisible()) {
         event->ignore();
         hide();
         return;
     }
     QMainWindow::closeEvent(event);
+}
+
+void MainWindow::changeEvent(QEvent* event)
+{
+    // W07: «minimize to tray» — перехватываем переход окна в минимизированное состояние.
+    if (event->type() == QEvent::WindowStateChange) {
+        auto* wse = static_cast<QWindowStateChangeEvent*>(event);
+        // Новое состояние — windowState() (уже обновлено к моменту события); старое — oldState().
+        const bool nowMinimized = (windowState() & Qt::WindowMinimized) != 0;
+        const bool wasMinimized = (wse->oldState() & Qt::WindowMinimized) != 0;
+        if (nowMinimized && !wasMinimized &&
+            QSettings().value("ui/minimizeToTray", false).toBool() &&
+            m_tray && m_tray->isVisible()) {
+            showNormal();
+            hide();
+            return;
+        }
+    }
+    QMainWindow::changeEvent(event);
 }
 
 QPixmap MainWindow::makeTrayIcon()

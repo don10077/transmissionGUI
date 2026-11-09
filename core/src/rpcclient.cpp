@@ -17,6 +17,7 @@ RpcClient::RpcClient(const Options& options, QObject* parent)
         m_rpc.setIgnoreSslErrors(true);
     if (options.timeoutMs > 0)
         m_rpc.setTimeout(std::chrono::milliseconds(options.timeoutMs));
+    m_rpc.setProxy(options.proxy);
 }
 
 QString RpcClient::describeError(const JsonRpcResult& r)

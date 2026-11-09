@@ -29,6 +29,11 @@ void JsonRpcClient::setIgnoreSslErrors(bool ignore)
     m_ignoreSslErrors = ignore;
 }
 
+void JsonRpcClient::setProxy(const QNetworkProxy& proxy)
+{
+    m_nam->setProxy(proxy);
+}
+
 void JsonRpcClient::setTimeout(std::chrono::milliseconds timeout)
 {
     if (timeout.count() > 0)

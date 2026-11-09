@@ -6,6 +6,7 @@
 
 #include <QJsonObject>
 #include <QNetworkAccessManager>
+#include <QNetworkProxy>
 #include <QString>
 #include <QUrl>
 
@@ -41,6 +42,9 @@ public:
 
     // Игнорировать ошибки TLS-сертификата (self-signed).
     void setIgnoreSslErrors(bool ignore);
+
+    // HTTP/SOCKS5-прокси (QNetworkProxy::NoProxy — выключить).
+    void setProxy(const QNetworkProxy& proxy);
 
     void setTimeout(std::chrono::milliseconds timeout);
 

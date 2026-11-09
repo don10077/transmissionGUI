@@ -225,6 +225,14 @@
       <translation>Отключено</translation>
     </message>
     <message>
+      <source>Columns…</source>
+      <translation>Колонки…</translation>
+    </message>
+    <message>
+      <source>Column layout updated.</source>
+      <translation>Раскладка колонок обновлена.</translation>
+    </message>
+    <message>
       <location filename="../app/src/mainwindow.cpp" line="187" />
       <source>General</source>
       <translation>Общие</translation>
@@ -571,6 +579,98 @@ Reason: %2</source>
       <translation>Путь скопирован</translation>
     </message>
     <message>
+      <source>Path not found: %1</source>
+      <translation>Путь не найден: %1</translation>
+    </message>
+    <message>
+      <source>Connect to Transmission</source>
+      <translation>Подключение к Transmission</translation>
+    </message>
+    <message>
+      <source>New connection…</source>
+      <translation>Новое соединение…</translation>
+    </message>
+    <message>
+      <source>Manage connections…</source>
+      <translation>Управление соединениями…</translation>
+    </message>
+    <message>
+      <source>Remove torrent and data</source>
+      <translation>Удалить торрент и данные</translation>
+    </message>
+    <message>
+      <source>Start all torrents</source>
+      <translation>Запустить все торренты</translation>
+    </message>
+    <message>
+      <source>Stop all torrents</source>
+      <translation>Остановить все торренты</translation>
+    </message>
+    <message>
+      <source>Add torrent link…</source>
+      <translation>Добавить по ссылке…</translation>
+    </message>
+    <message>
+      <source>Set data location…</source>
+      <translation>Изменить расположение данных…</translation>
+    </message>
+    <message>
+      <source>Reannounce (get more peers)</source>
+      <translation>Обновить список пиров</translation>
+    </message>
+    <message>
+      <source>Transmission options…</source>
+      <translation>Параметры Transmission…</translation>
+    </message>
+    <message>
+      <source>Application options…</source>
+      <translation>Параметры приложения…</translation>
+    </message>
+    <message>
+      <source>Use alternate bandwidth settings</source>
+      <translation>Использовать альтернативный лимит скорости</translation>
+    </message>
+    <message>
+      <source>Check for updates</source>
+      <translation>Проверить обновления</translation>
+    </message>
+    <message>
+      <source>Folder grouping</source>
+      <translation>Группировка по папкам</translation>
+    </message>
+    <message>
+      <source>Tracker grouping</source>
+      <translation>Группировка по трекерам</translation>
+    </message>
+    <message>
+      <source>Setup columns…</source>
+      <translation>Настроить колонки…</translation>
+    </message>
+    <message>
+      <source>Status bar - Sizes</source>
+      <translation>Строка состояния — размеры</translation>
+    </message>
+    <message>
+      <source>High priority</source>
+      <translation>Высокий приоритет</translation>
+    </message>
+    <message>
+      <source>Normal priority</source>
+      <translation>Обычный приоритет</translation>
+    </message>
+    <message>
+      <source>Low priority</source>
+      <translation>Низкий приоритет</translation>
+    </message>
+    <message>
+      <source>Move top</source>
+      <translation>Наверх</translation>
+    </message>
+    <message>
+      <source>Move bottom</source>
+      <translation>Вниз</translation>
+    </message>
+    <message>
       <location filename="../app/src/mainwindow.cpp" line="891" />
       <source>Verify</source>
       <translation>Проверка</translation>
@@ -702,6 +802,38 @@ Are you sure to start verification of %1 torrents?</source>
     <message>
       <source>Add from link…</source>
       <translation>Добавить по ссылке…</translation>
+    </message>
+    <message>
+      <source>Options…</source>
+      <translation>Параметры…</translation>
+    </message>
+    <message>
+      <source>Connection options…</source>
+      <translation>Параметры соединений…</translation>
+    </message>
+    <message>
+      <source>Servers</source>
+      <translation>Серверы</translation>
+    </message>
+    <message>
+      <source>Server '%1' has no host set.</source>
+      <translation>Для сервера «%1» не задан адрес (host).</translation>
+    </message>
+    <message>
+      <source>Daemon options</source>
+      <translation>Параметры демона</translation>
+    </message>
+    <message>
+      <source>Not connected to the daemon.</source>
+      <translation>Нет подключения к демону.</translation>
+    </message>
+    <message>
+      <source>Applying daemon options…</source>
+      <translation>Применение параметров демона…</translation>
+    </message>
+    <message>
+      <source>Language or interface scale changed. Restart the application to apply the new value.</source>
+      <translation>Изменены язык или масштаб интерфейса. Перезапустите приложение, чтобы применить новое значение.</translation>
     </message>
   </context>
   <context>
@@ -1297,6 +1429,301 @@ Are you sure to start verification of %1 torrents?</source>
     <message>
       <source>magnet:?xt=… or http(s)://… .torrent</source>
       <translation>magnet:?xt=… или http(s)://… .torrent</translation>
+    </message>
+  </context>
+  <context>
+    <name>OptionsDialog</name>
+    <message>
+      <source>Options</source>
+      <translation>Параметры</translation>
+    </message>
+    <message>
+      <source>Interface</source>
+      <translation>Интерфейс</translation>
+    </message>
+    <message>
+      <source>Language</source>
+      <translation>Язык</translation>
+    </message>
+    <message>
+      <source>Interface scale</source>
+      <translation>Масштаб интерфейса</translation>
+    </message>
+    <message>
+      <source>Refresh interval</source>
+      <translation>Интервал обновления</translation>
+    </message>
+    <message>
+      <source>Tray</source>
+      <translation>Системный трей</translation>
+    </message>
+    <message>
+      <source>Close to tray (instead of quitting)</source>
+      <translation>Закрывать в трей (вместо выхода)</translation>
+    </message>
+    <message>
+      <source>Minimize to tray</source>
+      <translation>Сворачивать в трей</translation>
+    </message>
+    <message>
+      <source>Always show tray icon</source>
+      <translation>Всегда отображать значок в трее</translation>
+    </message>
+    <message>
+      <source>Show tray notifications</source>
+      <translation>Показывать уведомления в трее</translation>
+    </message>
+    <message>
+      <source>English</source>
+      <translation>English</translation>
+    </message>
+  </context>
+  <context>
+    <name>ConnOptionsDialog</name>
+    <message>
+      <source>Connection options</source>
+      <translation>Параметры соединений</translation>
+    </message>
+    <message>
+      <source>New…</source>
+      <translation>Новый…</translation>
+    </message>
+    <message>
+      <source>Delete</source>
+      <translation>Удалить</translation>
+    </message>
+    <message>
+      <source>Rename…</source>
+      <translation>Переименовать…</translation>
+    </message>
+    <message>
+      <source>Host</source>
+      <translation>Хост</translation>
+    </message>
+    <message>
+      <source>Port</source>
+      <translation>Порт</translation>
+    </message>
+    <message>
+      <source>Protocol</source>
+      <translation>Протокол</translation>
+    </message>
+    <message>
+      <source>HTTP</source>
+      <translation>HTTP</translation>
+    </message>
+    <message>
+      <source>HTTPS (TLS)</source>
+      <translation>HTTPS (TLS)</translation>
+    </message>
+    <message>
+      <source>RPC path</source>
+      <translation>Путь RPC</translation>
+    </message>
+    <message>
+      <source>Username</source>
+      <translation>Имя пользователя</translation>
+    </message>
+    <message>
+      <source>Password</source>
+      <translation>Пароль</translation>
+    </message>
+    <message>
+      <source>Ignore SSL certificate errors</source>
+      <translation>Игнорировать ошибки сертификата</translation>
+    </message>
+    <message>
+      <source>Proxy</source>
+      <translation>Прокси</translation>
+    </message>
+    <message>
+      <source>Use proxy</source>
+      <translation>Использовать прокси</translation>
+    </message>
+    <message>
+      <source>SOCKS5</source>
+      <translation>SOCKS5</translation>
+    </message>
+    <message>
+      <source>Test connection</source>
+      <translation>Проверить соединение</translation>
+    </message>
+    <message>
+      <source>New daemon</source>
+      <translation>Новый демон</translation>
+    </message>
+    <message>
+      <source>Name</source>
+      <translation>Имя</translation>
+    </message>
+    <message>
+      <source>A daemon named '%1' already exists.</source>
+      <translation>Демон с именем «%1» уже существует.</translation>
+    </message>
+    <message>
+      <source>Delete daemon</source>
+      <translation>Удалить демон</translation>
+    </message>
+    <message>
+      <source>Delete daemon '%1'?</source>
+      <translation>Удалить демон «%1»?</translation>
+    </message>
+    <message>
+      <source>Rename daemon</source>
+      <translation>Переименовать демон</translation>
+    </message>
+    <message>
+      <source>New name</source>
+      <translation>Новое имя</translation>
+    </message>
+    <message>
+      <source>Host is empty.</source>
+      <translation>Хост пуст.</translation>
+    </message>
+    <message>
+      <source>Connected: Transmission %1 (RPC %2)</source>
+      <translation>Соединено: Transmission %1 (RPC %2)</translation>
+    </message>
+    <message>
+      <source>Authentication failed: %1</source>
+      <translation>Ошибка аутентификации: %1</translation>
+    </message>
+    <message>
+      <source>No response (timeout).</source>
+      <translation>Нет ответа (таймаут).</translation>
+    </message>
+  </context>
+  <context>
+    <name>DaemonOptionsDialog</name>
+    <message>
+      <source>Daemon options</source>
+      <translation>Параметры демона</translation>
+    </message>
+    <message>
+      <source>Bandwidth</source>
+      <translation>Пропускная способность</translation>
+    </message>
+    <message>
+      <source>Limit</source>
+      <translation>Ограничить</translation>
+    </message>
+    <message>
+      <source>Download (KB/s)</source>
+      <translation>Загрузка (КБ/с)</translation>
+    </message>
+    <message>
+      <source>Upload (KB/s)</source>
+      <translation>Отдача (КБ/с)</translation>
+    </message>
+    <message>
+      <source>Alternative speeds (when enabled, override the limits above)</source>
+      <translation>Альтернативные скорости (при включении переопределяют лимиты выше)</translation>
+    </message>
+    <message>
+      <source>Alt speed (KB/s)</source>
+      <translation>Альт. скорость (КБ/с)</translation>
+    </message>
+    <message>
+      <source>Network</source>
+      <translation>Сеть</translation>
+    </message>
+    <message>
+      <source>Enable DHT (IPv6) peer exchange</source>
+      <translation>Включить DHT (обмен IPv6-пирами)</translation>
+    </message>
+    <message>
+      <source>Enable peer exchange (PEX)</source>
+      <translation>Включить PEX (обмен пирами)</translation>
+    </message>
+    <message>
+      <source>Enable Local Peer Discovery (LPD)</source>
+      <translation>Включить LPD (поиск локальных пиров)</translation>
+    </message>
+    <message>
+      <source>Enable uTP</source>
+      <translation>Включить uTP</translation>
+    </message>
+    <message>
+      <source>Incoming peer port</source>
+      <translation>Входящий порт пиров</translation>
+    </message>
+    <message>
+      <source>Download</source>
+      <translation>Скачивание</translation>
+    </message>
+    <message>
+      <source>Directory</source>
+      <translation>Каталог</translation>
+    </message>
+    <message>
+      <source>Start added torrents</source>
+      <translation>Запускать добавленные торренты</translation>
+    </message>
+    <message>
+      <source>Other</source>
+      <translation>Прочее</translation>
+    </message>
+    <message>
+      <source>Stop seeding at ratio</source>
+      <translation>Остановить сидирование по коэффициенту</translation>
+    </message>
+    <message>
+      <source>Seed ratio limit</source>
+      <translation>Лимит коэффициента</translation>
+    </message>
+    <message>
+      <source>Enable blocklist</source>
+      <translation>Включить блэклист</translation>
+    </message>
+    <message>
+      <source>Blocklist URL</source>
+      <translation>URL блэклиста</translation>
+    </message>
+  </context>
+  <context>
+    <name>ColSetupDialog</name>
+    <message>
+      <source>Columns</source>
+      <translation>Колонки</translation>
+    </message>
+    <message>
+      <source>Visible columns and their order:</source>
+      <translation>Видимые колонки и их порядок:</translation>
+    </message>
+    <message>
+      <source>Move up</source>
+      <translation>Выше</translation>
+    </message>
+    <message>
+      <source>Move down</source>
+      <translation>Ниже</translation>
+    </message>
+    <message>
+      <source>At least one column must be visible.</source>
+      <translation>Должна быть видима как минимум одна колонка.</translation>
+    </message>
+  </context>
+  <context>
+    <name>AboutDialog</name>
+    <message>
+      <source>About</source>
+      <translation>О программе</translation>
+    </message>
+    <message>
+      <source>License</source>
+      <translation>Лицензия</translation>
+    </message>
+    <message>
+      <source>Version: %1</source>
+      <translation>Версия: %1</translation>
+    </message>
+    <message>
+      <source>&lt;h3&gt;Transmission Remote GUI (Qt)&lt;/h3&gt;&lt;p&gt;GUI client for the Transmission daemon (C++ / Qt 6).&lt;/p&gt;&lt;p&gt;Author: &lt;a href="mailto:don10077@mail.ru"&gt;don10077@mail.ru&lt;/a&gt;&lt;/p&gt;</source>
+      <translation>&lt;h3&gt;Transmission Remote GUI (Qt)&lt;/h3&gt;&lt;p&gt;Графический клиент для демона Transmission (C++ / Qt 6).&lt;/p&gt;&lt;p&gt;Автор: &lt;a href="mailto:don10077@mail.ru"&gt;don10077@mail.ru&lt;/a&gt;&lt;/p&gt;</translation>
+    </message>
+    <message>
+      <source>This program is free software under the GNU General Public License, version 3 (or any later version). It is provided "as is", without a warranty of any kind. See https://www.gnu.org/licenses/gpl-3.0.html for the full license text.</source>
+      <translation>Эта программа — свободное ПО под GNU General Public License, версия 3 (или любая более поздняя). Предоставляется «как есть», без каких-либо гарантий. Полный текст лицензии: https://www.gnu.org/licenses/gpl-3.0.html</translation>
     </message>
   </context>
 </TS>

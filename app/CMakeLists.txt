@@ -16,6 +16,12 @@ add_executable(transmissiongui WIN32
     src/statsform.cpp
     src/propsdialog.cpp
     src/movedialog.cpp
+    src/optionsdialog.cpp
+    src/daemonprofile.cpp
+    src/connoptionsdialog.cpp
+    src/daemonoptionsdialog.cpp
+    src/colsetup.cpp
+    src/aboutdialog.cpp
     # Явное перечисление Q_OBJECT-заголовков для AUTOMOC (как в core).
     src/mainwindow.h
     src/theme.h
@@ -32,6 +38,12 @@ add_executable(transmissiongui WIN32
     src/statsform.h
     src/propsdialog.h
     src/movedialog.h
+    src/optionsdialog.h
+    src/daemonprofile.h
+    src/connoptionsdialog.h
+    src/daemonoptionsdialog.h
+    src/colsetup.h
+    src/aboutdialog.h
 )
 target_include_directories(transmissiongui PRIVATE src)
 target_link_libraries(transmissiongui PRIVATE tgui_core Qt6::Widgets Qt6::Network)

@@ -14,6 +14,11 @@ add_executable(tgui_tests
     test_rpcclient.cpp
     test_addlinkdialog.cpp
     test_i18n.cpp
+    test_optionsdialog.cpp
+    test_profiles.cpp
+    test_daemonoptions.cpp
+    test_colsetup.cpp
+    test_about.cpp
     # GUI-модели списка (regress: пустая таблица после подключения).
     ${CMAKE_SOURCE_DIR}/app/src/torrentmodel.cpp
     ${CMAKE_SOURCE_DIR}/app/src/groupedproxy.cpp
@@ -31,6 +36,12 @@ add_executable(tgui_tests
     ${CMAKE_SOURCE_DIR}/app/src/fileselectdialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/propsdialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/movedialog.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/optionsdialog.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/daemonprofile.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/connoptionsdialog.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/daemonoptionsdialog.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/colsetup.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/aboutdialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/mainwindow.h
     ${CMAKE_SOURCE_DIR}/app/src/theme.h
     ${CMAKE_SOURCE_DIR}/app/src/adddialog.h
@@ -40,6 +51,12 @@ add_executable(tgui_tests
     ${CMAKE_SOURCE_DIR}/app/src/propsdialog.h
     ${CMAKE_SOURCE_DIR}/app/src/propsform.h
     ${CMAKE_SOURCE_DIR}/app/src/statsform.h
+    ${CMAKE_SOURCE_DIR}/app/src/optionsdialog.h
+    ${CMAKE_SOURCE_DIR}/app/src/daemonprofile.h
+    ${CMAKE_SOURCE_DIR}/app/src/connoptionsdialog.h
+    ${CMAKE_SOURCE_DIR}/app/src/daemonoptionsdialog.h
+    ${CMAKE_SOURCE_DIR}/app/src/colsetup.h
+    ${CMAKE_SOURCE_DIR}/app/src/aboutdialog.h
     ${CMAKE_SOURCE_DIR}/app/src/delegates.h
     ${CMAKE_SOURCE_DIR}/app/src/filterpanel.h
     ${CMAKE_SOURCE_DIR}/app/src/movedialog.h

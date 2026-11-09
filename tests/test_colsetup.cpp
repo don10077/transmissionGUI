@@ -1,0 +1,76 @@
+// W10 — раскладка колонок (ColumnLayout) + диалог ColSetupDialog.
+#include <gtest/gtest.h>
+
+#include <QCoreApplication>
+#include <QListWidget>
+#include <QSettings>
+
+#include "colsetup.h"
+
+TEST(ColumnLayout, Defaults)
+{
+    const auto d = ColumnLayout::defaults(26);
+    EXPECT_EQ(d.order.size(), 26);
+    EXPECT_EQ(d.order.first(), 0);
+    EXPECT_EQ(d.order.last(), 25);
+    int vis = 0;
+    for (int i = 0; i < 26; ++i)
+        if (d.visible.at(i))
+            vis++;
+    EXPECT_EQ(vis, 9); // Name..ETA
+    EXPECT_TRUE(d.widths.contains(0));
+}
+
+TEST(ColumnLayout, MoveItem)
+{
+    auto d = ColumnLayout::defaults(26);
+    d.moveItem(0, 1);
+    EXPECT_EQ(d.order.at(0), 1);
+    EXPECT_EQ(d.order.at(1), 0);
+    d.moveItem(25, 1); // out of range — no-op
+    EXPECT_EQ(d.order.at(25), 25);
+    d.moveItem(0, -1); // out of range — no-op
+    EXPECT_EQ(d.order.at(0), 1);
+}
+
+TEST(ColumnLayout, EnsureAtLeastOneVisible)
+{
+    auto d = ColumnLayout::defaults(26);
+    for (int i = 0; i < 26; ++i)
+        d.visible[i] = false;
+    d.ensureAtLeastOneVisible();
+    EXPECT_TRUE(d.visible.at(ColumnLayout::persistentColumn()));
+}
+
+TEST(ColumnLayout, SettingsRoundTrip)
+{
+    QCoreApplication::setOrganizationName(QStringLiteral("tgui-test")); // изоляция скоупа
+    QCoreApplication::setApplicationName(QStringLiteral("tgui-test"));
+    QSettings().remove("columns");
+    auto d = ColumnLayout::defaults(26);
+    d.order.swapItemsAt(0, 5);
+    d.visible[8] = false;
+    d.saveToSettings();
+    const auto loaded = ColumnLayout::fromSettings(26);
+    EXPECT_EQ(loaded.order, d.order);
+    EXPECT_EQ(loaded.visible, d.visible);
+    EXPECT_EQ(loaded.widths, d.widths);
+}
+
+TEST(ColSetupDialog, OrderVisibleRoundTrip)
+{
+    const auto layout = ColumnLayout::defaults(26);
+    QStringList titles;
+    for (int i = 0; i < 26; ++i)
+        titles << QStringLiteral("Col%1").arg(i);
+    ColSetupDialog dlg(layout, titles);
+    EXPECT_EQ(dlg.layout().order, layout.order);
+
+    auto* list = dlg.findChild<QListWidget*>();
+    ASSERT_NE(list, nullptr);
+    list->item(5)->setCheckState(Qt::Unchecked); // скрыть колонку 5
+    EXPECT_FALSE(dlg.layout().visible.at(5));
+    list->item(0)->setCheckState(Qt::Unchecked); // Name (0) — всегда видима
+    EXPECT_TRUE(dlg.layout().visible.at(0));
+    EXPECT_EQ(dlg.layout().widths, layout.widths); // ширины сохраняются
+}

@@ -2,6 +2,7 @@
 
 #include <QMainWindow>
 #include <QTimer>
+#include <QEvent>
 #include <memory>
 
 #include "tgui/rpcclient.h"
@@ -26,6 +27,7 @@ class QColor;
 class PropsForm;
 class StatsForm;
 class FilterPanel;
+class OptionsDialog;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -90,6 +92,7 @@ private slots:
     void onEditTracker(int trackerId, const QString& announce);
     void onRemoveTracker(int trackerId, const QString& announce);
     void onAbout();
+    void onColumns();
     void onContextMenu(const QPoint& pos);
     void onFilterChanged(int group, const QString& folder, const QString& tracker);
     void onSelectAll();
@@ -118,12 +121,16 @@ private slots:
     void onToggleAltSpeed();
     void onPortTest();
     void onDaemonOptions();
+    void onOptions();
+    void onConnectionOptions();
     void downloadAndAdd(const tgui::RpcClient::AddTorrent& params, const QString& dst);
 
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
+    void changeEvent(QEvent* event) override;
+    bool eventFilter(QObject* obj, QEvent* ev) override;
 
 private:
     void createUi();
@@ -133,6 +140,12 @@ private:
     static QPixmap makeTrayIcon();
     void startConnect(const tgui::RpcClient::Options& opts);
     void maybeAutoConnect();
+    void switchToProfile(const QString& name);
+    // Двойной клик (референс: lvFilesDblClick / gTorrentsDblClick): файл → запустить,
+    // папка → открыть; по строке списка торрентов → открыть его файл/папку.
+    void onFilesDoubleClicked(int row);
+    void onTorrentsDoubleClicked();
+    void openLocalPath(const QString& path, bool selectFile);
     void setConnectedUi(bool connected);
     void setConnectionState(const QString& text, const QColor& color);
     void updateStatusBarTotals();
@@ -168,6 +181,7 @@ private:
     StatsForm* m_statsForm = nullptr;
     FilterPanel* m_filterPanel = nullptr;
     QTreeView* m_view = nullptr;
+    QTableView* m_filesView = nullptr;
     // ID торрента, для которого загружаются вкладки Файлы/Пиры/Трекеры.
     int m_currentId = -1;
     // true только в момент modelReset при автообновлении: onSelectionChanged

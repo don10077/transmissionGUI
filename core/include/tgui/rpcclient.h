@@ -5,6 +5,7 @@
 
 #include <QJsonObject>
 #include <QObject>
+#include <QNetworkProxy>
 #include <QStringList>
 #include <QUrl>
 #include <QVector>
@@ -23,6 +24,7 @@ public:
         QString password;
         int timeoutMs = 30000;
         bool ignoreSslErrors = false;
+        QNetworkProxy proxy{ QNetworkProxy::NoProxy }; // по умолчанию — без прокси
     };
 
     // Параметры torrent-add.

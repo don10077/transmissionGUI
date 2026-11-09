@@ -2,9 +2,11 @@
 #include "theme.h"
 
 #include <QApplication>
+#include <QFont>
 #include <QIcon>
 #include <QSettings>
 #include <QTranslator>
+#include <cmath>
 
 // Запуск:
 //   transmissiongui.exe [--url http://хост:порт] [--user имя] [--pass пароль]
@@ -29,6 +31,20 @@ int main(int argc, char* argv[])
                                + QStringLiteral("/translations/tgui_") + lang + QStringLiteral(".qm");
         if (translator.load(qmPath))
             app.installTranslator(&translator);
+    }
+
+    // Масштаб интерфейса (W07): ui/scale в %; применяется к базовому шрифту до создания окна.
+    // Требует перезапуска (выбирается в «Параметрах»); 100% — без изменений.
+    {
+        const int scale = QSettings().value("ui/scale", 100).toInt();
+        if (scale > 0 && scale != 100) {
+            QFont f = app.font();
+            if (f.pointSizeF() > 0.0)
+                f.setPointSizeF(f.pointSizeF() * scale / 100.0);
+            else if (f.pixelSize() > 0)
+                f.setPixelSize(static_cast<int>(std::lround(f.pixelSize() * scale / 100.0)));
+            app.setFont(f);
+        }
     }
 
     tgui::RpcClient::Options autoOpts;
