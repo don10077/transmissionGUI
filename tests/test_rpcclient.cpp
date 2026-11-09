@@ -537,4 +537,81 @@ TEST_F(RpcClientTest, SessionStatsReceived)
     EXPECT_EQ(stats.cumulative.filesAdded, 2);
 }
 
+// Живой демон: цепочка getTrackers (пропуск, если не заданы TGUI_E2E_*).
+TEST(RpcLive, Trackers)
+{
+    const QString url = qgetenv("TGUI_E2E_URL");
+    const QString user = qgetenv("TGUI_E2E_USER");
+    const QString pass = qgetenv("TGUI_E2E_PASS");
+    if (url.isEmpty() || user.isEmpty())
+        GTEST_SKIP() << "TGUI_E2E_URL/TGUI_E2E_USER не заданы";
+
+    RpcClient::Options o;
+    o.url = QUrl(url);
+    o.username = user;
+    o.password = pass;
+    auto client = std::make_unique<RpcClient>(o);
+    RpcClient* c = client.get();
+
+    auto waitSlot = [&](auto memberSignal, auto readyPred, auto fire) {
+        QEventLoop loop;
+        QObject::connect(c, memberSignal, [&](auto&&... args) {
+            if (readyPred(args...))
+                loop.quit();
+        });
+        QObject::connect(c, &RpcClient::connectionFailed,
+                         [&loop](const QString&) { loop.quit(); });
+        QTimer t;
+        t.setSingleShot(true);
+        QObject::connect(&t, &QTimer::timeout, &loop, &QEventLoop::quit);
+        t.start(15000);
+        fire();
+        loop.exec();
+    };
+
+    bool connected = false;
+    waitSlot(&RpcClient::connected,
+             [&connected](const SessionInfo&) { connected = true; return true; },
+             [c] { c->connectToDaemon(); });
+    ASSERT_TRUE(connected);
+
+    int id = -1;
+    waitSlot(&RpcClient::torrentsReceived,
+             [&id](const QVector<Torrent>& ts) {
+                 if (!ts.isEmpty())
+                     id = ts.first().id;
+                 return !ts.isEmpty();
+             },
+             [c] { c->getTorrents(); });
+    ASSERT_GT(id, 0);
+
+    bool got = false;
+    QVector<TrackerStat> trackers;
+    bool readErr = false;
+    QString errMsg;
+    QObject::connect(c, &RpcClient::readError,
+                     [&readErr, &errMsg](const QString& what, const QString& err) {
+                         readErr = true;
+                         errMsg = what + ": " + err;
+                     });
+    waitSlot(&RpcClient::trackersReceived,
+             [&got, &trackers, id](int i, const QVector<TrackerStat>& ts) {
+                 if (i != id)
+                     return false;
+                 got = true;
+                 trackers = ts;
+                 return true;
+             },
+             [c, id] { c->getTrackers(id); });
+
+    fprintf(stderr, "DIAG got=%d readErr=%d id=%d msg=%s trackers=%d\n",
+            got ? 1 : 0, readErr ? 1 : 0, id, errMsg.toUtf8().constData(),
+            static_cast<int>(trackers.size()));
+    fflush(stderr);
+    EXPECT_TRUE(got) << errMsg.toStdString();
+    if (!trackers.isEmpty())
+        fprintf(stderr, "DIAG first tracker: %s\n",
+                trackers.first().announce.toUtf8().constData());
+}
+
 } // namespace

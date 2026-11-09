@@ -1,6 +1,8 @@
 #include "mainwindow.h"
+#include "theme.h"
 
 #include <QApplication>
+#include <QIcon>
 
 // Запуск:
 //   transmissiongui.exe [--url http://хост:порт] [--user имя] [--pass пароль]
@@ -11,6 +13,9 @@ int main(int argc, char* argv[])
     app.setOrganizationName("transmissionGUI");
     app.setApplicationName("transmissionGUI");
     app.setApplicationVersion("0.1.0");
+
+    tgui::theme::apply(app);
+    app.setWindowIcon(QIcon(tgui::theme::appIconPixmap(64)));
 
     tgui::RpcClient::Options autoOpts;
     for (int i = 1; i < argc; ++i) {

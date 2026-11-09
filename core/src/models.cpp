@@ -127,6 +127,15 @@ bool parseTorrent(const QJsonObject& j, Torrent& t)
     t.isStalled = optBool(j, "isStalled");
     t.sequentialDownload = optBool(j, "sequential_download");
     t.downloadDir = optStr(j, "downloadDir");
+    t.hashString = optStr(j, "hashString");
+    t.comment = optStr(j, "comment");
+    t.creator = optStr(j, "creator");
+    t.dateCreated = optInt(j, "dateCreated");
+    t.pieceCount = optInt(j, "pieceCount");
+    t.pieceSize = optNum(j, "pieceSize");
+    t.haveValid = optNum(j, "haveValid");
+    t.magnetLink = optStr(j, "magnetLink");
+    t.maxConnectedPeers = optInt(j, "maxConnectedPeers");
 
     const QJsonValue labels = j.value("labels");
     if (labels.isArray())
@@ -192,6 +201,7 @@ QVector<TrackerStat> parseTrackerStats(const QJsonArray& array)
         s.seederCount = j.value("seederCount").isDouble() ? j.value("seederCount").toInt() : -1;
         s.leecherCount =
             j.value("leecherCount").isDouble() ? j.value("leecherCount").toInt() : -1;
+        s.tier = j.value("tier").isDouble() ? j.value("tier").toInt() : 0;
         s.torrentId = j.value("torrentId").toInt();
         result.push_back(s);
     }
@@ -205,17 +215,38 @@ QVector<Peer> parsePeers(const QJsonArray& array)
         if (!e.isObject())
             continue;
         const QJsonObject j = e.toObject();
+        // Legacy (Tr4) — camelCase; в Transmission 4.x нативный ответ —
+        // kebab-case (client-name, rate-to-client, …). Компат-слой демона
+        // возвращает legacy-имена, но поддерживаем оба варианта.
+        auto num = [&j](const char* camel, const char* kebab) -> double {
+            if (j.contains(camel) && j.value(camel).isDouble())
+                return j.value(camel).toDouble();
+            if (j.contains(kebab) && j.value(kebab).isDouble())
+                return j.value(kebab).toDouble();
+            return -1.0;
+        };
+        auto str = [&j](const char* camel, const char* kebab) -> QString {
+            if (j.contains(camel))
+                return j.value(camel).toString();
+            if (j.contains(kebab))
+                return j.value(kebab).toString();
+            return QString();
+        };
         Peer p;
-        p.address = j.value("address").toString();
-        p.port = j.value("port").isDouble() ? j.value("port").toInt() : 0;
-        p.clientName = j.value("clientName").toString();
-        p.flagStr = j.value("flagStr").toString();
-        if (j.value("progress").isDouble())
-            p.progress = j.value("progress").toDouble();
-        if (j.value("rateToClient").isDouble())
-            p.rateToClient = static_cast<int>(j.value("rateToClient").toDouble());
-        if (j.value("rateToPeer").isDouble())
-            p.rateToPeer = static_cast<int>(j.value("rateToPeer").toDouble());
+        p.address = str("address", "ip");
+        const double port = num("port", "port");
+        p.port = port >= 0 ? static_cast<int>(port) : 0;
+        p.clientName = str("clientName", "client-name");
+        p.flagStr = str("flagStr", "flag-str");
+        const double progress = num("progress", "progress");
+        if (progress >= 0.0)
+            p.progress = progress;
+        const double rtc = num("rateToClient", "rate-to-client");
+        if (rtc >= 0.0)
+            p.rateToClient = static_cast<int>(rtc);
+        const double rtp = num("rateToPeer", "rate-to-peer");
+        if (rtp >= 0.0)
+            p.rateToPeer = static_cast<int>(rtp);
         result.push_back(p);
     }
     return result;
@@ -239,6 +270,14 @@ QVector<FileStat> parseFiles(const QJsonObject& torrent)
         fs.size = f.value("length").toDouble();
         if (fs.size <= 0.0)
             fs.size = f.value("size").toDouble();
+        // Прогресс файла: legacy "completed" (0..1); иначе — по байтам
+        // (демоны 4.x возвращают camelCase "bytesCompleted").
+        if (f.value("completed").isDouble())
+            fs.completion = f.value("completed").toDouble();
+        else if (f.value("bytesCompleted").isDouble() && fs.size > 0.0)
+            fs.completion = f.value("bytesCompleted").toDouble() / fs.size;
+        else if (f.value("bytes_completed").isDouble() && fs.size > 0.0)
+            fs.completion = f.value("bytes_completed").toDouble() / fs.size;
         if (i < priorities.size() && priorities.at(i).isDouble())
             fs.priority = static_cast<int>(priorities.at(i).toDouble());
         if (i < wanted.size())

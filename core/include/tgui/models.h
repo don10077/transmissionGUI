@@ -39,6 +39,7 @@ struct TrackerStat {
     int lastAnnounceTime = 0;       // unix-время
     int seederCount = -1;
     int leecherCount = -1;
+    int tier = 0;
     int torrentId = 0;
 };
 
@@ -76,6 +77,17 @@ struct Torrent {
     std::optional<bool> sequentialDownload;
     std::optional<QStringList> labels;
     std::optional<QString> downloadDir;
+
+    // Детали «General»/«Свойства» (референс — tabGeneral, см. WORKFLOW.md).
+    std::optional<QString> hashString;
+    std::optional<QString> comment;
+    std::optional<QString> creator;
+    std::optional<int> dateCreated;       // unix
+    std::optional<int> pieceCount;
+    std::optional<double> pieceSize;      // байты
+    std::optional<double> haveValid;      // байты
+    std::optional<QString> magnetLink;
+    std::optional<int> maxConnectedPeers;
     QVector<TrackerStat> trackerStats;
 };
 
@@ -95,6 +107,7 @@ struct FileStat {
     int index = 0;
     QString name;
     double size = 0.0; // байты
+    double completion = 0.0; // 0..1
     int priority = 0;  // -1 / 0 / 1
     bool wanted = true;
 };

@@ -161,6 +161,65 @@ TEST(ModelFiles, ParseWithPrioritiesAndWanted)
     EXPECT_EQ(files.last().priority, 0);
 }
 
+TEST(ModelPeers, ParseKebabCase)
+{
+    // Нативный формат Transmission 4.x (kebab-case).
+    QJsonArray peers;
+    peers.append(QJsonObject{
+        {"ip", "10.1.2.3"}, {"port", 51413},
+        {"client-name", "transmission/4.2.0"}, {"flag-str", "EFH"},
+        {"progress", 12.5}, {"rate-to-client", 2048}, {"rate-to-peer", 4096},
+    });
+    const QVector<Peer> list = parsePeers(peers);
+    ASSERT_EQ(list.size(), 1);
+    EXPECT_EQ(list.first().address, "10.1.2.3");
+    EXPECT_EQ(list.first().port, 51413);
+    EXPECT_EQ(list.first().clientName, "transmission/4.2.0");
+    EXPECT_EQ(list.first().flagStr, "EFH");
+    EXPECT_DOUBLE_EQ(list.first().progress, 12.5);
+    EXPECT_EQ(list.first().rateToClient, 2048);
+    EXPECT_EQ(list.first().rateToPeer, 4096);
+}
+
+TEST(ModelFiles, ParseCompletion)
+{
+    const QJsonObject torrent = {
+        {"id", 7},
+        {"files",
+         QJsonArray{QJsonObject{{"name", "a"}, {"length", 1000}, {"completed", 0.5}},
+                    QJsonObject{{"name", "b"}, {"length", 2000}, {"bytesCompleted", 500}},
+                    QJsonObject{{"name", "c"}, {"length", 4000}, {"bytes_completed", 800}}}},
+    };
+    const QVector<FileStat> files = parseFiles(torrent);
+    ASSERT_EQ(files.size(), 3);
+    EXPECT_DOUBLE_EQ(files.first().completion, 0.5);
+    EXPECT_DOUBLE_EQ(files.at(1).completion, 0.25);
+    EXPECT_DOUBLE_EQ(files.last().completion, 0.2);
+}
+
+TEST(ModelTrackerStats, ParseWithTier)
+{
+    QJsonArray stats;
+    stats.append(QJsonObject{
+        {"announce", "http://bt.t-ru.org/ann"}, {"announceState", 0},
+        {"hasAnnounced", true}, {"lastAnnounceSucceeded", true},
+        {"lastAnnounceResult", "Success"}, {"lastAnnounceTime", 1792807908},
+        {"seederCount", -1}, {"leecherCount", -1}, {"tier", 0}, {"torrentId", 1},
+    });
+    stats.append(QJsonObject{
+        {"announce", "http://retracker.local/announce"}, {"tier", 1},
+        {"lastAnnounceResult", "Could not connect to tracker"},
+    });
+    const QVector<TrackerStat> list = parseTrackerStats(stats);
+    ASSERT_EQ(list.size(), 2);
+    EXPECT_EQ(list.first().announce, "http://bt.t-ru.org/ann");
+    EXPECT_EQ(list.first().tier, 0);
+    EXPECT_EQ(list.first().seederCount, -1);
+    EXPECT_TRUE(list.first().lastAnnounceSucceeded);
+    EXPECT_EQ(list.last().tier, 1);
+    EXPECT_EQ(list.last().lastAnnounceResult, "Could not connect to tracker");
+}
+
 TEST(ModelSessionInfo, Parse)
 {
     const QJsonObject j = {
@@ -368,7 +427,7 @@ TEST(GuiListChain, OffscreenTreeViewRendersRows)
     EXPECT_TRUE(groups.hasChildren(QModelIndex())) << "у корня должны быть строки";
     EXPECT_FALSE(groups.hasChildren(first)) << "строки не имеют детей";
     EXPECT_EQ(groups.headerData(0, Qt::Horizontal, Qt::DisplayRole).toString(),
-              QObject::tr("Имя"));
+              QObject::tr("Name"));
 
     view.viewport()->update();
     qApp->processEvents();

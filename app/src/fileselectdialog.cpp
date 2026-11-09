@@ -12,12 +12,12 @@
 FileSelectDialog::FileSelectDialog(const QVector<tgui::FileStat>& files, QWidget* parent)
     : QDialog(parent)
 {
-    setWindowTitle(tr("Выбор файлов"));
+    setWindowTitle(tr("File selection"));
     resize(560, 400);
 
     m_tree = new QTreeWidget(this);
     m_tree->setColumnCount(1);
-    m_tree->setHeaderLabel(tr("Файл (размер)"));
+    m_tree->setHeaderLabel(tr("File (size)"));
     for (const auto& f : files) {
         auto* item = new QTreeWidgetItem(m_tree);
         item->setText(0, QStringLiteral("%1  (%2)")
@@ -28,8 +28,8 @@ FileSelectDialog::FileSelectDialog(const QVector<tgui::FileStat>& files, QWidget
         item->setData(0, Qt::UserRole, f.index);
     }
 
-    auto* btnAll = new QPushButton(tr("Выделить все"), this);
-    auto* btnNone = new QPushButton(tr("Снять все"), this);
+    auto* btnAll = new QPushButton(tr("Select all"), this);
+    auto* btnNone = new QPushButton(tr("Deselect all"), this);
     connect(btnAll, &QPushButton::clicked, this, [this] { setAll(Qt::Checked); });
     connect(btnNone, &QPushButton::clicked, this, [this] { setAll(Qt::Unchecked); });
 
@@ -44,7 +44,7 @@ FileSelectDialog::FileSelectDialog(const QVector<tgui::FileStat>& files, QWidget
     bottom->addWidget(buttons);
 
     auto* layout = new QVBoxLayout(this);
-    layout->addWidget(new QLabel(tr("Не отмеченные файлы не будут скачиваться."), this));
+    layout->addWidget(new QLabel(tr("Unselected files will not be downloaded."), this));
     layout->addWidget(m_tree, 1);
     layout->addLayout(bottom);
 }

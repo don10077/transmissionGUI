@@ -22,25 +22,29 @@ AddTorrentDialog::AddTorrentDialog(const QString& initialFile, const QString& in
     : QDialog(parent)
     , m_rpc(rpc)
 {
-    setWindowTitle(tr("Добавление торрента"));
+    setWindowTitle(tr("Add torrent"));
 
-    m_rbFile = new QRadioButton(tr("Файл .torrent:"), this);
+    m_rbFile = new QRadioButton(tr(".torrent file:"), this);
+<<<<<<< HEAD
+    m_rbUrl = new QRadioButton(tr("Magnet link or URL:"), this);
+=======
     m_rbUrl = new QRadioButton(tr("Magnet-ссылка или URL:"), this);
+>>>>>>> 3189869 (UI parity with transgui: filter panel, delegates, English strings)
     m_rbFile->setChecked(true);
 
     m_file = new QLineEdit(initialFile, this);
-    m_file->setPlaceholderText(tr("Путь к файлу .torrent"));
-    auto* btnFile = new QPushButton(tr("Обзор…"), this);
+    m_file->setPlaceholderText(tr("Path to a .torrent file"));
+    auto* btnFile = new QPushButton(tr("Browse…"), this);
     connect(btnFile, &QPushButton::clicked, this, &AddTorrentDialog::onBrowseFile);
     auto* fileRow = new QHBoxLayout();
     fileRow->addWidget(m_file, 1);
     fileRow->addWidget(btnFile);
 
     m_url = new QLineEdit(QString(), this);
-    m_url->setPlaceholderText(tr("magnet:?xt=urn:btih:… или http://…"));
+    m_url->setPlaceholderText(tr("magnet:?xt=urn:btih:… or http://…"));
 
     m_dir = new QLineEdit(initialDir, this);
-    auto* btnDir = new QPushButton(tr("Обзор…"), this);
+    auto* btnDir = new QPushButton(tr("Browse…"), this);
     connect(btnDir, &QPushButton::clicked, this, &AddTorrentDialog::onBrowseDir);
     auto* dirRow = new QHBoxLayout();
     dirRow->addWidget(m_dir, 1);
@@ -53,7 +57,7 @@ AddTorrentDialog::AddTorrentDialog(const QString& initialFile, const QString& in
         connect(m_rpc, &tgui::RpcClient::freeSpaceReceived, this,
                 [this](const QString& path, qint64 bytes) {
                     if (path == m_dir->text().trimmed())
-                        m_freeSpace->setText(tr("Свободно: %1")
+                        m_freeSpace->setText(tr("Free: %1")
                                                  .arg(QString::fromStdString(tgui::formatSize(
                                                      static_cast<double>(bytes)))));
                 });
@@ -61,21 +65,21 @@ AddTorrentDialog::AddTorrentDialog(const QString& initialFile, const QString& in
     m_peerLimit = new QSpinBox(this);
     m_peerLimit->setRange(0, 10000);
     m_peerLimit->setValue(0);
-    m_peerLimit->setSpecialValueText(tr("не устанавливать"));
+    m_peerLimit->setSpecialValueText(tr("Unlimited"));
 
-    m_save = new QCheckBox(tr("Сохранить .torrent-файл"), this);
+    m_save = new QCheckBox(tr("Save .torrent file"), this);
     m_savePath = new QLineEdit(QString(), this);
-    m_savePath->setPlaceholderText(tr("Папка/имя файла назначения"));
+    m_savePath->setPlaceholderText(tr("Destination folder/file name"));
     m_savePath->setEnabled(false);
     connect(m_save, &QCheckBox::toggled, m_savePath, &QLineEdit::setEnabled);
 
-    m_start = new QCheckBox(tr("Запустить сразу"), this);
+    m_start = new QCheckBox(tr("Start"), this);
     m_start->setChecked(defaultStart);
 
-    m_sequential = new QCheckBox(tr("Последовательное скачивание"), this);
+    m_sequential = new QCheckBox(tr("Sequential download"), this);
     if (rpcVersion < 18) {
         m_sequential->setEnabled(false);
-        m_sequential->setToolTip(tr("Требуется Transmission ≥ 4.1 (RPC 18)"));
+        m_sequential->setToolTip(tr("Requires Transmission 4.1 or newer (RPC 18)"));
     }
 
     auto* form = new QFormLayout();
@@ -83,9 +87,9 @@ AddTorrentDialog::AddTorrentDialog(const QString& initialFile, const QString& in
     form->addRow(QString(), fileRow);
     form->addRow(QString(), m_rbUrl);
     form->addRow(QString(), m_url);
-    form->addRow(tr("Папка загрузки"), dirRow);
+    form->addRow(tr("Download to"), dirRow);
     form->addRow(QString(), m_freeSpace);
-    form->addRow(tr("Лимит пиров"), m_peerLimit);
+    form->addRow(tr("Peer limit"), m_peerLimit);
     form->addRow(QString(), m_save);
     form->addRow(QString(), m_savePath);
     form->addRow(QString(), m_start);
@@ -96,13 +100,12 @@ AddTorrentDialog::AddTorrentDialog(const QString& initialFile, const QString& in
         if (m_rbFile->isChecked()) {
             const QString f = m_file->text().trimmed();
             if (f.isEmpty() || !QFile::exists(f)) {
-                QMessageBox::warning(this, tr("Добавление торрента"),
-                                     tr("Укажите существующий файл .torrent."));
+                QMessageBox::warning(this, tr("Add torrent"),
+                                     tr("Specify an existing .torrent file."));
                 return;
             }
         } else if (m_url->text().trimmed().isEmpty()) {
-            QMessageBox::warning(this, tr("Добавление торрента"),
-                                 tr("Укажите magnet-ссылку или URL."));
+            QMessageBox::warning(this, tr("Add torrent"), tr("Specify a magnet link or URL."));
             return;
         }
         accept();
@@ -147,15 +150,19 @@ QString AddTorrentDialog::savePath() const
 void AddTorrentDialog::onBrowseFile()
 {
     const QString path = QFileDialog::getOpenFileName(
-        this, tr("Выберите файл .torrent"), QString(),
+        this, tr("Select a .torrent file"), QString(),
+<<<<<<< HEAD
+        tr("Torrent files (*.torrent);;All files (*)"));
+=======
         tr("Torrent-файлы (*.torrent);;Все файлы (*)"));
+>>>>>>> 3189869 (UI parity with transgui: filter panel, delegates, English strings)
     if (!path.isEmpty())
         m_file->setText(path);
 }
 
 void AddTorrentDialog::onBrowseDir()
 {
-    const QString dir = QFileDialog::getExistingDirectory(this, tr("Папка загрузки"),
+    const QString dir = QFileDialog::getExistingDirectory(this, tr("Download to"),
                                                            m_dir->text());
     if (!dir.isEmpty())
         m_dir->setText(dir);

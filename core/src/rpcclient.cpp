@@ -115,6 +115,15 @@ void RpcClient::getTorrents(const QStringList& extraFields)
         "id", "name", "status", "errorString", "announceResponse", "recheckProgress",
         "sizeWhenDone", "leftUntilDone", "rateDownload", "rateUpload", "trackerStats",
         "metadataPercentComplete", "sequential_download", "downloadDir",
+        // Расширенные поля для списка и диалога «Свойства».
+        "addedDate", "doneDate", "downloadedEver", "uploadedEver", "isPrivate",
+        "isStalled", "queuePosition", "uploadRatio",
+        // 26-колоночный грид (референс раскладки — см. WORKFLOW.md).
+        "totalSize", "activityDate", "secondsSeeding", "bandwidthPriority",
+        // Вкладка «General» (референс — tabGeneral): hash, чанки, комментарий,
+        // magnet-ссылка, автор/дата создания, лимит пиров.
+        "hashString", "comment", "creator", "dateCreated", "pieceCount",
+        "pieceSize", "haveValid", "magnetLink", "maxConnectedPeers",
     };
     fields += extraFields;
     removeFieldIfUnsupported(fields, "labels", m_rpcVersion, 16);
@@ -300,6 +309,27 @@ void RpcClient::verify(int id)
     QJsonObject args;
     torrentIds(args, id);
     requestReport("torrent-verify", args);
+}
+
+void RpcClient::queueMoveTop(int id)
+{
+    QJsonObject args;
+    torrentIds(args, id);
+    requestReport("queue-move-top", args);
+}
+
+void RpcClient::queueMoveUp(int id)
+{
+    QJsonObject args;
+    torrentIds(args, id);
+    requestReport("queue-move-up", args);
+}
+
+void RpcClient::queueMoveDown(int id)
+{
+    QJsonObject args;
+    torrentIds(args, id);
+    requestReport("queue-move-down", args);
 }
 
 void RpcClient::setStarted(int id, bool started)

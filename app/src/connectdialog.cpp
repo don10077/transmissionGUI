@@ -8,23 +8,27 @@
 ConnectDialog::ConnectDialog(const tgui::RpcClient::Options& initial, QWidget* parent)
     : QDialog(parent)
 {
-    setWindowTitle(tr("Подключение к демону"));
+    setWindowTitle(tr("Connect to daemon"));
 
     m_url = new QLineEdit(initial.url.toString(QUrl::PrettyDecoded), this);
-    m_url->setPlaceholderText(tr("127.0.0.1:9091 или http://хост:порт"));
+    m_url->setPlaceholderText(tr("127.0.0.1:9091 or http://host:port"));
     m_path = new QLineEdit(initial.rpcPath, this);
     m_path->setPlaceholderText(tr("/transmission/rpc"));
     m_user = new QLineEdit(initial.username, this);
     m_pass = new QLineEdit(initial.password, this);
     m_pass->setEchoMode(QLineEdit::Password);
-    m_ignoreSsl = new QCheckBox(tr("Игнорировать ошибки сертификата"), this);
+    m_ignoreSsl = new QCheckBox(tr("Ignore certificate errors"), this);
     m_ignoreSsl->setChecked(initial.ignoreSslErrors);
 
     auto* form = new QFormLayout(this);
-    form->addRow(tr("Адрес"), m_url);
+    form->addRow(tr("Address"), m_url);
+<<<<<<< HEAD
+    form->addRow(tr("RPC path"), m_path);
+=======
     form->addRow(tr("RPC-путь"), m_path);
-    form->addRow(tr("Пользователь"), m_user);
-    form->addRow(tr("Пароль"), m_pass);
+>>>>>>> 3189869 (UI parity with transgui: filter panel, delegates, English strings)
+    form->addRow(tr("User"), m_user);
+    form->addRow(tr("Password"), m_pass);
     form->addRow(QString(), m_ignoreSsl);
 
     auto* buttons =

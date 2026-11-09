@@ -69,6 +69,10 @@ public:
     void removeTorrent(int id, bool deleteLocalData = false);
     void reannounce(int id);
     void verify(int id);
+    // Очередь (legacy-методы queue-move-*, RPC ≥ 14).
+    void queueMoveTop(int id);
+    void queueMoveUp(int id);
+    void queueMoveDown(int id);
     void setStarted(int id, bool started);
     void setTorrent(int id, const QJsonObject& params); // общий torrent-set
     void setLabels(int id, const QStringList& labels);  // требует rpc >= 16

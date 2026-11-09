@@ -254,11 +254,11 @@ QString GroupedTorrentProxy::groupDisplayName(const QString& key) const
         return key;
     switch (m_groupBy) {
         case GroupFolder:
-            return tr("(без папки)");
+            return tr("(no folder)");
         case GroupLabel:
-            return tr("(без лейбла)");
+            return tr("(no label)");
         case GroupTracker:
-            return tr("(без трекера)");
+            return tr("(no tracker)");
         default:
             return QStringLiteral("—");
     }

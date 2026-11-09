@@ -1,5 +1,6 @@
 # Build-каталоги (CMakePresets: build/win-debug, build/win-release)
 build/
+design/
 CMakeFiles/
 CMakeUserPresets.json
 compile_commands.json

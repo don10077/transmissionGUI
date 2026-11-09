@@ -5,33 +5,62 @@
 
 #include "tgui/models.h"
 
-// Модель списка торрентов (torrent-get).
+// Модель списка торрентов (torrent-get). Строки UI — английский (см. WORKFLOW.md 0.3).
 class TorrentModel : public QAbstractTableModel {
     Q_OBJECT
 public:
+    // 26 колонок — порядок и семантика — по референсу (см. WORKFLOW.md).
     enum Column {
         ColName = 0,
+        ColSize,           // totalSize
+        ColDone,           // прогресс %
         ColStatus,
-        ColProgress,
-        ColSize,
+        ColSeeds,          // peersSendingToUs / seeders
+        ColPeers,          // peersGettingFromUs / leechers
         ColRateDown,
         ColRateUp,
         ColEta,
-        ColPeers,
         ColRatio,
+        ColDownloaded,
+        ColUploaded,
+        ColTracker,
+        ColTrackerStatus,
+        ColAddedOn,
+        ColCompletedOn,
+        ColLastActive,
+        ColPath,
+        ColPriority,
+        ColSizeToDownload, // sizeWhenDone
+        ColId,
+        ColQueuePosition,
+        ColSeedingTime,
+        ColSizeLeft,       // leftUntilDone
+        ColPrivate,
         ColLabels,
         ColumnCount
     };
 
-    // Группы статусов для фильтра.
+    // Статус-фильтры левой панели — семантика 1:1 с референсом (flt*, main.pas).
     enum StatusGroup {
-        GroupStopped = 0,
-        GroupWaiting,
-        GroupDownloading,
-        GroupSeeding,
-        GroupFinished
+        GroupAll = -1,     // All torrents
+        GroupDownloading = 0, // Download
+        GroupCompleted,    // Seed (в т.ч. Finished)
+        GroupActive,       // скорости ≠ 0
+        GroupInactive,     // не Active и не Stopped
+        GroupStopped,      // Stopped или Finished
+        GroupError,        // ошибка, торрент не остановлен
+        GroupWaiting       // CheckWait/Check/DownloadWait
     };
-    static constexpr int StatusGroupRole = Qt::UserRole + 1;
+
+    // Дополнительные роли для кастомного делегата строки торрентов.
+    enum Roles {
+        ProgressRole = Qt::UserRole + 1, // double, %
+        StatusRole,                      // int, torrent status
+        FinishedRole,                    // bool
+        ErrorRole,                       // bool
+        RateDownRole,                    // double, байт/с
+        RateUpRole,                      // double, байт/с
+    };
 
     explicit TorrentModel(QObject* parent = nullptr);
 
@@ -45,23 +74,24 @@ public:
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
     void sort(int column, Qt::SortOrder order = Qt::AscendingOrder) override;
 
-    static QString statusText(int status);
-    static int statusGroup(int status, double sizeWhenDone, double leftUntilDone);
+    static QString statusText(int status, bool finished = false);
+    static bool matchesGroup(const tgui::Torrent& t, int group);
     static QVariant sortKey(const tgui::Torrent& t, int column);
 
 private:
     QVector<tgui::Torrent> m_torrents;
 };
 
-// Фильтр по группе статусов + поиск по имени.
+// Фильтр: статус-группа + папка + трекер + поиск по имени (референс — lvFilter/edSearch).
 class TorrentFilterProxy : public QSortFilterProxyModel {
     Q_OBJECT
 public:
     explicit TorrentFilterProxy(QObject* parent = nullptr);
 
-    // -1 — все; иначе TorrentModel::StatusGroup.
+    // TorrentModel::StatusGroup; GroupAll (-1) — без фильтра.
     void setStatusGroup(int group);
-
+    void setFolderFilter(const QString& folder); // пусто — без фильтра
+    void setTrackerFilter(const QString& announce); // пусто — без фильтра
     void setSearchText(const QString& text);
 
     // Торрент по строке прокси (с маппингом в исходную модель).
@@ -70,6 +100,8 @@ public:
     bool filterAcceptsRow(int row, const QModelIndex& parent) const override;
 
 private:
-    int m_group = -1;
+    int m_group = TorrentModel::GroupAll;
+    QString m_folder;
+    QString m_tracker;
     QString m_search;
 };
