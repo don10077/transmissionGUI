@@ -25,11 +25,7 @@ AddTorrentDialog::AddTorrentDialog(const QString& initialFile, const QString& in
     setWindowTitle(tr("Add torrent"));
 
     m_rbFile = new QRadioButton(tr(".torrent file:"), this);
-<<<<<<< HEAD
     m_rbUrl = new QRadioButton(tr("Magnet link or URL:"), this);
-=======
-    m_rbUrl = new QRadioButton(tr("Magnet-ссылка или URL:"), this);
->>>>>>> 3189869 (UI parity with transgui: filter panel, delegates, English strings)
     m_rbFile->setChecked(true);
 
     m_file = new QLineEdit(initialFile, this);
@@ -151,11 +147,7 @@ void AddTorrentDialog::onBrowseFile()
 {
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Select a .torrent file"), QString(),
-<<<<<<< HEAD
         tr("Torrent files (*.torrent);;All files (*)"));
-=======
-        tr("Torrent-файлы (*.torrent);;Все файлы (*)"));
->>>>>>> 3189869 (UI parity with transgui: filter panel, delegates, English strings)
     if (!path.isEmpty())
         m_file->setText(path);
 }

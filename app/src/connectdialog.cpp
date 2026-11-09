@@ -22,11 +22,7 @@ ConnectDialog::ConnectDialog(const tgui::RpcClient::Options& initial, QWidget* p
 
     auto* form = new QFormLayout(this);
     form->addRow(tr("Address"), m_url);
-<<<<<<< HEAD
     form->addRow(tr("RPC path"), m_path);
-=======
-    form->addRow(tr("RPC-путь"), m_path);
->>>>>>> 3189869 (UI parity with transgui: filter panel, delegates, English strings)
     form->addRow(tr("User"), m_user);
     form->addRow(tr("Password"), m_pass);
     form->addRow(QString(), m_ignoreSsl);

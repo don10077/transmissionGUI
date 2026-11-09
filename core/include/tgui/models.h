@@ -86,6 +86,7 @@ struct Torrent {
     std::optional<int> pieceCount;
     std::optional<double> pieceSize;      // байты
     std::optional<double> haveValid;      // байты
+    std::optional<QString> pieces;        // base64-битовая карта кусков (RPC >= 5)
     std::optional<QString> magnetLink;
     std::optional<int> maxConnectedPeers;
     QVector<TrackerStat> trackerStats;

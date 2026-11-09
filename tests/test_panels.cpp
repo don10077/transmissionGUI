@@ -6,6 +6,8 @@
 #include <QApplication>
 #include <QLabel>
 #include <QProgressBar>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QTabWidget>
 #include <QTreeView>
 
@@ -66,6 +68,41 @@ TEST(PropsForm, RendersTorrent)
     ASSERT_NE(bar, nullptr);
     EXPECT_EQ(bar->format(), QStringLiteral("50.0%"));
     EXPECT_EQ(bar->value(), 500);
+}
+
+TEST(PropsForm, ScrollKeepsPositionAcrossRefresh)
+{
+    PropsForm f;
+    f.resize(520, 220);
+    f.show();
+
+    Torrent t;
+    t.id = 7;
+    t.name = "scroll-test";
+    t.status = 4;
+    t.totalSize = 8.0 * 1024 * 1024 * 1024;
+    t.sizeWhenDone = t.totalSize;
+    t.leftUntilDone = 0;
+    t.downloadDir = "/Shares/Video";
+    t.addedDate = 1700000000;
+    f.setTorrent(t);
+    QCoreApplication::processEvents();
+
+    auto* scroll = f.findChild<QScrollArea*>();
+    ASSERT_NE(scroll, nullptr);
+    auto* bar = scroll->verticalScrollBar();
+    ASSERT_NE(bar, nullptr);
+    ASSERT_GT(bar->maximum(), 0);
+
+    const int target = bar->maximum() / 2;
+    bar->setValue(target);
+    ASSERT_EQ(bar->value(), target);
+
+    // Автообновление пересобирает панель — позиция не должна сбрасываться.
+    f.setTorrent(t);
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+    EXPECT_EQ(bar->value(), target);
 }
 
 TEST(PropsForm, ClearShowsPlaceholder)

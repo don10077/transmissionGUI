@@ -81,10 +81,13 @@ bool statusIsStopped(int status)
 
 bool statusIsFinished(int status, double sizeWhenDone, double leftUntilDone)
 {
-    // «Завершено»: Seed и (leftUntilDone <> 0 или sizeWhenDone = 0).
-    // → stopped, иначе TR_STATUS_FINISHED.
-    return status == static_cast<int>(TorrentStatus::Seed) && sizeWhenDone > 0.0 &&
-           leftUntilDone == 0.0;
+    // «Завершено»: раздача либо остановленный торрент, у которого не осталось
+    // данных. transgui помечает такой остановленный торрент как FINISHED
+    // (см. FillTorrentsList: StateImg = imgDone + leftUntilDone = 0).
+    if (sizeWhenDone <= 0.0 || leftUntilDone != 0.0)
+        return false;
+    return status == static_cast<int>(TorrentStatus::Seed) ||
+           status == static_cast<int>(TorrentStatus::Stopped);
 }
 
 bool torrentIsActive(int rateDownload, int rateUpload)
@@ -134,6 +137,7 @@ bool parseTorrent(const QJsonObject& j, Torrent& t)
     t.pieceCount = optInt(j, "pieceCount");
     t.pieceSize = optNum(j, "pieceSize");
     t.haveValid = optNum(j, "haveValid");
+    t.pieces = optStr(j, "pieces");
     t.magnetLink = optStr(j, "magnetLink");
     t.maxConnectedPeers = optInt(j, "maxConnectedPeers");
 

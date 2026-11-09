@@ -123,11 +123,12 @@ void RpcClient::getTorrents(const QStringList& extraFields)
         // Вкладка «General» (референс — tabGeneral): hash, чанки, комментарий,
         // magnet-ссылка, автор/дата создания, лимит пиров.
         "hashString", "comment", "creator", "dateCreated", "pieceCount",
-        "pieceSize", "haveValid", "magnetLink", "maxConnectedPeers",
+        "pieceSize", "haveValid", "pieces", "magnetLink", "maxConnectedPeers",
     };
     fields += extraFields;
     removeFieldIfUnsupported(fields, "labels", m_rpcVersion, 16);
     removeFieldIfUnsupported(fields, "sequential_download", m_rpcVersion, 18);
+    removeFieldIfUnsupported(fields, "pieces", m_rpcVersion, 5);
     fields.removeDuplicates();
     std::sort(fields.begin(), fields.end());
 

@@ -7,15 +7,18 @@
 #include <QCloseEvent>
 #include <QColor>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFile>
+#include <QFrame>
 #include <QHash>
 #include <QHBoxLayout>
 #include <QMenuBar>
 #include <QApplication>
 #include <QClipboard>
 #include <QHeaderView>
+#include <QIcon>
 #include <QItemSelectionModel>
 #include <QLabel>
 #include <QLineEdit>
@@ -32,6 +35,7 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QSystemTrayIcon>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QTableView>
 #include <QToolBar>
@@ -49,6 +53,7 @@
 #include "propsdialog.h"
 #include "propsform.h"
 #include "statsform.h"
+#include "theme.h"
 #include "tgui/util.h"
 
 namespace {
@@ -58,7 +63,8 @@ constexpr int kRefreshIntervalMs = 2000;
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 {
     setWindowTitle(QStringLiteral("transmissionGUI"));
-    resize(1000, 640);
+    setWindowIcon(QIcon(tgui::theme::appIconPixmap(64)));
+    resize(1200, 780);
 
     m_proxy.setSourceModel(&m_model);
     createUi();
@@ -84,44 +90,39 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 void MainWindow::createUi()
 {
     m_view = new QTreeView(this);
+    m_view->setObjectName(QStringLiteral("torrentView"));
     m_view->setModel(&m_proxy);
     m_view->setSortingEnabled(true);
     m_view->setAlternatingRowColors(true);
     m_view->setRootIsDecorated(false);
+    m_view->setIndentation(0);
     m_view->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_view->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_view->setUniformRowHeights(true);
+    m_view->setMouseTracking(true);
+    m_view->setWordWrap(false);
+    m_view->setFrameShape(QFrame::NoFrame);
     m_view->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_view, &QWidget::customContextMenuRequested, this, &MainWindow::onContextMenu);
     m_view->header()->setStretchLastSection(false);
     m_view->header()->setSectionResizeMode(QHeaderView::Interactive);
-    // Дефолтные ширины и видимый набор колонок — 1:1 с референсом (main.lfm:
+    m_view->header()->setHighlightSections(false);
+    m_view->header()->setMinimumSectionSize(44);
+    // Дефолтные ширины и видимый набор колонок — по референсу (main.lfm:
     // видны Name..ETA, остальные — Visible = False).
-    m_view->setColumnWidth(TorrentModel::ColName, 200);
-    m_view->setColumnWidth(TorrentModel::ColSize, 60);
-    m_view->setColumnWidth(TorrentModel::ColDone, 90);
-    m_view->setColumnWidth(TorrentModel::ColStatus, 70);
-    m_view->setColumnWidth(TorrentModel::ColSeeds, 55);
-    m_view->setColumnWidth(TorrentModel::ColPeers, 55);
-    m_view->setColumnWidth(TorrentModel::ColRateDown, 75);
-    m_view->setColumnWidth(TorrentModel::ColRateUp, 75);
+    m_view->setColumnWidth(TorrentModel::ColName, 280);
+    m_view->setColumnWidth(TorrentModel::ColSize, 72);
+    m_view->setColumnWidth(TorrentModel::ColDone, 108);
+    m_view->setColumnWidth(TorrentModel::ColStatus, 96);
+    m_view->setColumnWidth(TorrentModel::ColSeeds, 58);
+    m_view->setColumnWidth(TorrentModel::ColPeers, 58);
+    m_view->setColumnWidth(TorrentModel::ColRateDown, 82);
+    m_view->setColumnWidth(TorrentModel::ColRateUp, 82);
     m_view->setColumnWidth(TorrentModel::ColEta, 80);
     for (int col = TorrentModel::ColRatio; col < TorrentModel::ColumnCount; ++col)
         m_view->header()->hideSection(col);
-    // «Done» — прогресс-бар; «Name» — чекбокс выделения (референс).
-    m_view->setItemDelegateForColumn(TorrentModel::ColDone, new ProgressDelegate(this));
-    m_view->setItemDelegateForColumn(TorrentModel::ColName, new NameCheckDelegate(this));
-    // Клик по колонке «Name» переключает выделение строки (чекбокс).
-    connect(m_view, &QTreeView::clicked, this, [this](const QModelIndex& idx) {
-        if (idx.column() != TorrentModel::ColName || !m_view->selectionModel())
-            return;
-        auto* sel = m_view->selectionModel();
-        const QItemSelection range(idx, idx);
-        if (sel->isSelected(idx))
-            sel->select(range, QItemSelectionModel::Deselect);
-        else
-            sel->select(range, QItemSelectionModel::Select);
-    });
+    // Единый делегат: фон строки, статус-иконка, статус-точка, прогресс, скорости.
+    m_view->setItemDelegate(new TorrentDelegate(this));
 
     // Левая панель (референс — lvFilter + edSearch): группы статусов,
     // группы папок/трекеров, поиск.
@@ -134,12 +135,13 @@ void MainWindow::createUi()
     m_filterPanel->setFolderGroupingEnabled(folderGrouping);
     m_filterPanel->setTrackerGroupingEnabled(trackerGrouping);
     m_filterPanel->setEnabledUi(false);
+    m_filterPanel->setMinimumWidth(200);
 
     // Грид торрентов (всегда видим) — раскладка по референсу (см. WORKFLOW.md).
     auto* topPanel = new QWidget(this);
     auto* topLayout = new QHBoxLayout(topPanel);
     topLayout->setContentsMargins(0, 0, 0, 0);
-    topLayout->setSpacing(4);
+    topLayout->setSpacing(0);
     topLayout->addWidget(m_filterPanel);
     topLayout->addWidget(m_view, 1);
 
@@ -152,9 +154,14 @@ void MainWindow::createUi()
         view->setEditTriggers(QAbstractItemView::NoEditTriggers);
         view->setAlternatingRowColors(true);
         view->setSortingEnabled(false);
+        view->setShowGrid(false);
+        view->setWordWrap(false);
+        view->setFrameShape(QFrame::NoFrame);
         view->verticalHeader()->setVisible(false);
+        view->verticalHeader()->setDefaultSectionSize(24);
         view->horizontalHeader()->setStretchLastSection(true);
         view->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+        view->horizontalHeader()->setHighlightSections(false);
         return view;
     };
 
@@ -163,6 +170,7 @@ void MainWindow::createUi()
     filesView->setColumnWidth(FileListModel::ColSize, 100);
     filesView->setColumnWidth(FileListModel::ColProgress, 90);
     filesView->setColumnWidth(FileListModel::ColPriority, 90);
+    filesView->setColumnWidth(FileListModel::ColWanted, 70);
     connect(&m_fileModel, &FileListModel::wantChanged, this, &MainWindow::onFileWantToggled);
 
     auto* peersView = makeTable(&m_peerModel);
@@ -182,20 +190,30 @@ void MainWindow::createUi()
     m_statsForm = new StatsForm(this);
 
     m_tabs = new QTabWidget(this);
+    m_tabs->setIconSize(QSize(16, 16));
+    m_tabs->setUsesScrollButtons(true);
     // Названия вкладок 1:1 с референсом (tabControl: General/Trackers/Peers/
     // Files/Statistics).
-    m_tabs->addTab(m_general, tr("General"));
-    m_tabs->addTab(trackersView, tr("Trackers"));
-    m_tabs->addTab(peersView, tr("Peers"));
-    m_tabs->addTab(filesView, tr("Files"));
-    m_tabs->addTab(m_statsForm, tr("Statistics"));
-    m_tabs->setMinimumHeight(160);
+    m_tabs->addTab(m_general, tgui::theme::icon(tgui::theme::Icon::TabGeneral),
+                   tr("General"));
+    m_tabs->addTab(trackersView, tgui::theme::icon(tgui::theme::Icon::TabTrackers),
+                   tr("Trackers"));
+    m_tabs->addTab(peersView, tgui::theme::icon(tgui::theme::Icon::TabPeers),
+                   tr("Peers"));
+    m_tabs->addTab(filesView, tgui::theme::icon(tgui::theme::Icon::TabFiles),
+                   tr("Files"));
+    m_tabs->addTab(m_statsForm, tgui::theme::icon(tgui::theme::Icon::TabStatistics),
+                   tr("Statistics"));
+    m_tabs->setMinimumHeight(190);
 
     auto* splitter = new QSplitter(Qt::Vertical, this);
+    splitter->setHandleWidth(4);
+    splitter->setChildrenCollapsible(false);
     splitter->addWidget(topPanel);
     splitter->addWidget(m_tabs);
     splitter->setStretchFactor(0, 3);
     splitter->setStretchFactor(1, 1);
+    splitter->setSizes({540, 240});
     setCentralWidget(splitter);
 
     if (m_view->selectionModel()) {
@@ -207,59 +225,110 @@ void MainWindow::createUi()
                 [this](const QModelIndex&) { onSelectionChanged(); });
     }
 
+    m_statusDot = new QLabel(this);
+    m_statusDot->setContentsMargins(8, 0, 2, 0);
+    m_statusDot->setPixmap(tgui::theme::statusDotPixmap(tgui::theme::color::textFaint, 9));
+    m_statusText = new QLabel(tr("Disconnected"), this);
+    m_statusText->setObjectName(QStringLiteral("statusText"));
+
+    m_countLabel = new QLabel(this);
+    m_countLabel->setObjectName(QStringLiteral("statusSegment"));
     m_daemonLabel = new QLabel(this);
+    m_daemonLabel->setObjectName(QStringLiteral("statusSegment"));
     m_speedLabel = new QLabel(this);
+    m_speedLabel->setObjectName(QStringLiteral("statusSegment"));
+    m_speedLabel->setTextFormat(Qt::RichText);
+
+    statusBar()->setSizeGripEnabled(true);
+    statusBar()->addWidget(m_statusDot);
+    statusBar()->addWidget(m_statusText);
+    statusBar()->addPermanentWidget(m_countLabel);
     statusBar()->addPermanentWidget(m_daemonLabel);
     statusBar()->addPermanentWidget(m_speedLabel);
+    setConnectionState(tr("Disconnected"), tgui::theme::color::textFaint);
+}
+
+void MainWindow::setConnectionState(const QString& text, const QColor& color)
+{
+    if (m_statusText)
+        m_statusText->setText(text);
+    if (m_statusDot)
+        m_statusDot->setPixmap(tgui::theme::statusDotPixmap(color, 9));
 }
 
 void MainWindow::createActions()
 {
+    using tgui::theme::Icon;
+
     m_actConnect = new QAction(tr("Connect"), this);
     m_actConnect->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_K));
+    m_actConnect->setIcon(tgui::theme::icon(Icon::Connect));
+    m_actConnect->setToolTip(tr("Connect to daemon (Ctrl+K)"));
     connect(m_actConnect, &QAction::triggered, this, &MainWindow::onConnect);
 
     m_actDisconnect = new QAction(tr("Disconnect"), this);
+    m_actDisconnect->setIcon(tgui::theme::icon(Icon::Disconnect));
+    m_actDisconnect->setToolTip(tr("Disconnect from daemon"));
     connect(m_actDisconnect, &QAction::triggered, this, &MainWindow::onDisconnect);
 
     m_actAdd = new QAction(tr("Add torrent…"), this);
     m_actAdd->setShortcut(QKeySequence::Open);
+    m_actAdd->setIcon(tgui::theme::icon(Icon::Add));
+    m_actAdd->setToolTip(tr("Add torrent (Ctrl+O)"));
     m_actAdd->setEnabled(false);
     connect(m_actAdd, &QAction::triggered, this, &MainWindow::onAddTorrent);
 
     m_actStart = new QAction(tr("Start"), this);
+    m_actStart->setIcon(tgui::theme::icon(Icon::Start));
+    m_actStart->setToolTip(tr("Start selected torrents"));
     connect(m_actStart, &QAction::triggered, this, &MainWindow::onStartSelected);
 
     m_actStop = new QAction(tr("Stop"), this);
+    m_actStop->setIcon(tgui::theme::icon(Icon::Stop));
+    m_actStop->setToolTip(tr("Stop selected torrents"));
     connect(m_actStop, &QAction::triggered, this, &MainWindow::onStopSelected);
 
     m_actStartAll = new QAction(tr("Start all"), this);
+    m_actStartAll->setIcon(tgui::theme::icon(Icon::StartAll));
+    m_actStartAll->setToolTip(tr("Start all torrents"));
     connect(m_actStartAll, &QAction::triggered, this, &MainWindow::onStartAll);
 
     m_actStopAll = new QAction(tr("Stop all"), this);
+    m_actStopAll->setIcon(tgui::theme::icon(Icon::StopAll));
+    m_actStopAll->setToolTip(tr("Stop all torrents"));
     connect(m_actStopAll, &QAction::triggered, this, &MainWindow::onStopAll);
 
     m_actRemove = new QAction(tr("Remove"), this);
     m_actRemove->setShortcut(QKeySequence::Delete);
+    m_actRemove->setIcon(tgui::theme::icon(Icon::Remove));
+    m_actRemove->setToolTip(tr("Remove selected torrents (Del)"));
     connect(m_actRemove, &QAction::triggered, this, &MainWindow::onRemoveSelected);
 
     m_actProperties = new QAction(tr("Properties…"), this);
     m_actProperties->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_I));
+    m_actProperties->setIcon(tgui::theme::icon(Icon::Properties));
+    m_actProperties->setToolTip(tr("Torrent properties (Ctrl+I)"));
     m_actProperties->setEnabled(false);
     connect(m_actProperties, &QAction::triggered, this, &MainWindow::onShowProperties);
 
     m_actMove = new QAction(tr("Move…"), this);
     m_actMove->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_M));
+    m_actMove->setIcon(tgui::theme::icon(Icon::Move));
+    m_actMove->setToolTip(tr("Move torrent data (Ctrl+M)"));
     m_actMove->setEnabled(false);
     connect(m_actMove, &QAction::triggered, this, &MainWindow::onMoveSelected);
 
     m_actRefresh = new QAction(tr("Refresh"), this);
     m_actRefresh->setShortcut(QKeySequence::Refresh);
+    m_actRefresh->setIcon(tgui::theme::icon(Icon::Refresh));
+    m_actRefresh->setToolTip(tr("Refresh torrent list (F5)"));
     connect(m_actRefresh, &QAction::triggered, this, &MainWindow::onRefresh);
 
     m_actAutoRefresh = new QAction(tr("Auto refresh"), this);
     m_actAutoRefresh->setCheckable(true);
     m_actAutoRefresh->setChecked(true);
+    m_actAutoRefresh->setIcon(tgui::theme::icon(Icon::AutoRefresh));
+    m_actAutoRefresh->setToolTip(tr("Automatically refresh the torrent list"));
     connect(m_actAutoRefresh, &QAction::toggled, this, [this](bool on) {
         if (on && m_connected)
             m_refreshTimer.start();
@@ -268,11 +337,28 @@ void MainWindow::createActions()
         QSettings().setValue("ui/autoRefresh", on);
     });
 
+    m_actAltSpeed = new QAction(tr("Alt speed limit"), this);
+    m_actAltSpeed->setCheckable(true);
+    m_actAltSpeed->setChecked(QSettings().value("ui/altSpeed", false).toBool());
+    m_actAltSpeed->setIcon(tgui::theme::icon(Icon::AltSpeed));
+    m_actAltSpeed->setToolTip(tr("Toggle the daemon's alternative speed limit"));
+    connect(m_actAltSpeed, &QAction::toggled, this, [this](bool on) {
+        QSettings().setValue("ui/altSpeed", on);
+        if (m_rpc && m_connected)
+            m_rpc->setAltSpeed(on, 50, 50);
+    });
+
     m_actAbout = new QAction(tr("About"), this);
+    m_actAbout->setIcon(tgui::theme::icon(Icon::About));
     connect(m_actAbout, &QAction::triggered, this, &MainWindow::onAbout);
 
     auto* tb = addToolBar(tr("Main"));
+    tb->setObjectName(QStringLiteral("mainToolBar"));
     tb->setMovable(false);
+    tb->setFloatable(false);
+    tb->setAllowedAreas(Qt::TopToolBarArea);
+    tb->setIconSize(QSize(20, 20));
+    tb->setToolButtonStyle(Qt::ToolButtonIconOnly);
     tb->addAction(m_actConnect);
     tb->addAction(m_actDisconnect);
     tb->addSeparator();
@@ -289,8 +375,7 @@ void MainWindow::createActions()
     tb->addSeparator();
     tb->addAction(m_actRefresh);
     tb->addAction(m_actAutoRefresh);
-    tb->addSeparator();
-    tb->addAction(m_actAbout);
+    tb->addAction(m_actAltSpeed);
 }
 
 void MainWindow::setConnectedUi(bool on)
@@ -300,6 +385,7 @@ void MainWindow::setConnectedUi(bool on)
     m_actAdd->setEnabled(on);
     m_actRefresh->setEnabled(on);
     m_actAutoRefresh->setEnabled(on);
+    m_actAltSpeed->setEnabled(on);
     m_actStart->setEnabled(on);
     m_actStop->setEnabled(on);
     m_actStartAll->setEnabled(on);
@@ -347,6 +433,7 @@ void MainWindow::startConnect(const tgui::RpcClient::Options& opts)
             &MainWindow::onRequestCompleted);
 
     statusBar()->showMessage(tr("Connecting to %1…").arg(opts.url.toString()), 5000);
+    setConnectionState(tr("Connecting…"), tgui::theme::color::accent);
     m_rpc->connectToDaemon();
 }
 
@@ -383,8 +470,10 @@ void MainWindow::onDisconnect()
     m_statsForm->clear();
     m_currentId = -1;
     setConnectedUi(false);
+    setConnectionState(tr("Disconnected"), tgui::theme::color::textFaint);
     m_daemonLabel->clear();
     m_speedLabel->clear();
+    m_countLabel->clear();
     statusBar()->showMessage(tr("Disconnected"), 5000);
 }
 
@@ -394,7 +483,11 @@ void MainWindow::onConnected(const tgui::SessionInfo& info)
     m_sessionInfo = info;
     if (m_general->torrent())
         m_general->setSession(info);
-    m_daemonLabel->setText(tr("Transmission %1, RPC %2").arg(info.version).arg(info.rpcVersion));
+    m_daemonLabel->setText(
+        tr("Transmission %1 · RPC %2").arg(info.version).arg(info.rpcVersion));
+    if (m_rpc)
+        m_daemonLabel->setToolTip(m_rpc->options().url.toString());
+    setConnectionState(tr("Connected"), tgui::theme::color::green);
     setConnectedUi(true);
     if (m_actAutoRefresh->isChecked())
         m_refreshTimer.start();
@@ -408,7 +501,10 @@ void MainWindow::onConnectionFailed(const QString& error)
     m_refreshTimer.stop();
     m_connected = false;
     setConnectedUi(false);
+    setConnectionState(tr("Connection failed"), tgui::theme::color::red);
     m_daemonLabel->clear();
+    m_speedLabel->clear();
+    m_countLabel->clear();
     const QString url = m_rpc ? m_rpc->options().url.toString() : QString();
     // Отложенная очистка: destroy-им клиента после завершения цепочки сигналов.
     QTimer::singleShot(0, this, [this, error, url] {
@@ -446,6 +542,46 @@ void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
         }
     }
     updateStatusBarTotals();
+    const int count = static_cast<int>(torrents.size());
+    m_countLabel->setText(count == 1 ? tr("1 torrent") : tr("%1 torrents").arg(count));
+
+    if (!m_view->selectionModel())
+        return;
+
+    // setTorrents() пересоздаёт модель, а с ней сбрасывается выделение вью.
+    // Возвращаем подсветку выбранного торрента, чтобы она не пропадала при
+    // автообновлении раз в 2 секунды.
+    if (m_currentId >= 0) {
+        int srcRow = -1;
+        const auto& list = m_model.torrents();
+        for (int i = 0; i < list.size(); ++i) {
+            if (list.at(i).id == m_currentId) {
+                srcRow = i;
+                break;
+            }
+        }
+        if (srcRow >= 0) {
+            const QModelIndex src = m_model.index(srcRow, TorrentModel::ColName);
+            const QModelIndex proxyIdx = m_proxy.mapFromSource(src);
+            if (proxyIdx.isValid()) {
+                m_view->setCurrentIndex(proxyIdx);
+                m_view->selectionModel()->select(
+                    QItemSelection(proxyIdx, proxyIdx),
+                    QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+                return;
+            }
+        }
+    }
+
+    // Первая загрузка: выбираем первую строку, как в эталоне, — иначе вкладка
+    // General остаётся пустой до ручного клика.
+    if (m_currentId < 0 && m_proxy.rowCount() > 0) {
+        const QModelIndex first = m_proxy.index(0, TorrentModel::ColName);
+        m_view->setCurrentIndex(first);
+        m_view->selectionModel()->select(
+            QItemSelection(first, first),
+            QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    }
 }
 
 void MainWindow::onFilterChanged(int group, const QString& folder, const QString& tracker)
@@ -464,7 +600,6 @@ void MainWindow::updateFilterPanel(const QVector<tgui::Torrent>& torrents)
     for (const auto& t : torrents) {
         const auto matchesGroup = &TorrentModel::matchesGroup;
         if (matchesGroup(t, TorrentModel::GroupDownloading))
-            downloading++;
             downloading++;
         if (matchesGroup(t, TorrentModel::GroupCompleted))
             completed++;
@@ -625,9 +760,13 @@ void MainWindow::updateStatusBarTotals()
         down += t.rateDownload.value_or(0);
         up += t.rateUpload.value_or(0);
     }
-    m_speedLabel->setText(tr("↓ %1  ↑ %2")
-                              .arg(QString::fromStdString(tgui::formatRate(down)))
-                              .arg(QString::fromStdString(tgui::formatRate(up))));
+    m_speedLabel->setText(
+        QStringLiteral("<span style=\"color:%1;\">↓</span>&nbsp;%2&nbsp;&nbsp;"
+                       "<span style=\"color:%3;\">↑</span>&nbsp;%4")
+            .arg(tgui::theme::color::accent.name(),
+                 QString::fromStdString(tgui::formatRate(down)),
+                 tgui::theme::color::green.name(),
+                 QString::fromStdString(tgui::formatRate(up))));
 }
 
 void MainWindow::onShowProperties()
@@ -840,14 +979,7 @@ void MainWindow::createMenus()
 
     // --- Tools ---
     auto* mTools = menuBar()->addMenu(tr("Tools"));
-    auto* actAltSpeed = mTools->addAction(tr("Alt speed limit"));
-    actAltSpeed->setCheckable(true);
-    actAltSpeed->setChecked(QSettings().value("ui/altSpeed", false).toBool());
-    connect(actAltSpeed, &QAction::toggled, this, [this, actAltSpeed](bool on) {
-        QSettings().setValue("ui/altSpeed", on);
-        if (m_rpc && m_connected)
-            m_rpc->setAltSpeed(on, 50, 50);
-    });
+    mTools->addAction(m_actAltSpeed);
     auto* actPortTest = mTools->addAction(tr("Test port"));
     connect(actPortTest, &QAction::triggered, this, &MainWindow::onPortTest);
     auto* actDaemonOpts = mTools->addAction(tr("Daemon options"));
@@ -1224,25 +1356,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
 
 QPixmap MainWindow::makeTrayIcon()
 {
-    QPixmap pm(64, 64);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(63, 143, 216));
-    p.drawRoundedRect(2, 2, 60, 60, 14, 14);
-    QPen pen(Qt::white, 7);
-    pen.setCapStyle(Qt::RoundCap);
-    pen.setJoinStyle(Qt::RoundJoin);
-    p.setPen(pen);
-    p.setBrush(Qt::NoBrush);
-    p.drawLine(22, 16, 22, 44); // стрелка вниз
-    p.drawLine(22, 44, 12, 32);
-    p.drawLine(22, 44, 32, 32);
-    p.drawLine(42, 48, 42, 20); // стрелка вверх
-    p.drawLine(42, 20, 32, 32);
-    p.drawLine(42, 20, 52, 32);
-    return pm;
+    return tgui::theme::appIconPixmap(64);
 }
 
 void MainWindow::loadSettings(tgui::RpcClient::Options& opts)

@@ -1,14 +1,16 @@
 #include "statsform.h"
 
+#include <QFrame>
 #include <QGridLayout>
 #include <QLabel>
+#include <QScrollArea>
 #include <QVBoxLayout>
 
 #include "tgui/util.h"
 
 namespace {
 
-// 93782 → «1д 01:16:22»; 0 → «00:00:00».
+// 93782 → «1d 01:16:22»; 0 → «00:00:00».
 QString fmtDuration(long long seconds)
 {
     if (seconds < 0)
@@ -30,6 +32,12 @@ StatsForm::StatsForm(QWidget* parent) : QWidget(parent)
 {
     m_layout = new QVBoxLayout(this);
     m_layout->setContentsMargins(0, 0, 0, 0);
+
+    m_scroll = new QScrollArea(this);
+    m_scroll->setWidgetResizable(true);
+    m_scroll->setFrameShape(QFrame::NoFrame);
+    m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_layout->addWidget(m_scroll);
 }
 
 void StatsForm::setStats(const tgui::SessionStats& stats)
@@ -46,42 +54,63 @@ void StatsForm::clear()
 
 void StatsForm::rebuild()
 {
-    // Контент живёт в отдельном контейнере; пересборка = удалить контейнер
-    // (стандартный каскад деструктора QWidget). См. PropsForm::rebuild —
-    // ручной обход findChildren в Qt 6.12 приводит к segfault.
+    // Контент живёт в отдельном контейнере; пересборка = заменить widget
+    // у QScrollArea (стандартный каскад деструктора QWidget).
     if (m_content) {
-        if (m_layout)
-            m_layout->removeWidget(m_content);
+        m_scroll->takeWidget();
         delete m_content;
         m_content = nullptr;
     }
 
-    m_content = new QWidget(this);
+    m_content = new QWidget;
+    m_scroll->setWidget(m_content);
     auto* contentLayout = new QVBoxLayout(m_content);
-    contentLayout->setContentsMargins(8, 8, 8, 8);
-    m_layout->addWidget(m_content);
+    contentLayout->setContentsMargins(12, 12, 12, 12);
+    contentLayout->setSpacing(12);
 
     if (!m_stats.has_value()) {
         auto* placeholder = new QLabel(tr("Statistics unavailable"), m_content);
-        placeholder->setEnabled(false);
+        placeholder->setObjectName(QStringLiteral("fieldLabel"));
         contentLayout->addWidget(placeholder);
+        contentLayout->addStretch(1);
         return;
     }
 
-    const auto& s = *m_stats;
-    auto* grid = new QGridLayout();
+    auto* card = new QFrame(m_content);
+    card->setObjectName(QStringLiteral("statsCard"));
+    auto* cardLayout = new QVBoxLayout(card);
+    cardLayout->setContentsMargins(0, 0, 0, 0);
+    cardLayout->setSpacing(0);
 
-    auto cell = [this, grid](int r, int c, const QString& text, bool header = false) {
+    auto* title = new QLabel(tr("Session"), card);
+    title->setObjectName(QStringLiteral("infoCardTitle"));
+    cardLayout->addWidget(title);
+
+    auto* body = new QWidget(card);
+    auto* grid = new QGridLayout(body);
+    grid->setContentsMargins(12, 8, 12, 12);
+    grid->setHorizontalSpacing(20);
+    grid->setVerticalSpacing(6);
+    grid->setColumnStretch(0, 1);
+    cardLayout->addWidget(body);
+
+    const auto& s = *m_stats;
+
+    auto cell = [this, grid](int r, int c, const QString& text, bool header = false,
+                             Qt::Alignment align = Qt::AlignLeft | Qt::AlignVCenter) {
         auto* label = new QLabel(text, m_content);
-        if (!header)
+        if (header)
+            label->setObjectName(QStringLiteral("statsHeader"));
+        else
             label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        label->setAlignment(align);
         grid->addWidget(label, r, c);
         return label;
     };
 
     cell(0, 0, tr("Metric"), true);
-    cell(0, 1, tr("Current"), true);
-    cell(0, 2, tr("Total"), true);
+    cell(0, 1, tr("Current"), true, Qt::AlignRight | Qt::AlignVCenter);
+    cell(0, 2, tr("Total"), true, Qt::AlignRight | Qt::AlignVCenter);
 
     const auto fmtSize = [](double bytes) {
         return QString::fromStdString(tgui::formatSize(bytes));
@@ -89,8 +118,8 @@ void StatsForm::rebuild()
 
     auto row = [cell](int r, const QString& name, const QString& cur, const QString& cum) {
         cell(r, 0, name);
-        cell(r, 1, cur);
-        cell(r, 2, cum);
+        cell(r, 1, cur, false, Qt::AlignRight | Qt::AlignVCenter);
+        cell(r, 2, cum, false, Qt::AlignRight | Qt::AlignVCenter);
     };
 
     row(1, tr("Downloaded"), fmtSize(s.current.downloadedBytes),
@@ -102,6 +131,6 @@ void StatsForm::rebuild()
     row(4, tr("Active for"), fmtDuration(s.current.secondsActive),
         fmtDuration(s.cumulative.secondsActive));
 
-    grid->setColumnStretch(0, 1);
-    contentLayout->addLayout(grid);
+    contentLayout->addWidget(card);
+    contentLayout->addStretch(1);
 }

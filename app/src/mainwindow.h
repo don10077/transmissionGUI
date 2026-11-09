@@ -22,6 +22,7 @@ class QDropEvent;
 class QCloseEvent;
 class QSystemTrayIcon;
 class QPixmap;
+class QColor;
 class PropsForm;
 class StatsForm;
 class FilterPanel;
@@ -105,6 +106,7 @@ private:
     void startConnect(const tgui::RpcClient::Options& opts);
     void maybeAutoConnect();
     void setConnectedUi(bool connected);
+    void setConnectionState(const QString& text, const QColor& color);
     void updateStatusBarTotals();
     void updateFilterPanel(const QVector<tgui::Torrent>& torrents);
     void startAdd(const tgui::RpcClient::AddTorrent& params, bool doSave,
@@ -143,6 +145,9 @@ private:
     tgui::SessionInfo m_sessionInfo; // session-get для лимитов в «General»
     QLabel* m_daemonLabel = nullptr;
     QLabel* m_speedLabel = nullptr;
+    QLabel* m_countLabel = nullptr;
+    QLabel* m_statusText = nullptr;
+    QLabel* m_statusDot = nullptr;
 
     QAction* m_actConnect = nullptr;
     QAction* m_actDisconnect = nullptr;
@@ -156,6 +161,7 @@ private:
     QAction* m_actMove = nullptr;
     QAction* m_actRefresh = nullptr;
     QAction* m_actAutoRefresh = nullptr;
+    QAction* m_actAltSpeed = nullptr;
     QAction* m_actAbout = nullptr;
 
     QSystemTrayIcon* m_tray = nullptr;

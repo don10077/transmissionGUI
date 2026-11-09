@@ -37,6 +37,14 @@ enum class Icon {
     FilterStopped,
     FilterError,
     FilterWaiting,
+    // Иконки состояния торрента (первая ячейка колонки Name).
+    StatusDone,
+    StatusStopped,
+    StatusDown,
+    StatusSeed,
+    StatusError,
+    StatusWaiting,
+    StatusVerifying,
     TabGeneral,
     TabTrackers,
     TabPeers,
@@ -46,25 +54,29 @@ enum class Icon {
 
 namespace color {
 
-inline const QColor window{0xF1, 0xF4, 0xF7};
+// Палитра — как в эталоне (transgui): серая «хром-панель», белый контент,
+// системное синее выделение, серые заголовки секций.
+inline const QColor window{0xF0, 0xF0, 0xF0};
 inline const QColor panel{0xFF, 0xFF, 0xFF};
-inline const QColor panelAlt{0xF7, 0xF9, 0xFB};
-inline const QColor border{0xDC, 0xE1, 0xE7};
-inline const QColor borderSoft{0xE7, 0xEB, 0xF0};
-inline const QColor text{0x23, 0x2A, 0x33};
-inline const QColor textMuted{0x68, 0x71, 0x7E};
-inline const QColor textFaint{0x8A, 0x93, 0xA0};
-inline const QColor accent{0x2F, 0x7F, 0xD1};
-inline const QColor accentDark{0x24, 0x6B, 0xB5};
-inline const QColor accentLight{0xE8, 0xF1, 0xFB};
-inline const QColor hover{0xED, 0xF4, 0xFC};
-inline const QColor green{0x2A, 0xA1, 0x5A};
+inline const QColor panelAlt{0xF7, 0xF7, 0xF7};
+inline const QColor border{0xAB, 0xAD, 0xB3};
+inline const QColor borderSoft{0xD9, 0xD9, 0xD9};
+inline const QColor section{0xE1, 0xE1, 0xE1};
+inline const QColor text{0x00, 0x00, 0x00};
+inline const QColor textMuted{0x3C, 0x3C, 0x3C};
+inline const QColor textFaint{0x7A, 0x7A, 0x7A};
+inline const QColor iconSlate{0x33, 0x33, 0x33};
+inline const QColor accent{0x00, 0x78, 0xD7};
+inline const QColor accentDark{0x00, 0x5A, 0x9E};
+inline const QColor accentLight{0xCC, 0xE8, 0xFF};
+inline const QColor hover{0xE5, 0xF3, 0xFF};
+inline const QColor green{0x1E, 0x9E, 0x4A};
 inline const QColor greenLight{0xE7, 0xF6, 0xED};
-inline const QColor amber{0xE0, 0xA2, 0x3B};
-inline const QColor amberLight{0xFB, 0xF3, 0xE3};
-inline const QColor red{0xD6, 0x45, 0x45};
+inline const QColor amber{0xE8, 0xA2, 0x00};
+inline const QColor amberLight{0xFD, 0xF3, 0xDC};
+inline const QColor red{0xD1, 0x34, 0x38};
 inline const QColor redLight{0xFB, 0xEA, 0xEA};
-inline const QColor purple{0x7B, 0x61, 0xC9};
+inline const QColor purple{0x7A, 0x65, 0xC0};
 
 } // namespace color
 

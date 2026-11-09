@@ -56,7 +56,7 @@ bool TorrentModel::matchesGroup(const tgui::Torrent& t, int group)
                                t.leftUntilDone.value_or(0.0));
     const bool active = (t.rateDownload.value_or(0) != 0) ||
                         (t.rateUpload.value_or(0) != 0);
-    const bool stopped = (status == 0) || finished;
+    const bool stopped = (status == 0);
     const bool error = t.errorString.has_value() && !t.errorString->isEmpty() &&
                        status != 0;
     switch (group) {
@@ -65,7 +65,7 @@ bool TorrentModel::matchesGroup(const tgui::Torrent& t, int group)
         case GroupDownloading:
             return status == 4;
         case GroupCompleted:
-            return status == 6;
+            return finished;
         case GroupActive:
             return active;
         case GroupInactive:
