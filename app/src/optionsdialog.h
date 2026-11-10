@@ -14,7 +14,7 @@ class QPlainTextEdit;
 class OptionsDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit OptionsDialog(QWidget* parent = nullptr);
+    explicit OptionsDialog(QWidget* parent = nullptr, int rpcVersion = 0);
 
     // Доступ к значениям (для UI и тестов).
     QString currentLanguage() const;
@@ -41,5 +41,7 @@ private:
     QCheckBox* m_minimizeToTray = nullptr;
     QCheckBox* m_trayIcon = nullptr;
     QCheckBox* m_trayNotify = nullptr;
+    QCheckBox* m_autoSequential = nullptr;
+    QPlainTextEdit* m_sequentialExtensions = nullptr;
     bool m_restartRequired = false;
 };

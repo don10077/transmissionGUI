@@ -35,6 +35,30 @@ inline QString mapRemoteToLocal(const QString& path, const QStringList& mappings
     return path;
 }
 
+/** Convert a folder selected locally back to the daemon namespace. */
+inline QString mapLocalToRemote(const QString& path, const QStringList& mappings)
+{
+    const QString localPath = QString(path).replace('\\', '/');
+    for (const auto& mapping : mappings) {
+        const int eq = mapping.indexOf('=');
+        if (eq <= 0) continue;
+        QString local = mapping.mid(eq + 1).trimmed().replace('\\', '/');
+        QString remote = mapping.left(eq).trimmed().replace('\\', '/');
+        while (local.endsWith('/')) local.chop(1);
+        while (remote.endsWith('/') && remote.size() > 1) remote.chop(1);
+        if (local.isEmpty() || remote.isEmpty()) continue;
+#ifdef Q_OS_WIN
+        const auto sensitivity = Qt::CaseInsensitive;
+#else
+        const auto sensitivity = Qt::CaseSensitive;
+#endif
+        if (localPath.compare(local, sensitivity) == 0) return remote;
+        if (localPath.startsWith(local + '/', sensitivity))
+            return remote + (remote.endsWith('/') ? QString() : QStringLiteral("/")) + localPath.mid(local.size() + 1);
+    }
+    return path;
+}
+
 // Разбирает текст настроек (одна строка "remote=local" в строке) в список правил.
 inline QStringList pathMappingsFromText(const QString& text)
 {

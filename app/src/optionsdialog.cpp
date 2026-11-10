@@ -14,6 +14,7 @@
 #include <QVBoxLayout>
 
 #include "pathmap.h"
+#include "sequentialpolicy.h"
 
 namespace {
 constexpr char kKeyLanguage[] = "ui/language";
@@ -26,13 +27,13 @@ constexpr char kKeyTrayNotify[] = "ui/trayNotify";
 constexpr char kKeyPaths[] = "paths/mappings";
 }  // namespace
 
-OptionsDialog::OptionsDialog(QWidget* parent)
+OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion)
     : QDialog(parent)
 {
     // Как transgui/options.lfm: «Application options» + вкладки
     // General / Advanced (+ Paths для маппинга путей).
     setWindowTitle(tr("Application options"));
-    resize(560, 380);
+    resize(620, 450);
 
     auto* tabs = new QTabWidget(this);
 
@@ -47,6 +48,7 @@ OptionsDialog::OptionsDialog(QWidget* parent)
 
     m_refresh = new QSpinBox(dataGroup);
     m_refresh->setRange(1, 999);
+    m_refresh->setMaximumWidth(160);
     m_refresh->setSuffix(tr(" seconds"));
     m_refresh->setValue(QSettings().value(kKeyRefresh, 2).toInt());
     dataForm->addRow(tr("Data refresh interval:"), m_refresh);
@@ -76,9 +78,9 @@ OptionsDialog::OptionsDialog(QWidget* parent)
     m_trayNotify->setChecked(QSettings().value(kKeyTrayNotify, false).toBool());
 
     trayGrid->addWidget(m_minimizeToTray, 0, 0);
-    trayGrid->addWidget(m_closeToTray, 0, 1);
-    trayGrid->addWidget(m_trayIcon, 1, 0);
-    trayGrid->addWidget(m_trayNotify, 1, 1);
+    trayGrid->addWidget(m_closeToTray, 1, 0);
+    trayGrid->addWidget(m_trayIcon, 2, 0);
+    trayGrid->addWidget(m_trayNotify, 3, 0);
     trayGrid->setColumnStretch(0, 1);
     trayGrid->setColumnStretch(1, 1);
     advancedLayout->addWidget(tray);
@@ -89,6 +91,7 @@ OptionsDialog::OptionsDialog(QWidget* parent)
 
     m_scale = new QSpinBox(look);
     m_scale->setRange(75, 200);
+    m_scale->setMaximumWidth(160);
     m_scale->setSingleStep(5);
     m_scale->setSuffix(tr(" %"));
     m_scale->setValue(QSettings().value(kKeyScale, 100).toInt());
@@ -104,7 +107,7 @@ OptionsDialog::OptionsDialog(QWidget* parent)
             m_language->setCurrentIndex(idx);
     }
     lookForm->addRow(tr("Language:"), m_language);
-    advancedLayout->addWidget(look);
+    generalLayout->insertWidget(1, look);
     advancedLayout->addStretch(1);
     tabs->addTab(advanced, tr("Advanced"));
 
@@ -127,6 +130,33 @@ OptionsDialog::OptionsDialog(QWidget* parent)
     pathsLayout->addWidget(m_paths, 1);
     tabs->addTab(pathsPage, tr("Paths"));
 
+    auto* sequentialPage = new QWidget(tabs);
+    auto* sequentialLayout = new QVBoxLayout(sequentialPage);
+    sequentialLayout->setContentsMargins(16, 16, 16, 16);
+    sequentialLayout->setSpacing(10);
+    m_autoSequential = new QCheckBox(tr("Automatically enable sequential download for these extensions"), sequentialPage);
+    m_autoSequential->setObjectName(QStringLiteral("autoSequential"));
+    m_autoSequential->setChecked(QSettings().value("downloads/autoSequential", false).toBool());
+    auto* hint = new QLabel(tr("Only for torrents containing one file. You can change the checkbox in the Add torrent dialog."), sequentialPage);
+    hint->setWordWrap(true);
+    auto* extensionsLabel = new QLabel(tr("Extensions (separated by spaces, commas or new lines):"), sequentialPage);
+    m_sequentialExtensions = new QPlainTextEdit(sequentialPage);
+    m_sequentialExtensions->setObjectName(QStringLiteral("sequentialExtensions"));
+    m_sequentialExtensions->setPlainText(QSettings().value("downloads/sequentialExtensions", tgui::defaultSequentialExtensions()).toString());
+    sequentialLayout->addWidget(m_autoSequential);
+    sequentialLayout->addWidget(hint);
+    sequentialLayout->addWidget(extensionsLabel);
+    sequentialLayout->addWidget(m_sequentialExtensions, 1);
+    if (rpcVersion < 18) {
+        auto* unsupported = new QLabel(tr("Connect to a daemon supporting sequential download (RPC 18 or newer) to edit this setting."), sequentialPage);
+        unsupported->setWordWrap(true);
+        sequentialLayout->addWidget(unsupported);
+        m_autoSequential->setEnabled(false);
+    }
+    m_sequentialExtensions->setEnabled(rpcVersion >= 18 && m_autoSequential->isChecked());
+    connect(m_autoSequential, &QCheckBox::toggled, m_sequentialExtensions, &QWidget::setEnabled);
+    tabs->addTab(sequentialPage, tr("Sequential download"));
+
     auto* buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, [this] {
@@ -136,6 +166,8 @@ OptionsDialog::OptionsDialog(QWidget* parent)
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     auto* root = new QVBoxLayout(this);
+    root->setContentsMargins(12, 12, 12, 12);
+    root->setSpacing(12);
     root->addWidget(tabs, 1);
     root->addWidget(buttons);
 }
@@ -197,6 +229,8 @@ void OptionsDialog::apply()
     s.setValue(kKeyMinimizeToTray, m_minimizeToTray->isChecked());
     s.setValue(kKeyTrayIcon, m_trayIcon->isChecked());
     s.setValue(kKeyTrayNotify, m_trayNotify->isChecked());
+    s.setValue("downloads/autoSequential", m_autoSequential->isChecked());
+    s.setValue("downloads/sequentialExtensions", m_sequentialExtensions->toPlainText());
     s.setValue(kKeyPaths, tgui::pathMappingsFromText(pathMappingsText()));
     s.sync();
 }

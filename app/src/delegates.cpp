@@ -53,9 +53,10 @@ tgui::theme::Icon torrentStatusIcon(int status, bool finished, bool error)
         default:
             break;
     }
-    // Остановленный, но полностью скачанный — зелёная галочка «готово».
     if (finished)
         return Icon::StatusDone;
+    if (status == 0)
+        return Icon::Pause;
     return Icon::StatusStopped;
 }
 

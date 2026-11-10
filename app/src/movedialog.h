@@ -2,14 +2,14 @@
 
 #include <QDialog>
 
-// Диалог «Переместить»: новая папка + опциональное переименование файлов.
+// Диалог «Переместить»: папка демона и перенос существующих данных.
 class MoveDialog : public QDialog {
     Q_OBJECT
 public:
     explicit MoveDialog(const QString& currentDir, QWidget* parent = nullptr);
 
     QString targetDir() const;
-    bool renameFiles() const;
+    bool moveData() const;
 
 private:
     void onBrowse();

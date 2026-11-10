@@ -1109,3 +1109,30 @@ TEST(RpcLive, Trackers)
 }
 
 } // namespace
+
+TEST_F(RpcClientTest, MoveUsesSetLocationWithExplicitMoveFlag)
+{
+    connectWith(14);
+    for (bool move : {true, false}) {
+        server.enqueue({});
+        QEventLoop loop;
+        bool completed = false;
+        const auto connection = QObject::connect(client.get(), &RpcClient::requestCompleted,
+            [&](const QString& method, bool ok, const QString&, const QJsonObject&) {
+                if (method != "torrent-set-location") return;
+                completed = ok; loop.quit();
+            });
+        QTimer timer;
+        QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+        timer.setSingleShot(true); timer.start(2500);
+        client->setLocation(42, "/server/target", move);
+        loop.exec();
+        QObject::disconnect(connection);
+        ASSERT_TRUE(completed);
+        const auto request = server.requests().last();
+        EXPECT_EQ(request.rpcMethod, QStringLiteral("torrent-set-location"));
+        EXPECT_EQ(request.arguments.value("location").toString(), QStringLiteral("/server/target"));
+        EXPECT_EQ(request.arguments.value("move").toBool(), move);
+        EXPECT_EQ(request.arguments.value("ids").toArray().first().toInt(), 42);
+    }
+}

@@ -9,6 +9,8 @@
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QVBoxLayout>
+#include <QTabWidget>
+#include <QScrollArea>
 
 DaemonSettings DaemonSettings::fromSession(const tgui::SessionInfo& s)
 {
@@ -18,8 +20,8 @@ DaemonSettings DaemonSettings::fromSession(const tgui::SessionInfo& s)
     d.speedLimitUpEnabled = s.speedLimitUpEnabled;
     d.speedLimitUp = s.speedLimitUp;
     d.altSpeedEnabled = s.altSpeedEnabled;
-    d.altSpeedDown = s.altSpeedDown > 0 ? s.altSpeedDown : 100;
-    d.altSpeedUp = s.altSpeedUp > 0 ? s.altSpeedUp : 100;
+    d.altSpeedDown = qMax(0, s.altSpeedDown);
+    d.altSpeedUp = qMax(0, s.altSpeedUp);
     d.dht = s.dhtEnabled;
     d.pex = s.pexEnabled;
     d.lpd = s.lpdEnabled;
@@ -28,7 +30,7 @@ DaemonSettings DaemonSettings::fromSession(const tgui::SessionInfo& s)
     d.downloadDir = s.downloadDir;
     d.startAddedTorrents = s.startAddedTorrents;
     d.ratioLimitEnabled = s.ratioLimitEnabled;
-    d.ratioLimit = s.ratioLimit > 0 ? s.ratioLimit : 2.0;
+    d.ratioLimit = qMax(0.0, s.ratioLimit);
     d.blocklistEnabled = s.blocklistEnabled;
     d.blocklistUrl = s.blocklistUrl;
     return d;
@@ -62,9 +64,9 @@ namespace {
 QSpinBox* makeKbSpin(QWidget* parent, int value)
 {
     auto* s = new QSpinBox(parent);
-    s->setRange(1, 1000000);
+    s->setRange(0, 1000000000);
     s->setSuffix(QStringLiteral(" KB/s"));
-    s->setValue(value > 0 ? value : 100);
+    s->setValue(qMax(0, value));
     return s;
 }
 }  // namespace
@@ -73,6 +75,7 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
     : QDialog(parent)
 {
     setWindowTitle(tr("Daemon options"));
+    resize(610, 460);
     const DaemonSettings s = DaemonSettings::fromSession(initial);
 
     // --- Bandwidth ---
@@ -82,7 +85,7 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
     m_speedLimitDown = makeKbSpin(bw, s.speedLimitDown);
     auto* rowDown = new QWidget(bw);
     {
-        auto* l = new QVBoxLayout(rowDown);
+        auto* l = new QHBoxLayout(rowDown);
         l->setContentsMargins(0, 0, 0, 0);
         l->addWidget(m_speedLimitDownEnabled);
         l->addWidget(m_speedLimitDown);
@@ -92,7 +95,7 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
     m_speedLimitUp = makeKbSpin(bw, s.speedLimitUp);
     auto* rowUp = new QWidget(bw);
     {
-        auto* l = new QVBoxLayout(rowUp);
+        auto* l = new QHBoxLayout(rowUp);
         l->setContentsMargins(0, 0, 0, 0);
         l->addWidget(m_speedLimitUpEnabled);
         l->addWidget(m_speedLimitUp);
@@ -105,7 +108,10 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
         auto* l = new QHBoxLayout(altRow);
         m_altSpeedDown = makeKbSpin(altRow, s.altSpeedDown);
         m_altSpeedUp = makeKbSpin(altRow, s.altSpeedUp);
+        l->setContentsMargins(0, 0, 0, 0);
+        l->addWidget(new QLabel(tr("Download"), altRow));
         l->addWidget(m_altSpeedDown);
+        l->addWidget(new QLabel(tr("Upload"), altRow));
         l->addWidget(m_altSpeedUp);
     }
     bwForm->addRow(tr("Alt speed (KB/s)"), altRow);
@@ -113,7 +119,7 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
     // --- Network ---
     auto* net = new QGroupBox(tr("Network"), this);
     auto* netLayout = new QVBoxLayout(net);
-    m_dht = new QCheckBox(tr("Enable DHT (IPv6) peer exchange"), net);
+    m_dht = new QCheckBox(tr("Enable DHT"), net);
     m_pex = new QCheckBox(tr("Enable peer exchange (PEX)"), net);
     m_lpd = new QCheckBox(tr("Enable Local Peer Discovery (LPD)"), net);
     m_utp = new QCheckBox(tr("Enable uTP"), net);
@@ -141,7 +147,8 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
     m_ratioLimitEnabled = new QCheckBox(tr("Stop seeding at ratio"), other);
     otherForm->addRow(QString(), m_ratioLimitEnabled);
     m_ratioLimit = new QDoubleSpinBox(other);
-    m_ratioLimit->setRange(0.0, 100.0);
+    m_ratioLimit->setRange(0.0, 1000000.0);
+    m_ratioLimit->setMaximumWidth(180);
     m_ratioLimit->setDecimals(2);
     otherForm->addRow(tr("Seed ratio limit"), m_ratioLimit);
     m_blocklistEnabled = new QCheckBox(tr("Enable blocklist"), other);
@@ -151,11 +158,24 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     auto* root = new QVBoxLayout(this);
-    root->addWidget(bw);
-    root->addWidget(net);
-    root->addWidget(dl);
-    root->addWidget(other);
-    root->addStretch(1);
+    root->setContentsMargins(12, 12, 12, 12);
+    root->setSpacing(12);
+    auto* tabs = new QTabWidget(this);
+    auto page = [tabs](QWidget* content, const QString& title) {
+        auto* scroll = new QScrollArea(tabs);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        auto* body = new QWidget;
+        auto* layout = new QVBoxLayout(body);
+        layout->setContentsMargins(12, 12, 12, 12);
+        layout->addWidget(content);
+        layout->addStretch();
+        scroll->setWidget(body);
+        tabs->addTab(scroll, title);
+    };
+    page(bw, tr("Bandwidth")); page(net, tr("Network"));
+    page(dl, tr("Download")); page(other, tr("Other"));
+    root->addWidget(tabs, 1);
     root->addWidget(buttons);
 
     connect(m_speedLimitDownEnabled, &QCheckBox::toggled, m_speedLimitDown, &QWidget::setEnabled);
@@ -163,18 +183,22 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
+    connect(m_altSpeedEnabled, &QCheckBox::toggled, m_altSpeedDown, &QWidget::setEnabled);
+    connect(m_altSpeedEnabled, &QCheckBox::toggled, m_altSpeedUp, &QWidget::setEnabled);
+    connect(m_ratioLimitEnabled, &QCheckBox::toggled, m_ratioLimit, &QWidget::setEnabled);
+    connect(m_blocklistEnabled, &QCheckBox::toggled, m_blocklistUrl, &QWidget::setEnabled);
     setSettings(s);
 }
 
 void DaemonOptionsDialog::setSettings(const DaemonSettings& s)
 {
     m_speedLimitDownEnabled->setChecked(s.speedLimitDownEnabled);
-    m_speedLimitDown->setValue(s.speedLimitDown > 0 ? s.speedLimitDown : 100);
+    m_speedLimitDown->setValue(qMax(0, s.speedLimitDown));
     m_speedLimitUpEnabled->setChecked(s.speedLimitUpEnabled);
-    m_speedLimitUp->setValue(s.speedLimitUp > 0 ? s.speedLimitUp : 100);
+    m_speedLimitUp->setValue(qMax(0, s.speedLimitUp));
     m_altSpeedEnabled->setChecked(s.altSpeedEnabled);
-    m_altSpeedDown->setValue(s.altSpeedDown > 0 ? s.altSpeedDown : 100);
-    m_altSpeedUp->setValue(s.altSpeedUp > 0 ? s.altSpeedUp : 100);
+    m_altSpeedDown->setValue(qMax(0, s.altSpeedDown));
+    m_altSpeedUp->setValue(qMax(0, s.altSpeedUp));
     m_dht->setChecked(s.dht);
     m_pex->setChecked(s.pex);
     m_lpd->setChecked(s.lpd);
@@ -183,9 +207,13 @@ void DaemonOptionsDialog::setSettings(const DaemonSettings& s)
     m_downloadDir->setText(s.downloadDir);
     m_startAddedTorrents->setChecked(s.startAddedTorrents);
     m_ratioLimitEnabled->setChecked(s.ratioLimitEnabled);
-    m_ratioLimit->setValue(s.ratioLimit > 0 ? s.ratioLimit : 2.0);
+    m_ratioLimit->setValue(qMax(0.0, s.ratioLimit));
     m_blocklistEnabled->setChecked(s.blocklistEnabled);
     m_blocklistUrl->setText(s.blocklistUrl);
+    m_altSpeedDown->setEnabled(s.altSpeedEnabled);
+    m_altSpeedUp->setEnabled(s.altSpeedEnabled);
+    m_ratioLimit->setEnabled(s.ratioLimitEnabled);
+    m_blocklistUrl->setEnabled(s.blocklistEnabled);
     m_speedLimitDown->setEnabled(s.speedLimitDownEnabled);
     m_speedLimitUp->setEnabled(s.speedLimitUpEnabled);
 }

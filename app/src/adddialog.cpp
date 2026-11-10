@@ -15,12 +15,14 @@
 #include <QVBoxLayout>
 
 #include "tgui/util.h"
+#include "sequentialpolicy.h"
 
 AddTorrentDialog::AddTorrentDialog(const QString& initialFile, const QString& initialDir,
                                    int rpcVersion, bool defaultStart, tgui::RpcClient* rpc,
                                    QWidget* parent)
     : QDialog(parent)
     , m_rpc(rpc)
+    , m_rpcVersion(rpcVersion)
 {
     setWindowTitle(tr("Add torrent"));
 
@@ -73,6 +75,7 @@ AddTorrentDialog::AddTorrentDialog(const QString& initialFile, const QString& in
     m_start->setChecked(defaultStart);
 
     m_sequential = new QCheckBox(tr("Sequential download"), this);
+    m_sequential->setObjectName(QStringLiteral("sequentialDownload"));
     if (rpcVersion < 18) {
         m_sequential->setEnabled(false);
         m_sequential->setToolTip(tr("Requires Transmission 4.1 or newer (RPC 18)"));
@@ -112,6 +115,10 @@ AddTorrentDialog::AddTorrentDialog(const QString& initialFile, const QString& in
     auto* layout = new QVBoxLayout(this);
     layout->addLayout(form);
 
+    m_file->setObjectName(QStringLiteral("torrentFile"));
+    connect(m_file, &QLineEdit::textChanged, this, &AddTorrentDialog::updateSequentialDefault);
+    connect(m_rbFile, &QRadioButton::toggled, this, &AddTorrentDialog::updateSequentialDefault);
+    updateSequentialDefault();
     m_file->setFocus();
     updateFreeSpace();
 }
@@ -129,7 +136,7 @@ tgui::RpcClient::AddTorrent AddTorrentDialog::params() const
     p.downloadDir = m_dir->text().trimmed();
     p.peerLimit = m_peerLimit->value();
     p.start = m_start->isChecked();
-    p.sequential = m_sequential->isChecked();
+    p.sequential = m_rpcVersion >= 18 && m_sequential->isChecked();
     return p;
 }
 
@@ -167,4 +174,10 @@ void AddTorrentDialog::updateFreeSpace()
         return;
     if (!m_dir->text().trimmed().isEmpty())
         m_rpc->getFreeSpace(m_dir->text().trimmed());
+}
+
+void AddTorrentDialog::updateSequentialDefault()
+{
+    m_sequential->setChecked(m_rbFile->isChecked() &&
+        tgui::automaticSequential(m_file->text().trimmed(), m_rpcVersion));
 }

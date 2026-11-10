@@ -61,6 +61,9 @@ public:
         onTorrentsReceived(torrents);
     }
 
+signals:
+    void downloadNotification(const QString& message);
+
 private slots:
     void onConnect();
     void onDisconnect();
@@ -110,7 +113,6 @@ private slots:
     void onQueueDown();
     void onQueueBottom();
     void onStartForceSelected();
-    void onToggleSequential();
     void onAddFromLink();
     void onUpdateBlocklist();
     void onExit();
@@ -136,7 +138,6 @@ protected:
     void dropEvent(QDropEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
     void changeEvent(QEvent* event) override;
-    bool eventFilter(QObject* obj, QEvent* ev) override;
 
 private:
     void createUi();
@@ -220,6 +221,7 @@ private:
     QAction* m_actRemove = nullptr;
     QAction* m_actProperties = nullptr;
     QAction* m_actMove = nullptr;
+    QAction* m_actQueue = nullptr;
     QAction* m_actRefresh = nullptr;
     QAction* m_actAutoRefresh = nullptr;
     QAction* m_actAltSpeed = nullptr;

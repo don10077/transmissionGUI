@@ -225,6 +225,12 @@ void drawIcon(QPainter& p, Icon id, const QColor& c)
             }
             break;
         }
+        case Icon::Pause: {
+            fill(p, c);
+            p.drawRoundedRect(QRectF(6, 5, 4, 14), 0.7, 0.7);
+            p.drawRoundedRect(QRectF(14, 5, 4, 14), 0.7, 0.7);
+            break;
+        }
         case Icon::Stop: {
             fill(p, c);
             p.drawRoundedRect(QRectF(6.5, 6.5, 11, 11), 2.4, 2.4);
@@ -299,14 +305,24 @@ void drawIcon(QPainter& p, Icon id, const QColor& c)
             p.drawLine(QPointF(12, 12), QPointF(15.6, 14.2));
             break;
         }
+        case Icon::Queue: {
+            stroke(p, c, 1.7);
+            for (int y : {6, 12, 18}) p.drawLine(QPointF(3, y), QPointF(14, y));
+            p.drawLine(QPointF(19, 5), QPointF(19, 19));
+            p.drawLine(QPointF(16.5, 8), QPointF(19, 5));
+            p.drawLine(QPointF(21.5, 8), QPointF(19, 5));
+            p.drawLine(QPointF(16.5, 16), QPointF(19, 19));
+            p.drawLine(QPointF(21.5, 16), QPointF(19, 19));
+            break;
+        }
         case Icon::AltSpeed: {
-            stroke(p, c, 1.9);
-            QRectF r(3.5, 6.0, 17, 14);
-            p.drawArc(r, 0, 180 * 16);
-            stroke(p, c, 2.2);
-            p.drawLine(QPointF(12, 14.5), QPointF(16.8, 9.2));
-            fill(p, c);
-            p.drawEllipse(QPointF(12, 14.5), 1.8, 1.8);
+            stroke(p, c, 1.7);
+            p.drawArc(QRectF(4, 4, 15, 18), 0, 180 * 16);
+            p.drawLine(QPointF(3, 13), QPointF(20, 13));
+            p.drawLine(QPointF(7, 13), QPointF(7, 17));
+            p.drawLine(QPointF(16, 13), QPointF(16, 17));
+            p.drawEllipse(QRectF(19, 9, 3, 3));
+            p.drawLine(QPointF(2, 12), QPointF(4, 11));
             break;
         }
         case Icon::About: {
@@ -590,7 +606,6 @@ QToolButton {
 QToolButton:hover { background: #E5F3FF; border-color: #ABADB3; }
 QToolButton:pressed { background: #CCE8FF; }
 QToolButton:checked { background: #CCE8FF; border-color: #0078D7; }
-QToolButton::menu-indicator { image: none; }
 
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
     background: #FFFFFF;

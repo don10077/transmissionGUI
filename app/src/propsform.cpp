@@ -300,12 +300,11 @@ void PropsForm::rebuild()
 
     const bool finished = tgui::statusIsFinished(
         t.status.value_or(-1), t.sizeWhenDone.value_or(0.0), t.leftUntilDone.value_or(0.0));
-    const QString error = (t.errorString.has_value() && !t.errorString->isEmpty())
-                              ? *t.errorString
-                              : dash();
+    const QString effectiveError = tgui::torrentError(t);
+    const QString error = effectiveError.isEmpty() ? dash() : effectiveError;
     Q_UNUSED(transferCard);
     makeCell(grid, 0, 0, tr("Status"),
-             TorrentModel::statusText(t.status.value_or(-1), finished));
+             TorrentModel::statusText(t.status.value_or(-1), finished && effectiveError.isEmpty()));
     makeCell(grid, 0, 2, tr("Error"), error,
              error == dash() ? QColor() : tgui::theme::color::red);
     QString remaining = fmtSize(ltd);

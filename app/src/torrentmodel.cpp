@@ -37,11 +37,11 @@ int TorrentModel::columnCount(const QModelIndex& parent) const
 QString TorrentModel::statusText(int status, bool finished)
 {
     // Текст статуса — 1:1 с GetTorrentStatus референса (main.pas).
-    if (finished)
+    if (finished && status == 0)
         return QObject::tr("Finished");
     switch (status) {
         case 0:
-            return QObject::tr("Stopped");
+            return QObject::tr("Paused");
         case 1:
             return QObject::tr("Waiting");
         case 2:
@@ -67,16 +67,15 @@ bool TorrentModel::matchesGroup(const tgui::Torrent& t, int group)
                                t.leftUntilDone.value_or(0.0));
     const bool active = (t.rateDownload.value_or(0) != 0) ||
                         (t.rateUpload.value_or(0) != 0);
-    const bool stopped = (status == 0);
-    const bool error = t.errorString.has_value() && !t.errorString->isEmpty() &&
-                       status != 0;
+    const bool error = !tgui::torrentError(t).isEmpty();
+    const bool stopped = status == 0 && !error;
     switch (group) {
         case GroupAll:
             return true;
         case GroupDownloading:
             return status == 4;
         case GroupCompleted:
-            return finished;
+            return (status == 6) || (finished && !error);
         case GroupActive:
             return active;
         case GroupInactive:
@@ -162,6 +161,9 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
     const bool finished = tgui::statusIsFinished(
         t.status.value_or(-1), t.sizeWhenDone.value_or(0.0), t.leftUntilDone.value_or(0.0));
 
+    const QString error = tgui::torrentError(t);
+    if (role == Qt::ToolTipRole && !error.isEmpty()) return error;
+
     // Числовые роли — для кастомного делегата (не зависят от текста ячейки).
     switch (role) {
         case ProgressRole:
@@ -174,10 +176,9 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
         case StatusRole:
             return t.status.value_or(-1);
         case FinishedRole:
-            return finished;
+            return finished && error.isEmpty();
         case ErrorRole:
-            return t.errorString.has_value() && !t.errorString->isEmpty() &&
-                   t.status.value_or(-1) != 0;
+            return !error.isEmpty();
         case RateDownRole:
             return static_cast<double>(t.rateDownload.value_or(0));
         case RateUpRole:
@@ -236,7 +237,7 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
             return statusText(
                 t.status.value_or(-1),
                 tgui::statusIsFinished(t.status.value_or(-1), t.sizeWhenDone.value_or(0.0),
-                                       t.leftUntilDone.value_or(0.0)));
+                                       t.leftUntilDone.value_or(0.0)) && error.isEmpty());
         case ColSeeds:
             return countWithTotal(t.peersSendingToUs.value_or(0),
                                   t.trackerStats.isEmpty() ? -1

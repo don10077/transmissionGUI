@@ -193,6 +193,7 @@
   </context>
   <context>
     <name>ConnOptionsDialog</name>
+    <message><source>Transmission</source><translation>Transmission</translation></message>
     <message>
       <location filename="../app/src/connoptionsdialog.cpp" line="77" />
       <source>Connection options</source>
@@ -386,6 +387,8 @@
   </context>
   <context>
     <name>DaemonOptionsDialog</name>
+    <message><source>Enable DHT</source><translation>Включить DHT</translation></message>
+    <message><source>Upload</source><translation>Отдача</translation></message>
     <message>
       <location filename="../app/src/daemonoptionsdialog.cpp" line="75" />
       <source>Daemon options</source>
@@ -576,6 +579,21 @@
   </context>
   <context>
     <name>MainWindow</name>
+    <message><source>Add</source><translation>Добавить</translation></message>
+    <message><source>Magnet</source><translation>Magnet</translation></message>
+    <message><source>Limit</source><translation>Лимит</translation></message>
+    <message><source>Change queue position</source><translation>Изменить позицию в очереди</translation></message>
+    <message><source>Not connected</source><translation>Не подключено</translation></message>
+    <message><source>Icons only</source><translation>Только значки</translation></message>
+    <message><source>Text beside icons</source><translation>Текст рядом со значками</translation></message>
+    <message><source>Text under icons</source><translation>Текст под значками</translation></message>
+    <message><source>Pause</source><translation>Пауза</translation></message>
+    <message><source>Pause selected torrents (F4)</source><translation>Приостановить выбранные торренты (F4)</translation></message>
+    <message><source>Pause all torrents</source><translation>Приостановить все торренты</translation></message>
+    <message><source>Pause all</source><translation>Приостановить все</translation></message>
+    <message><source>Download completed: %1</source><translation>Загрузка завершена: %1</translation></message>
+    <message><source>Downloads completed: %1</source><translation>Завершено загрузок: %1</translation></message>
+    <message><source>Download completed</source><translation>Загрузка завершена</translation></message>
     <message>
       <location filename="../app/src/mainwindow.cpp" line="106" />
       <location filename="../app/src/mainwindow.cpp" line="257" />
@@ -1584,6 +1602,9 @@ Restart the application to apply the changes.</source>
   </context>
   <context>
     <name>MoveDialog</name>
+    <message><source>Move existing data</source><translation>Переместить существующие данные</translation></message>
+    <message><source>The destination is a folder on the daemon. Uncheck Move existing data to locate files that have already been moved.</source><translation>Укажите папку на сервере Transmission. Снимите флажок переноса данных, если файлы уже перемещены.</translation></message>
+    <message><source>Folder is not accessible locally: %1. Check path mappings or enter the daemon path manually.</source><translation>Папка недоступна локально: %1. Проверьте сопоставление путей или введите путь сервера вручную.</translation></message>
     <message>
       <location filename="../app/src/movedialog.cpp" line="15" />
       <source>Move torrent</source>
@@ -1629,6 +1650,11 @@ Restart the application to apply the changes.</source>
   </context>
   <context>
     <name>OptionsDialog</name>
+    <message><source>Automatically enable sequential download for these extensions</source><translation>Автоматически включать последовательное скачивание для этих расширений</translation></message>
+    <message><source>Only for torrents containing one file. You can change the checkbox in the Add torrent dialog.</source><translation>Только для торрентов с одним файлом. Галочку можно изменить вручную в окне добавления.</translation></message>
+    <message><source>Extensions (separated by spaces, commas or new lines):</source><translation>Расширения (через пробел, запятую или с новой строки):</translation></message>
+    <message><source>Connect to a daemon supporting sequential download (RPC 18 or newer) to edit this setting.</source><translation>Для изменения настройки подключитесь к демону с поддержкой последовательного скачивания (RPC 18 и выше).</translation></message>
+    <message><source>Sequential download</source><translation>Последовательное скачивание</translation></message>
     <message>
       <source>Options</source>
       <translation>Параметры</translation>
@@ -1762,6 +1788,23 @@ Used when opening files/torrents with double-click.</source>
   </context>
   <context>
     <name>PropsDialog</name>
+    <message><source>Name</source><translation>Название</translation></message>
+    <message><source>Peer limit</source><translation>Лимит пиров</translation></message>
+    <message><source>Limit</source><translation>Ограничить</translation></message>
+    <message><source> KB/s</source><translation> КБ/с</translation></message>
+    <message><source>Maximum download speed</source><translation>Максимальная скорость загрузки</translation></message>
+    <message><source>Maximum upload speed</source><translation>Максимальная скорость отдачи</translation></message>
+    <message><source>Use daemon settings</source><translation>Настройки демона</translation></message>
+    <message><source>Custom limit</source><translation>Свой лимит</translation></message>
+    <message><source>Unlimited</source><translation>Без ограничений</translation></message>
+    <message><source> minutes</source><translation> мин</translation></message>
+    <message><source>Seed ratio</source><translation>Коэффициент раздачи</translation></message>
+    <message><source>Stop seeding when inactive</source><translation>Остановка при отсутствии активности</translation></message>
+    <message><source>General</source><translation>Общие</translation></message>
+    <message><source>Advanced</source><translation>Дополнительно</translation></message>
+    <message><source>Trackers (one URL per line)</source><translation>Трекеры (одна ссылка на строку)</translation></message>
+    <message><source>Trackers</source><translation>Трекеры</translation></message>
+    <message><source>Invalid tracker URL: %1</source><translation>Некорректная ссылка трекера: %1</translation></message>
     <message>
       <location filename="../app/src/propsdialog.cpp" line="10" />
       <source>Properties — %1</source>
@@ -1996,6 +2039,9 @@ Used when opening files/torrents with double-click.</source>
   </context>
   <context>
     <name>QObject</name>
+    <message><source>Tracker error: %1</source><translation>Ошибка трекера: %1</translation></message>
+    <message><source>Paused</source><translation>На паузе</translation></message>
+    <message><source>Completed (paused)</source><translation>Завершён (на паузе)</translation></message>
     <message><source>Host</source><translation>Хост</translation></message>
     <message><source>Have</source><translation>Есть</translation></message>
     <message><source>Flags</source><translation>Флаги</translation></message>

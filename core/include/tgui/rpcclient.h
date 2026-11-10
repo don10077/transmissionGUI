@@ -60,6 +60,7 @@ public:
     void getPeers(int id);
     void getTrackers(int id);
     void getSessionStats();
+    void getSession(); // Refresh confirmed session settings without reconnecting.
     void getFreeSpace(const QString& path);
     void portTest();
 
@@ -79,6 +80,7 @@ public:
     void setStarted(int id, bool started);
     void setSequential(int id, bool enabled); // sequential_download, требует rpc >= 18
     void renamePath(int id, const QString& path, const QString& newName); // torrent-rename-path, требует rpc >= 15
+    void setLocation(int id, const QString& path, bool moveData);
     void setTorrent(int id, const QJsonObject& params); // общий torrent-set
     void setLabels(int id, const QStringList& labels);  // требует rpc >= 16
     void setPriority(int id, int priority);             // -1 / 0 / 1 (весь торрент)
@@ -93,7 +95,7 @@ public:
 
     // --- Демон (session-set и прочее) ---
     void setSession(const QJsonObject& params); // общий session-set
-    void setAltSpeed(bool enabled, int downKb, int upKb);
+    void setAltSpeed(bool enabled, int downKb = -1, int upKb = -1);
     void setBlocklist(bool enabled, const QString& url);
     void updateBlocklist();
 
@@ -109,6 +111,7 @@ signals:
     void torrentDetailsReceived(const TorrentDetails& details);
     void peersReceived(int id, const QVector<Peer>& peers);
     void trackersReceived(int id, const QVector<TrackerStat>& trackers);
+    void sessionInfoReceived(const SessionInfo& info);
     void sessionStatsReceived(const SessionStats& stats);
     void freeSpaceReceived(const QString& path, qint64 bytes);
     void readError(const QString& what, const QString& error);

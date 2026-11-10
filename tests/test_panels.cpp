@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <QToolButton>
 #include <QAction>
 #include <QClipboard>
 #include <QLabel>
@@ -494,3 +495,407 @@ TEST(InfoPanel, RendersAllReferenceTabs)
     }
     delete tabs;
 }
+
+
+#include "propsdialog.h"
+#include "daemonoptionsdialog.h"
+#include "connoptionsdialog.h"
+#include "optionsdialog.h"
+#include <QDialogButtonBox>
+#include <QPushButton>
+#include <QSpinBox>
+
+TEST(Properties, SendsOnlyChangedTorrentSettings)
+{
+    Torrent torrent;
+    torrent.name = QStringLiteral("Test torrent");
+    torrent.maxConnectedPeers = 50;
+    torrent.editableSettings = {{"downloadLimited", false}, {"downloadLimit", 0},
+        {"uploadLimited", true}, {"uploadLimit", 123}, {"seedRatioMode", 0},
+        {"seedRatioLimit", 0.}, {"seedIdleMode", 2}, {"seedIdleLimit", 30}};
+    PropsDialog unchanged(torrent);
+    unchanged.findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
+    EXPECT_EQ(unchanged.result(), QDialog::Accepted);
+    EXPECT_TRUE(unchanged.changes().isEmpty());
+    PropsDialog changed(torrent);
+    changed.findChild<QSpinBox*>(QStringLiteral("peerLimit"))->setValue(75);
+    changed.findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
+    EXPECT_EQ(changed.changes(), (QJsonObject{{"peer-limit",75}}));
+}
+
+TEST(DialogAppearance, AllPagesFitAndDaemonPreservesZero)
+{
+    tgui::SessionInfo session;
+    session.altSpeedDown = 0; session.altSpeedUp = 0; session.ratioLimit = 0.;
+    DaemonOptionsDialog daemon(session);
+    EXPECT_EQ(daemon.settings().altSpeedDown, 0);
+    EXPECT_EQ(daemon.settings().altSpeedUp, 0);
+    EXPECT_DOUBLE_EQ(daemon.settings().ratioLimit, 0.);
+    OptionsDialog application;
+    ConnOptionsDialog connection;
+    Torrent torrent; torrent.name = QStringLiteral("Example torrent");
+    PropsDialog properties(torrent);
+    QList<QDialog*> dialogs{&properties, &daemon, &application, &connection};
+    const QString output = qEnvironmentVariable("TGUI_DIALOG_PREVIEW_DIR");
+    if (!output.isEmpty()) {
+        tgui::theme::apply(*qobject_cast<QApplication*>(QCoreApplication::instance()));
+        QDir().mkpath(output);
+    }
+    for (int index = 0; index < dialogs.size(); ++index) {
+        auto* dialog = dialogs[index]; dialog->show();
+        auto* tabs = dialog->findChild<QTabWidget*>();
+        ASSERT_NE(tabs, nullptr);
+        for (int page = 0; page < tabs->count(); ++page) {
+            tabs->setCurrentIndex(page); QCoreApplication::processEvents();
+            auto* buttons = dialog->findChild<QDialogButtonBox*>();
+            ASSERT_NE(buttons, nullptr);
+            EXPECT_LE(buttons->geometry().bottom(), dialog->height());
+            if (!output.isEmpty()) {
+                EXPECT_TRUE(dialog->grab().save(output + QStringLiteral("/dialog-%1-%2.png").arg(index).arg(page)));
+            }
+        }
+        dialog->hide();
+    }
+}
+
+
+#include "mockhttpserver.h"
+#include <QElapsedTimer>
+#include <functional>
+#include <QThread>
+#include <QSettings>
+
+namespace {
+bool waitForSettings(const std::function<bool()>& predicate)
+{
+    QElapsedTimer timer; timer.start();
+    while (!predicate() && timer.elapsed() < 2500) {
+        QCoreApplication::processEvents(); QThread::msleep(1);
+    }
+    return predicate();
+}
+}
+
+TEST(SettingsFixes, CompletionNotificationIsTransitionAndPreferenceGated)
+{
+    QCoreApplication::setOrganizationName("tgui-test");
+    QCoreApplication::setApplicationName("tgui-test");
+    QSettings().setValue("ui/trayNotify", true);
+    MainWindow window;
+    int messages = 0;
+    QObject::connect(&window, &MainWindow::downloadNotification, [&](const QString&) { ++messages; });
+    Torrent torrent; torrent.id = 100; torrent.status = 6;
+    torrent.sizeWhenDone = 1024.; torrent.leftUntilDone = 0.;
+    window.applyTorrentsUpdate({torrent});
+    EXPECT_EQ(messages, 0); // Existing completed torrents must not notify on connect.
+    torrent.status = 4; torrent.leftUntilDone = 512.;
+    window.applyTorrentsUpdate({torrent});
+    torrent.status = 6; torrent.leftUntilDone = 0.;
+    window.applyTorrentsUpdate({torrent}); window.applyTorrentsUpdate({torrent});
+    EXPECT_EQ(messages, 1);
+    QSettings().setValue("ui/trayNotify", false);
+    torrent.status = 4; torrent.leftUntilDone = 512.; window.applyTorrentsUpdate({torrent});
+    torrent.status = 6; torrent.leftUntilDone = 0.; window.applyTorrentsUpdate({torrent});
+    EXPECT_EQ(messages, 1);
+}
+
+TEST(SettingsFixes, AltTogglePreservesLimitsAndEditedActiveProfileReconnects)
+{
+    QCoreApplication::setOrganizationName("tgui-test");
+    QCoreApplication::setApplicationName("tgui-test");
+    MockRpcServer first, second;
+    ASSERT_NE(first.start(), 0); ASSERT_NE(second.start(), 0);
+    const QByteArray response = R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","alt-speed-enabled":true,"alt-speed-down":234,"alt-speed-up":67,"download-dir":"/downloads"}})";
+    first.setDefault({200,response,{}}); second.setDefault({200,response,{}});
+    ProfileStore store;
+    DaemonProfile profile;
+    profile.name = "settings-fix"; profile.host = "127.0.0.1"; profile.port = first.url().port();
+    store.add(profile.name); store.save(profile); store.setCurrent(profile.name);
+    MainWindow window;
+    window.setAutoConnect(profile.toOptions());
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow(); }));
+    QAction* toggle = nullptr;
+    for (auto* action : window.findChildren<QAction*>())
+        if (action->shortcut() == QKeySequence(Qt::Key_F7)) toggle = action;
+    ASSERT_NE(toggle, nullptr);
+    EXPECT_TRUE(toggle->isChecked());
+    toggle->trigger();
+    ASSERT_TRUE(waitForSettings([&] {
+        for (const auto& request : first.requests())
+            if (request.rpcMethod == "session-set") return true;
+        return false;
+    }));
+    for (const auto& request : first.requests()) {
+        if (request.rpcMethod != "session-set") continue;
+        EXPECT_EQ(request.arguments, (QJsonObject{{"alt-speed-enabled",false}}));
+    }
+    ASSERT_TRUE(waitForSettings([&] { return toggle->isChecked(); })); // Confirmed session state.
+    profile.port = second.url().port();
+    QTimer::singleShot(0, [&] {
+        auto* dialog = qobject_cast<ConnOptionsDialog*>(QApplication::activeModalWidget());
+        if (!dialog) return;
+        dialog->setProfile(profile); dialog->saveCurrent(); dialog->accept();
+    });
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onConnectionOptions", Qt::DirectConnection));
+    ASSERT_TRUE(waitForSettings([&] { return second.requestCount() > 0 && window.isConnectedNow(); }));
+    EXPECT_EQ(second.requests().first().rpcMethod, QStringLiteral("session-get"));
+    const QString renamed = QStringLiteral("settings-fix-renamed");
+    store.rename(profile.name, renamed);
+    QTimer::singleShot(0, [&] {
+        auto* dialog = qobject_cast<ConnOptionsDialog*>(QApplication::activeModalWidget());
+        if (dialog) dialog->accept();
+    });
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onConnectionOptions", Qt::DirectConnection));
+    EXPECT_EQ(window.findChild<QToolButton*>(QStringLiteral("connectButton"))->text(), renamed);
+    store.remove(renamed);
+}
+
+
+#include <QDesktopServices>
+#include <QTemporaryDir>
+#include <QFile>
+#include <QToolButton>
+
+class LocalOpenCapture : public QObject {
+    Q_OBJECT
+public:
+    QList<QUrl> urls;
+public slots:
+    void open(const QUrl& url) { urls.append(url); }
+};
+
+TEST(TorrentInteraction, DoubleClickOpensCompletedFileAndFolder)
+{
+    QTemporaryDir directory;
+    ASSERT_TRUE(directory.isValid());
+    QFile file(directory.filePath("movie.mkv"));
+    ASSERT_TRUE(file.open(QIODevice::WriteOnly)); file.close();
+    ASSERT_TRUE(QDir(directory.path()).mkdir("release"));
+    LocalOpenCapture capture;
+    QDesktopServices::setUrlHandler("file", &capture, "open");
+    struct ResetHandler { ~ResetHandler() { QDesktopServices::unsetUrlHandler("file"); } } reset;
+    QSettings().setValue("paths/mappings", QStringList{});
+    MainWindow window;
+    Torrent torrent; torrent.id = 300; torrent.name = "movie.mkv";
+    torrent.downloadDir = directory.path(); torrent.status = 0;
+    torrent.sizeWhenDone = 1024.; torrent.leftUntilDone = 0.;
+    window.applyTorrentsUpdate({torrent});
+    auto* view = window.torrentView();
+    ASSERT_TRUE(QMetaObject::invokeMethod(view, "doubleClicked", Qt::DirectConnection,
+                Q_ARG(QModelIndex, view->model()->index(0, 0))));
+    ASSERT_EQ(capture.urls.size(), 1);
+    EXPECT_EQ(QDir::cleanPath(capture.urls.last().toLocalFile()), directory.filePath("movie.mkv"));
+    torrent.name = "release"; window.applyTorrentsUpdate({torrent});
+    ASSERT_TRUE(QMetaObject::invokeMethod(view, "doubleClicked", Qt::DirectConnection,
+                Q_ARG(QModelIndex, view->model()->index(0, 0))));
+    ASSERT_EQ(capture.urls.size(), 2);
+    EXPECT_EQ(QDir::cleanPath(capture.urls.last().toLocalFile()), directory.filePath("release"));
+}
+
+TEST(TorrentInteraction, StatusDistinguishesSeedingAndPauseAndSeedQueue)
+{
+    EXPECT_EQ(TorrentModel::statusText(6, true), QStringLiteral("Seeding"));
+    EXPECT_EQ(TorrentModel::statusText(0, true), QStringLiteral("Finished"));
+    EXPECT_EQ(TorrentModel::statusText(0, false), QStringLiteral("Paused"));
+    Torrent torrent; torrent.status = 5;
+    EXPECT_FALSE(TorrentModel::matchesGroup(torrent, TorrentModel::GroupWaiting));
+    torrent.status = 2;
+    EXPECT_TRUE(TorrentModel::matchesGroup(torrent, TorrentModel::GroupWaiting));
+}
+
+
+TEST(TorrentInteraction, ReferenceCompletionAndErrorRules)
+{
+    Torrent torrent; torrent.id = 500; torrent.status = 0;
+    torrent.sizeWhenDone = 100.; torrent.leftUntilDone = 0.;
+    TorrentModel model;
+    model.setTorrents({torrent});
+    auto status = [&] { return model.index(0, TorrentModel::ColStatus).data().toString(); };
+    EXPECT_EQ(status(), QStringLiteral("Finished"));
+    EXPECT_TRUE(model.index(0, 0).data(TorrentModel::FinishedRole).toBool());
+    torrent.status = 6; model.setTorrents({torrent});
+    EXPECT_EQ(status(), QStringLiteral("Seeding"));
+
+    torrent.status = 0; torrent.errorString = QStringLiteral("No data found");
+    model.setTorrents({torrent});
+    EXPECT_TRUE(model.index(0, 0).data(TorrentModel::ErrorRole).toBool());
+    EXPECT_FALSE(model.index(0, 0).data(TorrentModel::FinishedRole).toBool());
+    EXPECT_EQ(model.index(0, 0).data(Qt::ToolTipRole).toString(), *torrent.errorString);
+    EXPECT_TRUE(TorrentModel::matchesGroup(torrent, TorrentModel::GroupError));
+    EXPECT_FALSE(TorrentModel::matchesGroup(torrent, TorrentModel::GroupStopped));
+    EXPECT_FALSE(TorrentModel::matchesGroup(torrent, TorrentModel::GroupCompleted));
+    PropsForm form; form.setTorrent(torrent);
+    EXPECT_TRUE(hasExactLabel(&form, *torrent.errorString));
+
+    TrackerStat bad;
+    bad.hasAnnounced = true; bad.lastAnnounceSucceeded = false;
+    bad.lastAnnounceResult = QStringLiteral("Connection refused");
+    torrent.status = 4; torrent.errorString = bad.lastAnnounceResult;
+    torrent.trackerStats = {bad};
+    EXPECT_EQ(tgui::torrentError(torrent), QStringLiteral("Tracker error: Connection refused"));
+    TrackerStat good; good.hasAnnounced = true; good.lastAnnounceSucceeded = true;
+    torrent.trackerStats.append(good);
+    EXPECT_TRUE(tgui::torrentError(torrent).isEmpty());
+    torrent.errorString = QStringLiteral("Permission denied");
+    EXPECT_EQ(tgui::torrentError(torrent), *torrent.errorString);
+    torrent.trackerStats = {bad}; torrent.errorString = bad.lastAnnounceResult; torrent.status = 0;
+    EXPECT_TRUE(tgui::torrentError(torrent).isEmpty()); // Stale tracker failure on a stopped torrent.
+    torrent.errorString = QStringLiteral("Permission denied");
+    EXPECT_EQ(tgui::torrentError(torrent), *torrent.errorString);
+}
+
+
+#include "movedialog.h"
+#include <QFileDialog>
+
+TEST(TorrentInteraction, MoveBrowseStartsAtMappedFolderAndReturnsDaemonPath)
+{
+    QTemporaryDir directory;
+    ASSERT_TRUE(directory.isValid());
+    ASSERT_TRUE(QDir(directory.path()).mkdir("current"));
+    ASSERT_TRUE(QDir(directory.path()).mkdir("target"));
+    QSettings().setValue("paths/mappings", QStringList{"/server=" + directory.path()});
+    const bool nativeDisabled = QApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true);
+    struct Restore { bool value; ~Restore() { QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, value); } } restore{nativeDisabled};
+    MoveDialog dialog(QStringLiteral("/server/current"));
+    EXPECT_TRUE(dialog.moveData());
+    QPushButton* browse = nullptr;
+    for (auto* button : dialog.findChildren<QPushButton*>())
+        if (button->text() == QStringLiteral("Browse…")) browse = button;
+    ASSERT_NE(browse, nullptr);
+    bool inspected = false;
+    QTimer::singleShot(0, [&] {
+        auto* picker = qobject_cast<QFileDialog*>(QApplication::activeModalWidget());
+        if (!picker) { if (auto* modal = qobject_cast<QDialog*>(QApplication::activeModalWidget())) modal->reject(); return; }
+        inspected = true;
+        EXPECT_EQ(QDir::cleanPath(picker->directory().absolutePath()), directory.filePath("current"));
+        picker->setDirectory(directory.filePath("target"));
+        QMetaObject::invokeMethod(picker, "accept", Qt::DirectConnection);
+    });
+    browse->click();
+    EXPECT_TRUE(inspected);
+    EXPECT_EQ(dialog.targetDir(), QStringLiteral("/server/target"));
+    QSettings().remove("paths/mappings");
+}
+
+
+#include "adddialog.h"
+#include "sequentialpolicy.h"
+#include <QCheckBox>
+#include <QPlainTextEdit>
+
+TEST(AutoSequential, MetadataFileCountManualOverrideAndCapabilities)
+{
+    using V = tgui::bencode::Value;
+    QTemporaryDir directory; ASSERT_TRUE(directory.isValid());
+    const QString path = directory.filePath("not-a-video.torrent");
+    auto write = [&](const V& info) {
+        QFile file(path); if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+        const auto bytes = tgui::bencode::encode(V::dictionary({{"info",info}}));
+        return file.write(bytes.data(), qint64(bytes.size())) == qint64(bytes.size());
+    };
+    QSettings settings;
+    settings.remove("downloads/autoSequential"); settings.remove("downloads/sequentialExtensions");
+    ASSERT_TRUE(write(V::dictionary({{"length", V::integer(100)}, {"name",V::string("Movie.MKV")}})));
+    EXPECT_FALSE(tgui::automaticSequential(path,18));
+    OptionsDialog options(nullptr,18);
+    options.findChild<QCheckBox*>("autoSequential")->setChecked(true);
+    EXPECT_TRUE(options.findChild<QPlainTextEdit*>("sequentialExtensions")->toPlainText().contains("mkv"));
+    options.apply();
+    EXPECT_TRUE(tgui::automaticSequential(path,18));
+    EXPECT_FALSE(tgui::automaticSequential(path,17));
+    AddTorrentDialog add(path, directory.path(),18,false,nullptr);
+    EXPECT_TRUE(add.params().sequential);
+    auto* checkbox=add.findChild<QCheckBox*>("sequentialDownload");
+    ASSERT_NE(checkbox,nullptr); checkbox->click();
+    EXPECT_FALSE(add.params().sequential); // User choice survives params()/acceptance.
+    AddTorrentDialog old(path,directory.path(),17,false,nullptr);
+    EXPECT_FALSE(old.findChild<QCheckBox*>("sequentialDownload")->isEnabled());
+    EXPECT_FALSE(old.params().sequential);
+    OptionsDialog unsupported(nullptr,17);
+    EXPECT_FALSE(unsupported.findChild<QCheckBox*>("autoSequential")->isEnabled());
+
+    settings.setValue("downloads/sequentialExtensions", ".mp4, *.FLAC; mkv");
+    EXPECT_TRUE(tgui::automaticSequential(path,18));
+    auto file = [](const std::string& name) { return V::dictionary({
+        {"length",V::integer(100)},{"path",V::list({V::string(name)})}}); };
+    ASSERT_TRUE(write(V::dictionary({{"files",V::list({file("clip.mp4"),file("audio.flac")})},{"name",V::string("Movie.mkv")}})));
+    EXPECT_FALSE(tgui::automaticSequential(path,18));
+    ASSERT_TRUE(write(V::dictionary({{"files",V::list({file("audio.flac")})},{"name",V::string("Folder")}})));
+    EXPECT_TRUE(tgui::automaticSequential(path,18));
+    ASSERT_TRUE(write(V::dictionary({{"length",V::integer(100)},{"name",V::string("document.pdf")}})));
+    EXPECT_FALSE(tgui::automaticSequential(path,18));
+    AddTorrentDialog manual(path,directory.path(),18,false,nullptr);
+    EXPECT_FALSE(manual.params().sequential);
+    manual.findChild<QCheckBox*>("sequentialDownload")->click();
+    EXPECT_TRUE(manual.params().sequential);
+    ASSERT_TRUE(write(V::dictionary({{"file tree",V::dictionary({{"audio.flac",V::dictionary({{"",V::dictionary({{"length",V::integer(100)}})}})}})}})));
+    EXPECT_TRUE(tgui::automaticSequential(path,18));
+    QFile broken(path); ASSERT_TRUE(broken.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    broken.write("not bencode"); broken.close();
+    EXPECT_FALSE(tgui::automaticSequential(path,18));
+    settings.remove("downloads/autoSequential"); settings.remove("downloads/sequentialExtensions");
+}
+
+
+#include <QToolBar>
+#include <QMenu>
+#include <QTranslator>
+
+TEST(ToolbarVariantB, LayoutAvailabilityAndSavedStyle)
+{
+    QCoreApplication::setOrganizationName("tgui-test");
+    QCoreApplication::setApplicationName("tgui-test");
+    QSettings settings;
+    const QVariant oldProfile = settings.value("daemons/current");
+    settings.remove("daemons/current");
+    const QVariant previous = settings.value("ui/toolbarButtonStyle");
+    settings.remove("ui/toolbarButtonStyle");
+    MockRpcServer server; ASSERT_NE(server.start(),0);
+    server.setDefault({200,R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","alt-speed-enabled":true}})",{}});
+    MainWindow window;
+    auto* toolbar = window.findChild<QToolBar*>("mainToolBar");
+    ASSERT_NE(toolbar,nullptr);
+    EXPECT_EQ(toolbar->toolButtonStyle(), Qt::ToolButtonTextUnderIcon);
+    EXPECT_EQ(toolbar->iconSize(),QSize(22,22));
+    auto* queue = window.findChild<QAction*>("queueAction");
+    ASSERT_NE(queue,nullptr); ASSERT_NE(queue->menu(),nullptr);
+    EXPECT_FALSE(queue->isEnabled());
+    EXPECT_EQ(queue->menu()->actions().size(),4);
+    RpcClient::Options options; options.url=server.url(); window.setAutoConnect(options);
+    ASSERT_TRUE(waitForSettings([&]{return window.isConnectedNow();}));
+    Torrent torrent; torrent.id=900; torrent.name=QStringLiteral("Example movie.mkv");
+    torrent.status=4; torrent.sizeWhenDone=100.; torrent.leftUntilDone=50.;
+    window.applyTorrentsUpdate({torrent});
+    EXPECT_TRUE(queue->isEnabled());
+    window.resize(1120,700);window.show();QCoreApplication::processEvents();
+    const QString preview=qEnvironmentVariable("TGUI_TOOLBAR_PREVIEW_DIR");
+    if(!preview.isEmpty()){
+        tgui::theme::apply(*qobject_cast<QApplication*>(QCoreApplication::instance()));
+        QTranslator translator; EXPECT_TRUE(translator.load(QStringLiteral(TGUI_QM_PATH)));
+        QApplication::installTranslator(&translator);
+        // Build a translated instance using the same production actions.
+        MainWindow localized; localized.resize(1120,700);localized.show();
+        localized.setAutoConnect(options);
+        EXPECT_TRUE(waitForSettings([&]{return localized.isConnectedNow();}));
+        localized.applyTorrentsUpdate({torrent});
+        QCoreApplication::processEvents();QDir().mkpath(preview);
+        EXPECT_TRUE(localized.findChild<QToolBar*>("mainToolBar")->grab().save(preview+"/toolbar.png"));
+        QApplication::removeTranslator(&translator);
+    }
+    QTimer::singleShot(0, [&] {
+        auto* menu=qobject_cast<QMenu*>(QApplication::activePopupWidget());
+        if(!menu)return;
+        for(auto* action:menu->actions())if(action->text()==QStringLiteral("Icons only")){action->trigger();break;}
+        menu->close();
+    });
+    EXPECT_TRUE(QMetaObject::invokeMethod(toolbar,"customContextMenuRequested",Qt::DirectConnection,Q_ARG(QPoint,QPoint(5,5))));
+    EXPECT_EQ(toolbar->toolButtonStyle(),Qt::ToolButtonIconOnly);
+    MainWindow restored;
+    EXPECT_EQ(restored.findChild<QToolBar*>("mainToolBar")->toolButtonStyle(),Qt::ToolButtonIconOnly);
+    if(previous.isValid())settings.setValue("ui/toolbarButtonStyle",previous);else settings.remove("ui/toolbarButtonStyle");
+    if(oldProfile.isValid())settings.setValue("daemons/current",oldProfile);
+}
+
+#include "test_panels.moc"

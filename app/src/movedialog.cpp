@@ -3,6 +3,10 @@
 #include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QFileDialog>
+#include <QDir>
+#include <QFileInfo>
+#include <QSettings>
+#include "pathmap.h"
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -27,12 +31,12 @@ MoveDialog::MoveDialog(const QString& currentDir, QWidget* parent) : QDialog(par
     row->addWidget(browse);
     layout->addLayout(row);
 
-    m_rename = new QCheckBox(tr("Rename files to the torrent name"), this);
+    m_rename = new QCheckBox(tr("Move existing data"), this);
+    m_rename->setChecked(true);
     layout->addWidget(m_rename);
 
     auto* info = new QLabel(
-        tr("The daemon will move the files to the specified folder. "
-           "Rename creates a subfolder named after the torrent (rename-partially)."),
+        tr("The destination is a folder on the daemon. Uncheck Move existing data to locate files that have already been moved."),
         this);
     info->setWordWrap(true);
     info->setStyleSheet(QStringLiteral("color: gray;"));
@@ -59,15 +63,21 @@ QString MoveDialog::targetDir() const
     return m_path->text().trimmed();
 }
 
-bool MoveDialog::renameFiles() const
+bool MoveDialog::moveData() const
 {
     return m_rename->isChecked();
 }
 
 void MoveDialog::onBrowse()
 {
+    const auto mappings = QSettings().value("paths/mappings").toStringList();
+    const QString local = QDir::fromNativeSeparators(tgui::mapRemoteToLocal(targetDir(), mappings));
+    if (!QFileInfo(local).isDir()) {
+        QMessageBox::warning(this, tr("Move"),
+            tr("Folder is not accessible locally: %1. Check path mappings or enter the daemon path manually.").arg(local));
+        return;
+    }
     const QString dir = QFileDialog::getExistingDirectory(
-        this, tr("Folder for the torrent files"), m_path->text());
-    if (!dir.isEmpty())
-        m_path->setText(dir);
+        this, tr("Folder for the torrent files"), local);
+    if (!dir.isEmpty()) m_path->setText(tgui::mapLocalToRemote(dir, mappings));
 }

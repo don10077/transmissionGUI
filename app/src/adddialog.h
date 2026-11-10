@@ -26,6 +26,7 @@ private slots:
     void onBrowseFile();
     void onBrowseDir();
     void updateFreeSpace();
+    void updateSequentialDefault();
 
 private:
     QRadioButton* m_rbFile;
@@ -40,4 +41,5 @@ private:
     QCheckBox* m_start;
     QCheckBox* m_sequential;
     tgui::RpcClient* m_rpc = nullptr;
+    int m_rpcVersion = 0;
 };

@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QAbstractButton>
 #include <QAbstractItemView>
 #include <QApplication>
@@ -40,6 +41,7 @@
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
@@ -125,7 +127,9 @@ void MainWindow::createUi()
     m_view->setFrameShape(QFrame::NoFrame);
     m_view->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_view, &QWidget::customContextMenuRequested, this, &MainWindow::onContextMenu);
-    m_view->installEventFilter(this);  // двойной клик по торренту → открыть файл/папку
+    connect(m_view, &QTreeView::doubleClicked, this, [this](const QModelIndex& index) {
+        if (index.isValid()) onTorrentsDoubleClicked();
+    });
     m_view->header()->setStretchLastSection(false);
     m_view->header()->setSectionResizeMode(QHeaderView::Interactive);
     m_view->header()->setHighlightSections(false);
@@ -205,7 +209,13 @@ void MainWindow::createUi()
     filesView->setColumnWidth(FileTreeModel::Progress, 70);
     filesView->setColumnWidth(FileTreeModel::Priority, 100);
     connect(filesView, &QTreeView::doubleClicked, this, [this](const QModelIndex& index) {
-        if (m_fileTree->hasChildren(index.siblingAtColumn(0))) return;
+        if (m_fileTree->hasChildren(index.siblingAtColumn(0))) {
+            const auto* torrent = m_general->torrent();
+            if (torrent && torrent->downloadDir)
+                openLocalPath(*torrent->downloadDir + QStringLiteral("/") +
+                              index.data(FileTreeModel::PathRole).toString(), false);
+            return;
+        }
         const auto rows = m_fileTree->sourceRows(index);
         if (!rows.isEmpty()) onFilesDoubleClicked(rows.first());
     });
@@ -374,10 +384,10 @@ void MainWindow::createActions()
     m_actStart->setToolTip(tr("Start selected torrents (F3)"));
     connect(m_actStart, &QAction::triggered, this, &MainWindow::onStartSelected);
 
-    m_actStop = new QAction(tr("Stop"), this);
+    m_actStop = new QAction(tr("Pause"), this);
     m_actStop->setShortcut(QKeySequence(Qt::Key_F4));
-    m_actStop->setIcon(tgui::theme::icon(Icon::Stop));
-    m_actStop->setToolTip(tr("Stop selected torrents (F4)"));
+    m_actStop->setIcon(tgui::theme::icon(Icon::Pause));
+    m_actStop->setToolTip(tr("Pause selected torrents (F4)"));
     connect(m_actStop, &QAction::triggered, this, &MainWindow::onStopSelected);
 
     m_actStartAll = new QAction(tr("Start all torrents"), this);
@@ -385,9 +395,9 @@ void MainWindow::createActions()
     m_actStartAll->setToolTip(tr("Start all torrents"));
     connect(m_actStartAll, &QAction::triggered, this, &MainWindow::onStartAll);
 
-    m_actStopAll = new QAction(tr("Stop all torrents"), this);
+    m_actStopAll = new QAction(tr("Pause all torrents"), this);
     m_actStopAll->setIcon(tgui::theme::icon(Icon::StopAll));
-    m_actStopAll->setToolTip(tr("Stop all torrents"));
+    m_actStopAll->setToolTip(tr("Pause all torrents"));
     connect(m_actStopAll, &QAction::triggered, this, &MainWindow::onStopAll);
 
     m_actRemove = new QAction(tr("Remove"), this);
@@ -438,7 +448,7 @@ void MainWindow::createActions()
     connect(m_actAltSpeed, &QAction::toggled, this, [this](bool on) {
         QSettings().setValue("ui/altSpeed", on);
         if (m_rpc && m_connected)
-            m_rpc->setAltSpeed(on, 50, 50);
+            m_rpc->setAltSpeed(on);
     });
 
     m_actDaemonOptions = new QAction(tr("Transmission options…"), this);
@@ -463,8 +473,23 @@ void MainWindow::createActions()
     m_toolBar->setMovable(false);
     m_toolBar->setFloatable(false);
     m_toolBar->setAllowedAreas(Qt::TopToolBarArea);
-    m_toolBar->setIconSize(QSize(16, 16));
-    m_toolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    m_toolBar->setIconSize(QSize(22, 22));
+    m_toolBar->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    m_toolBar->setStyleSheet(QStringLiteral(
+        "QToolBar { spacing: 2px; padding: 4px 8px; }"
+        "QToolBar::separator { width: 1px; margin: 6px; background: #C7C7C7; }"
+        "QToolBar > QToolButton { min-width: 30px; min-height: 30px; border-radius: 4px; padding: 4px 8px; }"
+        "QToolButton#connectButton { background: white; border: 1px solid #ABADB3; min-height: 32px; padding: 2px 20px 2px 10px; }"
+        "QToolButton#connectButton[connected=\"false\"] { background: #FFF6F5; border-color: #E5A4A0; }"
+        "QToolButton#queueButton { padding: 4px 18px 4px 8px; }"
+        "QToolButton#connectButton::menu-indicator, QToolButton#queueButton::menu-indicator { width: 8px; height: 8px; subcontrol-origin: padding; subcontrol-position: center right; right: 5px; }"));
+    m_actAdd->setIconText(tr("Add"));
+    m_actAddLink->setIconText(tr("Magnet"));
+    m_actStart->setIconText(tr("Start"));
+    m_actStop->setIconText(tr("Pause"));
+    m_actRemove->setIconText(tr("Remove"));
+    m_actMove->setIconText(tr("Move"));
+    m_actAltSpeed->setIconText(tr("Limit"));
 
     // Connect — как OLD tbConnect (Style = tbsDropDown, DropdownMenu =
     // pmConnections): вся кнопка — дропдаун списка подключений, ВСЕГДА активна
@@ -497,6 +522,8 @@ void MainWindow::createActions()
             connect(a, &QAction::triggered, this, [this, name] { switchToProfile(name); });
         }
         profilesMenu->addSeparator();
+        profilesMenu->addAction(m_actDisconnect);
+        profilesMenu->addSeparator();
         auto* manage = profilesMenu->addAction(tr("Manage connections…"));
         connect(manage, &QAction::triggered, this, &MainWindow::onConnectionOptions);
     });
@@ -512,22 +539,25 @@ void MainWindow::createActions()
     m_toolBar->addAction(m_actRemove);
     m_toolBar->addSeparator();
 
-    auto* tbQueueUp = new QAction(tr("Queue up"), this);
-    tbQueueUp->setIcon(style()->standardIcon(QStyle::SP_ArrowUp));
-    tbQueueUp->setToolTip(tr("Move up in queue"));
-    connect(tbQueueUp, &QAction::triggered, this, &MainWindow::onQueueUp);
-    auto* tbQueueDown = new QAction(tr("Queue down"), this);
-    tbQueueDown->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
-    tbQueueDown->setToolTip(tr("Move down in queue"));
-    connect(tbQueueDown, &QAction::triggered, this, &MainWindow::onQueueDown);
-    m_toolBar->addAction(tbQueueUp);
-    m_toolBar->addAction(tbQueueDown);
-    m_toolBar->addSeparator();
+    m_actQueue = new QAction(tgui::theme::icon(Icon::Queue), tr("Queue"), this);
+    m_actQueue->setToolTip(tr("Change queue position"));
+    m_actQueue->setObjectName(QStringLiteral("queueAction"));
+    auto* queueMenu = new QMenu(m_toolBar);
+    auto* first = queueMenu->addAction(tr("Move top"));
+    auto* up = queueMenu->addAction(tr("Move up"));
+    auto* down = queueMenu->addAction(tr("Move down"));
+    auto* last = queueMenu->addAction(tr("Move bottom"));
+    connect(first, &QAction::triggered, this, &MainWindow::onQueueTop);
+    connect(up, &QAction::triggered, this, &MainWindow::onQueueUp);
+    connect(down, &QAction::triggered, this, &MainWindow::onQueueDown);
+    connect(last, &QAction::triggered, this, &MainWindow::onQueueBottom);
+    m_actQueue->setMenu(queueMenu);
+    m_toolBar->addAction(m_actQueue);
+    auto* queueButton = qobject_cast<QToolButton*>(m_toolBar->widgetForAction(m_actQueue));
+    queueButton->setObjectName(QStringLiteral("queueButton"));
+    queueButton->setPopupMode(QToolButton::InstantPopup);
+    m_toolBar->addAction(m_actMove);
     m_toolBar->addAction(m_actAltSpeed);
-    m_toolBar->addSeparator();
-    m_toolBar->addAction(m_actDaemonOptions);
-    m_toolBar->addAction(m_actOptions);
-    m_toolBar->addSeparator();
 
     // Поиск — в тулбаре, как edSearch в transgui.
     auto* spacer = new QWidget(m_toolBar);
@@ -538,11 +568,41 @@ void MainWindow::createActions()
     m_searchEdit->setPlaceholderText(tr("Search torrents"));
     m_searchEdit->setClearButtonEnabled(true);
     m_searchEdit->addAction(tgui::theme::icon(Icon::Search), QLineEdit::LeadingPosition);
-    m_searchEdit->setMinimumWidth(220);
+    m_searchEdit->setMinimumWidth(140);
+    m_searchEdit->setFixedHeight(28);
     m_searchEdit->setMaximumWidth(360);
     connect(m_searchEdit, &QLineEdit::textChanged, this,
             [this](const QString& text) { m_proxy.setSearchText(text.trimmed()); });
     m_toolBar->addWidget(m_searchEdit);
+    auto* find = new QAction(this);
+    find->setShortcut(QKeySequence::Find);
+    addAction(find);
+    connect(find, &QAction::triggered, m_searchEdit, [this] { m_searchEdit->setFocus(); m_searchEdit->selectAll(); });
+    auto applyStyle = [this](int value) {
+        if (value < 0 || value > 2) value = 2;
+        const Qt::ToolButtonStyle modes[]{Qt::ToolButtonIconOnly, Qt::ToolButtonTextBesideIcon, Qt::ToolButtonTextUnderIcon};
+        m_toolBar->setToolButtonStyle(modes[value]);
+        m_toolBar->setIconSize(value == 2 ? QSize(22, 22) : QSize(18, 18));
+        m_connectButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    };
+    applyStyle(QSettings().value("ui/toolbarButtonStyle", 2).toInt());
+    m_toolBar->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_toolBar, &QWidget::customContextMenuRequested, this, [this, applyStyle](const QPoint& point) {
+        QMenu menu(this);
+        QActionGroup group(&menu);
+        const QStringList names{tr("Icons only"), tr("Text beside icons"), tr("Text under icons")};
+        for (int value = 0; value < names.size(); ++value) {
+            auto* action = menu.addAction(names.at(value));
+            action->setCheckable(true); group.addAction(action);
+            const Qt::ToolButtonStyle modes[]{Qt::ToolButtonIconOnly, Qt::ToolButtonTextBesideIcon, Qt::ToolButtonTextUnderIcon};
+            action->setChecked(m_toolBar->toolButtonStyle() == modes[value]);
+            connect(action, &QAction::triggered, &menu, [applyStyle, value] {
+                applyStyle(value); QSettings().setValue("ui/toolbarButtonStyle", value);
+            });
+        }
+        menu.exec(m_toolBar->mapToGlobal(point));
+    });
+
 }
 
 void MainWindow::setConnectedUi(bool on)
@@ -553,13 +613,20 @@ void MainWindow::setConnectedUi(bool on)
     // Transmission» при отключении, имя активного профиля при подключении.
     // Сама кнопка-дропдаун остаётся активной всегда (переключение профилей).
     if (m_connectButton) {
-        QString caption = tr("Connect to Transmission");
+        QString caption = tr("Not connected");
         if (on) {
+            caption = m_rpc ? m_rpc->options().url.host() : tr("Connected");
             const QString cur = ProfileStore().currentName();
             if (!cur.isEmpty())
                 caption = cur;
         }
         m_connectButton->setText(caption);
+        m_connectButton->setIcon(QIcon(tgui::theme::statusDotPixmap(
+            on ? tgui::theme::color::green : tgui::theme::color::red, 10)));
+        m_connectButton->setIconSize(QSize(10, 10));
+        m_connectButton->setProperty("connected", on);
+        m_connectButton->style()->unpolish(m_connectButton);
+        m_connectButton->style()->polish(m_connectButton);
     }
     m_actDisconnect->setEnabled(on);
     m_actAdd->setEnabled(on);
@@ -587,7 +654,8 @@ void MainWindow::updateSelectionActions()
     m_actStop->setEnabled(hasSel);
     m_actRemove->setEnabled(hasSel);
     m_actProperties->setEnabled(hasSel);
-    m_actMove->setEnabled(hasSel);
+    m_actMove->setEnabled(m_connected && selectedTorrentIds().size() == 1);
+    if (m_actQueue) m_actQueue->setEnabled(hasSel);
 }
 
 void MainWindow::onConnect()
@@ -607,6 +675,13 @@ void MainWindow::startConnect(const tgui::RpcClient::Options& opts)
 {
     m_rpc = std::make_unique<tgui::RpcClient>(opts, this);
     connect(m_rpc.get(), &tgui::RpcClient::connected, this, &MainWindow::onConnected);
+    connect(m_rpc.get(), &tgui::RpcClient::sessionInfoReceived, this,
+            [this](const tgui::SessionInfo& info) {
+        m_sessionInfo = info;
+        const QSignalBlocker blocker(m_actAltSpeed);
+        m_actAltSpeed->setChecked(info.altSpeedEnabled);
+        if (m_general->torrent()) m_general->setSession(info);
+    });
     connect(m_rpc.get(), &tgui::RpcClient::connectionFailed, this,
             &MainWindow::onConnectionFailed);
     connect(m_rpc.get(), &tgui::RpcClient::authenticationFailed, this,
@@ -683,6 +758,10 @@ void MainWindow::onConnected(const tgui::SessionInfo& info)
 {
     m_connected = true;
     m_sessionInfo = info;
+    {
+        const QSignalBlocker blocker(m_actAltSpeed);
+        m_actAltSpeed->setChecked(info.altSpeedEnabled);
+    }
     if (m_general->torrent())
         m_general->setSession(info);
     m_daemonLabel->setText(
@@ -758,6 +837,20 @@ void MainWindow::onRefresh()
 
 void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
 {
+    QStringList completed;
+    QHash<int, const tgui::Torrent*> previous;
+    for (const auto& old : m_model.torrents()) previous.insert(old.id, &old);
+    for (const auto& torrent : torrents) {
+        const auto* old = previous.value(torrent.id, nullptr);
+        if (old && old->status.value_or(-1) == 4 && old->leftUntilDone.value_or(0) > 0 &&
+            torrent.leftUntilDone && *torrent.leftUntilDone == 0 &&
+            torrent.sizeWhenDone.value_or(0) > 0 && torrent.status.value_or(-1) != 2)
+            completed.append(torrent.name.value_or(QString::number(torrent.id)));
+    }
+    if (!completed.isEmpty() && QSettings().value("ui/trayNotify", false).toBool())
+        emit downloadNotification(completed.size() == 1 ?
+            tr("Download completed: %1").arg(completed.first()) :
+            tr("Downloads completed: %1").arg(completed.size()));
     // setTorrents() (modelReset) сбрасывает выделение и текущий индекс вью,
     // а вью прокручивается к началу. Запоминаем ВСЁ выделение (Select all
     // должен переживать автообновление раз в 2 секунды), текущую строку и
@@ -973,6 +1066,10 @@ void MainWindow::onRequestCompleted(const QString& method, bool ok, const QStrin
         return;
     }
     Q_UNUSED(arguments);
+    if (ok && method == QLatin1String("torrent-set-location") && m_rpc)
+        m_rpc->getTorrents();
+    if (method == QLatin1String("session-set") && m_rpc)
+        m_rpc->getSession(); // Refresh on success and roll back the toggle on failure.
     if (ok)
         statusBar()->showMessage(tr("\"%1\" done").arg(method), 5000);
     else
@@ -1084,7 +1181,8 @@ void MainWindow::onShowProperties()
     for (const auto& t : m_model.torrents()) {
         if (t.id == id) {
             PropsDialog dlg(t, this);
-            dlg.exec();
+            if (dlg.exec() == QDialog::Accepted && !dlg.changes().isEmpty())
+                m_rpc->setTorrent(id, dlg.changes());
             return;
         }
     }
@@ -1114,12 +1212,7 @@ void MainWindow::onMoveSelected()
     if (dlg.exec() != QDialog::Accepted)
         return;
 
-    QJsonObject params;
-    params.insert("location", dlg.targetDir());
-    if (dlg.renameFiles())
-        params.insert("rename-partially", true);
-    m_rpc->setTorrent(ids.first(), params);
-    m_rpc->getTorrents();
+    m_rpc->setLocation(ids.first(), dlg.targetDir(), dlg.moveData());
 }
 
 void MainWindow::onAbout()
@@ -1180,7 +1273,7 @@ void MainWindow::onContextMenu(const QPoint& pos)
     actForce->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F3));
     actForce->setEnabled(hasSel);
     QObject::connect(actForce, &QAction::triggered, this, &MainWindow::onStartForceSelected);
-    auto* actStop = menu->addAction(tgui::theme::icon(Icon::Stop), tr("Stop"));
+    auto* actStop = menu->addAction(tgui::theme::icon(Icon::Pause), tr("Pause"));
     actStop->setShortcut(QKeySequence(Qt::Key_F4));
     actStop->setEnabled(hasSel);
     QObject::connect(actStop, &QAction::triggered, this, &MainWindow::onStopSelected);
@@ -1304,8 +1397,6 @@ void MainWindow::createMenus()
     auto* mConnect = mTorrent->addMenu(tr("Connect to Transmission"));
     connect(mConnect, &QMenu::aboutToShow, this, [this, mConnect]() {
         mConnect->clear();
-        auto* aNew = mConnect->addAction(tr("New connection…"));
-        connect(aNew, &QAction::triggered, this, &MainWindow::onConnectionOptions);
         auto* aManage = mConnect->addAction(tr("Manage connections…"));
         connect(aManage, &QAction::triggered, this, &MainWindow::onConnectionOptions);
     });
@@ -1346,10 +1437,8 @@ void MainWindow::createMenus()
     connect(qBottom, &QAction::triggered, this, &MainWindow::onQueueBottom);
 
     auto* actReannounce = mTorrent->addAction(tr("Reannounce (get more peers)"));
-    auto* actSeq = mTorrent->addAction(tr("Sequential download"));
     auto* actVerify = mTorrent->addAction(tr("Verify"));
     connect(actReannounce, &QAction::triggered, this, &MainWindow::onReannounceSelected);
-    connect(actSeq, &QAction::triggered, this, &MainWindow::onToggleSequential);
     connect(actVerify, &QAction::triggered, this, &MainWindow::onVerifySelected);
     mTorrent->addAction(m_actMove);  // "Set data location..."
     auto* actLabels = mTorrent->addAction(tr("Set labels…"));
@@ -1478,11 +1567,6 @@ void MainWindow::createMenus()
     mTools->addAction(m_actAltSpeed);  // "Use alternate bandwidth settings"
     auto* actBlocklist = mTools->addAction(tr("Update blocklist"));
     connect(actBlocklist, &QAction::triggered, this, &MainWindow::onUpdateBlocklist);
-    auto* actGeoIP = mTools->addAction(tr("Update GeoIP database"));
-    connect(actGeoIP, &QAction::triggered, this, [this]() {
-        statusBar()->showMessage(tr("GeoIP update is not available in this build."), 4000);
-    });
-
     // --- Help (порядок — по референсу transgui) ---
     auto* mHelp = menuBar()->addMenu(tr("&Help"));
     auto* actCheck = mHelp->addAction(tr("Check for updates"));
@@ -1623,7 +1707,7 @@ void MainWindow::onOpenFolder()
 // папка — открыть; файл, полностью скачанный — запустить; иначе — открыть каталог.
 void MainWindow::onFilesDoubleClicked(int row)
 {
-    if (!m_rpc || m_currentId < 0)
+    if (m_currentId < 0)
         return;
     const auto& files = m_fileModel.files();
     if (row < 0 || row >= files.size())
@@ -1640,7 +1724,7 @@ void MainWindow::onFilesDoubleClicked(int row)
         return;
     const QString rel = files.at(row).name;
     if (rel.endsWith(QLatin1Char('/'))) {
-        openLocalPath(dir + rel, /*selectFile=*/false);  // папка
+        openLocalPath(dir + QStringLiteral("/") + rel, /*selectFile=*/false);  // папка
         return;
     }
     const QString path = dir + QStringLiteral("/") + rel;
@@ -1700,26 +1784,6 @@ void MainWindow::openLocalPath(const QString& path, bool selectFile)
         return;
     }
     statusBar()->showMessage(tr("Path not found: %1").arg(local), 4000);
-}
-
-// Двойной клик в списках (файлы / торренты). QAbstractItemView не имеет сигнала
-// doubleClicked — ловим MouseButtonDblClick через event-filter.
-bool MainWindow::eventFilter(QObject* obj, QEvent* ev)
-{
-    if (ev->type() == QEvent::MouseButtonDblClick) {
-        if (obj == m_filesView) {
-            auto* me = static_cast<QMouseEvent*>(ev);
-            const QModelIndex idx = m_filesView->indexAt(me->position().toPoint());
-            if (idx.isValid())
-                onFilesDoubleClicked(idx.row());
-            return true;
-        }
-        if (obj == m_view) {
-            onTorrentsDoubleClicked();
-            return true;
-        }
-    }
-    return QMainWindow::eventFilter(obj, ev);
 }
 
 void MainWindow::onCopyMagnet()
@@ -1836,23 +1900,6 @@ void MainWindow::onStartForceSelected()
         return;
     for (int id : ids)
         m_rpc->startTorrent(id, true); // torrent-start-now
-    m_rpc->getTorrents();
-}
-
-void MainWindow::onToggleSequential()
-{
-    const auto ids = selectedTorrentIds();
-    if (ids.isEmpty() || !m_rpc || !m_connected)
-        return;
-    for (int id : ids) {
-        bool current = false;
-        for (const auto& t : m_model.torrents())
-            if (t.id == id && t.sequentialDownload.has_value()) {
-                current = *t.sequentialDownload;
-                break;
-            }
-        m_rpc->setSequential(id, !current);
-    }
     m_rpc->getTorrents();
 }
 
@@ -1973,13 +2020,15 @@ void MainWindow::onPortTest()
 void MainWindow::onOptions()
 {
     // W07: диалог параметров (интерфейс: язык/масштаб/интервал; трей).
-    OptionsDialog dlg(this);
+    OptionsDialog dlg(this, m_connected && m_rpc ? m_rpc->rpcVersion() : 0);
     if (dlg.exec() != QDialog::Accepted)
         return;
 
     // Интервал обновления — применяем сразу (запущенный таймер подхватит новый интервал).
     m_refreshTimer.setInterval(QSettings().value("ui/refreshInterval", kRefreshIntervalMs / 1000).toInt() * 1000);
     // Иконка трея — применяем сразу (показать/скрыть существующую).
+    if (!m_tray && QSettings().value("ui/trayIcon", true).toBool())
+        createTray();
     if (m_tray)
         m_tray->setVisible(QSettings().value("ui/trayIcon", true).toBool());
 
@@ -2013,11 +2062,19 @@ void MainWindow::switchToProfile(const QString& name)
         return;
     // Уже подключены к этому серверу — не переключаем (OLD: DoConnectToHost
     // выходит, если FCurConn == выбранное имя).
-    if (m_connected && store.currentName() == name)
-        return;
+    const auto opts = store.profile(name).toOptions();
+    if (m_connected && m_rpc) {
+        const auto& active = m_rpc->options();
+        if (active.url == opts.url && active.rpcPath == opts.rpcPath &&
+            active.username == opts.username && active.password == opts.password &&
+            active.ignoreSslErrors == opts.ignoreSslErrors && active.proxy == opts.proxy) {
+            store.setCurrent(name);
+            setConnectedUi(true); // Renaming does not require reconnecting.
+            return;
+        }
+    }
     onDisconnect();
     store.setCurrent(name);
-    const auto opts = store.profile(name).toOptions();
     if (opts.url.isEmpty()) {
         statusBar()->showMessage(tr("Server '%1' has no host set.").arg(name), 4000);
         return;
@@ -2382,11 +2439,15 @@ void MainWindow::createTray()
     m_tray->setIcon(makeTrayIcon());
     setWindowIcon(makeTrayIcon());
     m_tray->setToolTip(QStringLiteral("transmissionGUI"));
+    connect(this, &MainWindow::downloadNotification, m_tray, [this](const QString& message) {
+        if (m_tray->isVisible())
+            m_tray->showMessage(tr("Download completed"), message, QSystemTrayIcon::Information);
+    });
 
     auto* menu = new QMenu(this);
     auto* actShow = menu->addAction(tr("Show"));
     auto* actStartAll = menu->addAction(tr("Start all"));
-    auto* actStopAll = menu->addAction(tr("Stop all"));
+    auto* actStopAll = menu->addAction(tr("Pause all"));
     menu->addSeparator();
     auto* actRefresh = menu->addAction(tr("Refresh"));
     menu->addSeparator();

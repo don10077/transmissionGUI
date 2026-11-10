@@ -16,6 +16,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTimer>
+#include <QTabWidget>
 #include <QVBoxLayout>
 
 #include "tgui/rpcclient.h"
@@ -75,9 +76,12 @@ ConnOptionsDialog::ConnOptionsDialog(QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle(tr("Connection options"));
+    resize(740, 480);
 
     // --- Левая колонка: список профилей + New/Del/Rename ---
     m_list = new QListWidget(this);
+    m_list->setMinimumWidth(150);
+    m_list->setMaximumWidth(220);
     auto* btnNew = new QPushButton(tr("New…"), this);
     auto* btnDel = new QPushButton(tr("Delete"), this);
     auto* btnRename = new QPushButton(tr("Rename…"), this);
@@ -88,7 +92,11 @@ ConnOptionsDialog::ConnOptionsDialog(QWidget* parent)
     left->addWidget(btnRename);
 
     // --- Правая колонка: форма выбранного профиля ---
-    auto* form = new QFormLayout;
+    auto* connection = new QWidget(this);
+    auto* form = new QFormLayout(connection);
+    form->setContentsMargins(16, 16, 16, 16);
+    form->setVerticalSpacing(10);
+    form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     m_host = new QLineEdit(this);
     form->addRow(tr("Host"), m_host);
     m_port = new QSpinBox(this);
@@ -125,20 +133,31 @@ ConnOptionsDialog::ConnOptionsDialog(QWidget* parent)
     pform->addRow(tr("Port"), m_proxyPort);
     pform->addRow(tr("Username"), m_proxyUser);
     pform->addRow(tr("Password"), m_proxyPass);
-    form->addRow(QString(), proxy);
+
 
     auto* btnTest = new QPushButton(tr("Test connection"), this);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
 
     auto* right = new QVBoxLayout;
-    right->addLayout(form);
-    right->addStretch(1);
-    right->addWidget(btnTest);
+    auto* tabs = new QTabWidget(this);
+    tabs->addTab(connection, tr("Transmission"));
+    auto* proxyPage = new QWidget(tabs);
+    auto* proxyLayout = new QVBoxLayout(proxyPage);
+    proxyLayout->setContentsMargins(12, 12, 12, 12);
+    proxyLayout->addWidget(proxy); proxyLayout->addStretch();
+    tabs->addTab(proxyPage, tr("Proxy"));
+    right->addWidget(tabs, 1);
 
-    auto* root = new QHBoxLayout(this);
-    root->addLayout(left, 1);
-    root->addLayout(right, 2);
-    root->addWidget(buttons);
+    auto* root = new QVBoxLayout(this);
+    root->setContentsMargins(12, 12, 12, 12);
+    root->setSpacing(12);
+    auto* body = new QHBoxLayout;
+    body->setSpacing(12);
+    body->addLayout(left, 1); body->addLayout(right, 3);
+    root->addLayout(body, 1);
+    auto* footer = new QHBoxLayout;
+    footer->addWidget(btnTest); footer->addStretch(); footer->addWidget(buttons);
+    root->addLayout(footer);
 
     connect(m_list, &QListWidget::currentItemChanged, this, &ConnOptionsDialog::onProfileSelected);
     connect(btnNew, &QPushButton::clicked, this, &ConnOptionsDialog::onNew);
@@ -158,6 +177,10 @@ ConnOptionsDialog::ConnOptionsDialog(QWidget* parent)
     });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
+    setProfile(DaemonProfile{});
+    connect(m_protocol, &QComboBox::currentIndexChanged, this, [this] {
+        m_ignoreSsl->setEnabled(m_protocol->currentData().toString() == "https");
+    });
     refreshList();
     const QString cur = m_store.currentName();
     const auto names = m_store.names();
@@ -209,6 +232,9 @@ void ConnOptionsDialog::setProfile(const DaemonProfile& p)
     m_proxyPort->setValue(p.proxyPort > 0 ? p.proxyPort : 8080);
     m_proxyUser->setText(p.proxyUser);
     m_proxyPass->setText(p.proxyPass);
+    for (QWidget* widget : QList<QWidget*>{m_useSocks, m_proxyHost, m_proxyPort,
+                             m_proxyUser, m_proxyPass}) widget->setEnabled(p.useProxy);
+    m_ignoreSsl->setEnabled(p.useSsl);
 }
 
 DaemonProfile ConnOptionsDialog::current() const
@@ -286,6 +312,7 @@ void ConnOptionsDialog::onRename()
         QMessageBox::warning(this, tr("Rename daemon"), tr("A daemon named '%1' already exists.").arg(newName.trimmed()));
         return;
     }
+    saveCurrent();
     m_store.rename(oldName, newName.trimmed());
     refreshList();
     selectProfile(newName.trimmed());

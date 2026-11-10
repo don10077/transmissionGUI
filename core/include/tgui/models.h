@@ -93,7 +93,11 @@ struct Torrent {
     std::optional<QString> magnetLink;
     std::optional<int> maxConnectedPeers;
     QVector<TrackerStat> trackerStats;
+    QJsonObject editableSettings;
 };
+
+/** Effective error, following transgui GetTorrentError, including tracker fallback. */
+QString torrentError(const Torrent& torrent);
 
 // Пир (torrent-get peers).
 struct Peer {

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <QObject>
 
 namespace tgui {
 namespace {
@@ -141,6 +142,9 @@ bool parseTorrent(const QJsonObject& j, Torrent& t)
     t.pieces = optStr(j, "pieces");
     t.magnetLink = optStr(j, "magnetLink");
     t.maxConnectedPeers = optInt(j, "maxConnectedPeers");
+    t.editableSettings = QJsonObject{};
+    for (const auto& key : QStringList{"downloadLimited","downloadLimit","uploadLimited","uploadLimit","seedRatioMode","seedRatioLimit","seedIdleMode","seedIdleLimit"})
+        if (j.contains(key)) t.editableSettings.insert(key, j.value(key));
 
     const QJsonValue labels = j.value("labels");
     if (labels.isArray())
@@ -396,4 +400,35 @@ bool parseSessionStats(const QJsonObject& j, SessionStats& out)
     return true;
 }
 
+} // namespace tgui
+namespace tgui {
+QString torrentError(const Torrent& torrent)
+{
+    QString global = torrent.errorString.value_or(QString());
+    QString result;
+    bool working = false;
+    for (const auto& tracker : torrent.trackerStats) {
+        QString error;
+        if (tracker.hasAnnounced && !tracker.lastAnnounceSucceeded)
+            error = tracker.lastAnnounceResult;
+        if (error == QStringLiteral("Success")) error.clear();
+        if (error.isEmpty()) {
+            working = true;
+            result.clear();
+        } else {
+            if (!working && result.isEmpty()) result = QObject::tr("Tracker error: %1").arg(error);
+            if (global == error) global.clear();
+        }
+    }
+    if (torrent.trackerStats.isEmpty()) {
+        const QString legacy = torrent.announceResponse.value_or(QString());
+        if (!legacy.isEmpty() && legacy != QStringLiteral("Success") &&
+            !legacy.contains(QStringLiteral("(200)")))
+            result = QObject::tr("Tracker error: %1").arg(legacy);
+    }
+    // A stopped torrent does not announce; stale tracker errors are hidden,
+    // but local failures (missing files, disk errors, etc.) remain visible.
+    if (result.isEmpty() || torrent.status.value_or(-1) == 0) return global;
+    return result;
+}
 } // namespace tgui

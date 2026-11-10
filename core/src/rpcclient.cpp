@@ -138,6 +138,7 @@ void RpcClient::getTorrents(const QStringList& extraFields)
         // magnet-ссылка, автор/дата создания, лимит пиров.
         "hashString", "comment", "creator", "dateCreated", "pieceCount",
         "pieceSize", "haveValid", "pieces", "magnetLink", "maxConnectedPeers",
+        "downloadLimited", "downloadLimit", "uploadLimited", "uploadLimit", "seedRatioMode", "seedRatioLimit", "seedIdleMode", "seedIdleLimit",
     };
     fields += extraFields;
     removeFieldIfUnsupported(fields, "labels", m_rpcVersion, 16);
@@ -393,6 +394,17 @@ void RpcClient::renamePath(int id, const QString& path, const QString& newName)
     requestReport("torrent-rename-path", args);
 }
 
+void RpcClient::setLocation(int id, const QString& path, bool moveData)
+{
+    if (!supports(6)) {
+        emit requestCompleted("torrent-set-location", false, QStringLiteral("RPC 6 or newer is required."), {});
+        return;
+    }
+    QJsonObject args{{"location", path}, {"move", moveData}};
+    torrentIds(args, id);
+    requestReport("torrent-set-location", args);
+}
+
 void RpcClient::setTorrent(int id, const QJsonObject& params)
 {
     QJsonObject args = params;
@@ -567,9 +579,9 @@ void RpcClient::setAltSpeed(bool enabled, int downKb, int upKb)
 {
     QJsonObject args;
     args.insert("alt-speed-enabled", enabled);
-    if (downKb > 0)
+    if (downKb >= 0)
         args.insert("alt-speed-down", downKb);
-    if (upKb > 0)
+    if (upKb >= 0)
         args.insert("alt-speed-up", upKb);
     requestReport("session-set", args);
 }
@@ -588,4 +600,18 @@ void RpcClient::updateBlocklist()
     requestReport("blocklist-update", QJsonObject{});
 }
 
+} // namespace tgui
+namespace tgui {
+void RpcClient::getSession()
+{
+    m_rpc.call("session-get", QJsonObject{}, [this](const JsonRpcResult& result) {
+        SessionInfo info;
+        if (!result.ok || !parseSessionInfo(result.arguments, info)) {
+            emit readError("session-get", result.ok ? QStringLiteral("Invalid server response.") : describeError(result));
+            return;
+        }
+        m_sessionInfo = info;
+        emit sessionInfoReceived(m_sessionInfo);
+    });
+}
 } // namespace tgui
