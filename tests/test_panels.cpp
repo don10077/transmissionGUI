@@ -4,11 +4,16 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <QAction>
+#include <QClipboard>
 #include <QLabel>
-#include <QProgressBar>
+#include <QLineEdit>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QTabWidget>
+#include <QTableWidget>
+#include <QDir>
+#include "theme.h"
 #include <QTreeView>
 #include <QTreeWidget>
 #include <QWheelEvent>
@@ -96,12 +101,11 @@ TEST(PropsForm, RendersTorrent)
     EXPECT_FALSE(labelContaining(&f, "movie-2160p").isEmpty());
     EXPECT_FALSE(labelContaining(&f, "1.00 GB").isEmpty());
     EXPECT_FALSE(labelContaining(&f, "/Shares/Video").isEmpty());
-    // Раздел «Downloaded:» + бар (процент внутри QProgressBar) — по референсу.
+    // Раздел «Downloaded:» + одна шкала (карта кусков) + процент справа —
+    // как в старом transgui (panProgress: метка, pbDownloaded, «100.0%»).
     EXPECT_FALSE(labelContaining(&f, "Downloaded:").isEmpty());
-    auto* bar = f.findChild<QProgressBar*>();
-    ASSERT_NE(bar, nullptr);
-    EXPECT_EQ(bar->format(), QStringLiteral("50.0%"));
-    EXPECT_EQ(bar->value(), 500);
+    // Процент — отдельной меткой (50.0% для этого торрента).
+    EXPECT_TRUE(hasExactLabel(&f, QStringLiteral("50.0%")));
 }
 
 TEST(PropsForm, ScrollKeepsPositionAcrossRefresh)
@@ -164,12 +168,15 @@ TEST(StatsForm, RendersStats)
     s.setStats(st);
     ASSERT_NE(s.stats(), nullptr);
 
-    EXPECT_FALSE(labelContaining(&s, QStringLiteral("Current")).isEmpty());
-    EXPECT_FALSE(labelContaining(&s, QStringLiteral("Total")).isEmpty());
-    EXPECT_FALSE(labelContaining(&s, "1 MB").isEmpty());
-    EXPECT_FALSE(labelContaining(&s, "2.00 GB").isEmpty());
-    EXPECT_TRUE(hasExactLabel(&s, QStringLiteral("3")));
-    EXPECT_FALSE(labelContaining(&s, "01:01:01").isEmpty());
+    auto* table = s.findChild<QTableWidget*>();
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(table->rowCount(), 4);
+    EXPECT_EQ(table->horizontalHeaderItem(1)->text(), QStringLiteral("Current"));
+    EXPECT_EQ(table->horizontalHeaderItem(2)->text(), QStringLiteral("Cumulative"));
+    EXPECT_EQ(table->item(0, 1)->text(), QStringLiteral("1 MB"));
+    EXPECT_EQ(table->item(0, 2)->text(), QStringLiteral("2.00 GB"));
+    EXPECT_EQ(table->item(2, 1)->text(), QStringLiteral("3"));
+    EXPECT_TRUE(table->item(3, 1)->text().contains(QStringLiteral("01:01:01")));
 
     s.clear();
     EXPECT_EQ(s.stats(), nullptr);
@@ -330,4 +337,160 @@ TEST(MainWindowLayout, GridTopTabsBottom)
     w.torrentView()->setCurrentIndex(w.torrentView()->model()->index(0, 0));
     ASSERT_NE(w.generalForm()->torrent(), nullptr);
     EXPECT_EQ(w.generalForm()->torrent()->id, 7);
+}
+
+TEST(PropsForm, ProgressStaysVisibleWhileDetailsScroll)
+{
+    PropsForm form;
+    form.resize(520, 180);
+    Torrent torrent;
+    torrent.id = 51;
+    torrent.name = QString(400, QChar('n'));
+    torrent.magnetLink = QStringLiteral("magnet:?xt=urn:btih:") + QString(400, QChar('a'));
+    form.setTorrent(torrent);
+    form.show();
+    QCoreApplication::processEvents();
+
+    auto* scroll = form.findChild<QScrollArea*>();
+    auto* progress = form.findChild<QWidget*>(QStringLiteral("progressRow"));
+    auto* magnet = form.findChild<QLineEdit*>(QStringLiteral("magnetLink"));
+    ASSERT_NE(scroll, nullptr);
+    ASSERT_NE(progress, nullptr);
+    ASSERT_NE(magnet, nullptr);
+    EXPECT_EQ(progress->parentWidget(), &form);
+    const QPoint before = progress->mapTo(&form, QPoint());
+    ASSERT_GT(scroll->verticalScrollBar()->maximum(), 0);
+    scroll->verticalScrollBar()->setValue(scroll->verticalScrollBar()->maximum());
+    QCoreApplication::processEvents();
+    EXPECT_EQ(progress->mapTo(&form, QPoint()), before);
+    EXPECT_LE(progress->geometry().bottom(), scroll->geometry().top());
+    EXPECT_EQ(scroll->horizontalScrollBar()->maximum(), 0);
+    EXPECT_TRUE(magnet->isReadOnly());
+    magnet->selectAll();
+    EXPECT_EQ(magnet->selectedText(), *torrent.magnetLink);
+
+    form.clear();
+    EXPECT_EQ(form.findChild<QWidget*>(QStringLiteral("progressRow")), nullptr);
+}
+
+TEST(PropsForm, CopyFromCaptionAndValueIncludesClippedText)
+{
+    PropsForm form;
+    form.resize(520, 180);
+    Torrent torrent;
+    torrent.id = 52;
+    torrent.hashString = QString(200, QChar('a'));
+    form.setTorrent(torrent);
+    QLabel* caption = nullptr;
+    QLabel* value = nullptr;
+    for (auto* label : form.findChildren<QLabel*>()) {
+        if (label->text() == QStringLiteral("Hash:"))
+            caption = label;
+        if (label->text() == *torrent.hashString)
+            value = label;
+    }
+    ASSERT_NE(caption, nullptr);
+    ASSERT_NE(value, nullptr);
+    for (auto* label : {caption, value}) {
+        auto* action = label->findChild<QAction*>(QStringLiteral("copyFieldValue"));
+        ASSERT_NE(action, nullptr);
+        QApplication::clipboard()->clear();
+        action->trigger();
+        EXPECT_EQ(QApplication::clipboard()->text(), *torrent.hashString);
+    }
+}
+
+TEST(PropsForm, CommentLinkIsClickableAndCopiesOriginalUrl)
+{
+    PropsForm form;
+    Torrent torrent;
+    torrent.id = 53;
+    torrent.comment = QStringLiteral("https://example.org/details?a=1&b=2");
+    form.setTorrent(torrent);
+    QLabel* link = nullptr;
+    for (auto* label : form.findChildren<QLabel*>())
+        if (label->toolTip() == *torrent.comment)
+            link = label;
+    ASSERT_NE(link, nullptr);
+    EXPECT_TRUE(link->openExternalLinks());
+    EXPECT_TRUE(link->textInteractionFlags().testFlag(Qt::LinksAccessibleByMouse));
+    EXPECT_TRUE(link->text().contains(QStringLiteral("<a href=")));
+    auto* copy = link->findChild<QAction*>(QStringLiteral("copyFieldValue"));
+    ASSERT_NE(copy, nullptr);
+    copy->trigger();
+    EXPECT_EQ(QApplication::clipboard()->text(), *torrent.comment);
+
+    torrent.comment = QStringLiteral("ordinary comment <b>not markup</b>");
+    form.setTorrent(torrent);
+    for (auto* label : form.findChildren<QLabel*>()) {
+        if (label->toolTip() == *torrent.comment) {
+            EXPECT_EQ(label->textFormat(), Qt::PlainText);
+            EXPECT_FALSE(label->openExternalLinks());
+            EXPECT_EQ(label->text(), *torrent.comment);
+        }
+    }
+}
+
+TEST(InfoPanel, RendersAllReferenceTabs)
+{
+    if (!qEnvironmentVariable("TGUI_PANEL_PREVIEW_DIR").isEmpty())
+        tgui::theme::apply(*qobject_cast<QApplication*>(QCoreApplication::instance()));
+    MainWindow window;
+    Torrent torrent;
+    torrent.id = 71;
+    torrent.name = QStringLiteral("Example release");
+    torrent.downloadDir = QStringLiteral("D:/Downloads");
+    torrent.status = 4;
+    torrent.sizeWhenDone = 1073741824.;
+    torrent.totalSize = torrent.sizeWhenDone;
+    torrent.leftUntilDone = 536870912.;
+    torrent.pieceCount = 16;
+    torrent.pieces = QString::fromLatin1(QByteArray::fromHex("aa55").toBase64());
+    torrent.hashString = QString(40, QChar('a'));
+    torrent.comment = QStringLiteral("https://example.org/release");
+    window.applyTorrentsUpdate({torrent});
+    window.generalForm()->setTorrent(torrent);
+    QVector<FileStat> files;
+    files.append({0, QStringLiteral("Release/Video/movie.mkv"), 1073741824., .5, 0, true});
+    files.append({1, QStringLiteral("Release/Subtitles/English.srt"), 4096., 1., 1, true});
+    files.append({2, QStringLiteral("Release/readme.txt"), 2048., 0., 0, false});
+    const_cast<FileListModel&>(window.fileModel()).setFiles(files);
+    Peer peer;
+    peer.address = QStringLiteral("192.0.2.1");
+    peer.clientName = QStringLiteral("Transmission 4.0");
+    peer.progress = 62.; peer.flagStr = QStringLiteral("DU");
+    peer.rateToClient = 1024 * 256; peer.rateToPeer = 8192;
+    const_cast<PeerListModel&>(window.peerModel()).setPeers({peer});
+    TrackerStat tracker;
+    tracker.announce = QStringLiteral("https://tracker.example.org/announce");
+    tracker.lastAnnounceResult = QStringLiteral("Success"); tracker.seederCount = 125;
+    const_cast<TrackerListModel&>(window.trackerModel()).setTrackers({tracker});
+    SessionStats stats;
+    stats.current.downloadedBytes = 1073741824.; stats.current.uploadedBytes = 536870912.;
+    stats.current.filesAdded = 3; stats.current.secondsActive = 3600;
+    stats.cumulative = stats.current;
+    window.statsForm()->setStats(stats);
+    auto* tabs = window.findChild<QTabWidget*>(QStringLiteral("infoPanel"));
+    ASSERT_NE(tabs, nullptr);
+    ASSERT_EQ(tabs->count(), 5);
+    // Separate from the main splitter so every tab is checked at reference size.
+    tabs->setParent(nullptr);
+    tabs->resize(984, 326);
+    tabs->show();
+    auto* tree = tabs->findChild<QTreeView*>(QStringLiteral("filesView"));
+    ASSERT_NE(tree, nullptr);
+    EXPECT_EQ(tree->model()->columnCount(), 5);
+    EXPECT_EQ(tree->model()->rowCount(), 1);
+    tree->expandAll();
+    const QString output = qEnvironmentVariable("TGUI_PANEL_PREVIEW_DIR");
+    if (!output.isEmpty()) QDir().mkpath(output);
+    for (int i = 0; i < tabs->count(); ++i) {
+        tabs->setCurrentIndex(i);
+        QCoreApplication::processEvents();
+        EXPECT_TRUE(tabs->currentWidget()->isVisible());
+        if (!output.isEmpty()) {
+            EXPECT_TRUE(tabs->grab().save(output + QStringLiteral("/panel-%1.png").arg(i)));
+        }
+    }
+    delete tabs;
 }

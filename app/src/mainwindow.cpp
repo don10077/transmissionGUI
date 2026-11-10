@@ -174,21 +174,55 @@ void MainWindow::createUi()
         view->setWordWrap(false);
         view->setFrameShape(QFrame::NoFrame);
         view->verticalHeader()->setVisible(false);
-        view->verticalHeader()->setDefaultSectionSize(24);
-        view->horizontalHeader()->setStretchLastSection(true);
+        view->verticalHeader()->setDefaultSectionSize(20);
+        view->verticalHeader()->setMinimumSectionSize(20);
+        view->horizontalHeader()->setStretchLastSection(false);
+        view->horizontalHeader()->setSectionsMovable(true);
         view->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
         view->horizontalHeader()->setHighlightSections(false);
         return view;
     };
 
-    auto* filesView = makeTable(&m_fileModel);
+    m_fileTree = new FileTreeModel(this);
+    m_fileTree->setFiles({});
+    auto* filesView = new QTreeView(this);
+    filesView->setObjectName(QStringLiteral("filesView"));
+    filesView->setModel(m_fileTree);
+    filesView->setUniformRowHeights(true);
+    filesView->setAlternatingRowColors(true);
+    filesView->setSelectionBehavior(QAbstractItemView::SelectRows);
+    filesView->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    filesView->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    filesView->setFrameShape(QFrame::NoFrame);
+    filesView->setIndentation(18);
+    filesView->header()->setStretchLastSection(false);
+    filesView->header()->setSectionsMovable(true);
+    filesView->setItemDelegateForColumn(FileTreeModel::Progress, new ProgressDelegate(filesView));
     m_filesView = filesView;
-    filesView->installEventFilter(this);  // двойной клик по файлу/папке → открыть
-    filesView->setColumnWidth(FileListModel::ColName, 420);
-    filesView->setColumnWidth(FileListModel::ColSize, 100);
-    filesView->setColumnWidth(FileListModel::ColProgress, 90);
-    filesView->setColumnWidth(FileListModel::ColPriority, 90);
-    filesView->setColumnWidth(FileListModel::ColWanted, 70);
+    filesView->setColumnWidth(FileTreeModel::Name, 350);
+    filesView->setColumnWidth(FileTreeModel::Size, 90);
+    filesView->setColumnWidth(FileTreeModel::Done, 90);
+    filesView->setColumnWidth(FileTreeModel::Progress, 70);
+    filesView->setColumnWidth(FileTreeModel::Priority, 100);
+    connect(filesView, &QTreeView::doubleClicked, this, [this](const QModelIndex& index) {
+        if (m_fileTree->hasChildren(index.siblingAtColumn(0))) return;
+        const auto rows = m_fileTree->sourceRows(index);
+        if (!rows.isEmpty()) onFilesDoubleClicked(rows.first());
+    });
+    connect(&m_fileModel, &QAbstractItemModel::modelReset, this, [this] {
+        const bool first = m_fileTree->rowCount() == 0;
+        const QByteArray header = m_filesView->header()->saveState();
+        m_fileTree->setFiles(m_fileModel.files());
+        m_filesView->header()->restoreState(header);
+        if (first) {
+            m_filesView->setColumnWidth(FileTreeModel::Name, 350);
+            m_filesView->setColumnWidth(FileTreeModel::Size, 90);
+            m_filesView->setColumnWidth(FileTreeModel::Done, 90);
+            m_filesView->setColumnWidth(FileTreeModel::Progress, 70);
+            m_filesView->setColumnWidth(FileTreeModel::Priority, 100);
+            m_filesView->expandToDepth(0);
+        }
+    });
     connect(&m_fileModel, &FileListModel::wantChanged, this, &MainWindow::onFileWantToggled);
     // Контекстное меню вкладки «Файлы» (референс — pmFiles): приоритет high/normal/low
     // и want/skip для выделенных строк.
@@ -196,16 +230,31 @@ void MainWindow::createUi()
     connect(filesView, &QWidget::customContextMenuRequested, this, &MainWindow::onFilesContextMenu);
 
     auto* peersView = makeTable(&m_peerModel);
-    peersView->setColumnWidth(PeerListModel::ColAddress, 190);
-    peersView->setColumnWidth(PeerListModel::ColClient, 200);
-    peersView->setColumnWidth(PeerListModel::ColProgress, 80);
-    peersView->setColumnWidth(PeerListModel::ColRateDown, 110);
+    peersView->setObjectName(QStringLiteral("peersView"));
+    peersView->setColumnWidth(PeerListModel::ColAddress, 150);
+    peersView->setColumnWidth(PeerListModel::ColClient, 150);
+    peersView->setColumnWidth(PeerListModel::ColFlags, 70);
+    peersView->setColumnWidth(PeerListModel::ColProgress, 70);
+    peersView->setColumnWidth(PeerListModel::ColRateDown, 85);
+    peersView->setColumnWidth(PeerListModel::ColRateUp, 85);
+    peersView->hideColumn(PeerListModel::ColPort);
+    peersView->horizontalHeader()->moveSection(
+        peersView->horizontalHeader()->visualIndex(PeerListModel::ColFlags), 2);
+    peersView->horizontalHeader()->moveSection(
+        peersView->horizontalHeader()->visualIndex(PeerListModel::ColRateUp), 4);
 
     auto* trackersView = makeTable(&m_trackerModel);
-    trackersView->setColumnWidth(TrackerListModel::ColAnnounce, 340);
-    trackersView->setColumnWidth(TrackerListModel::ColTier, 50);
+    trackersView->setObjectName(QStringLiteral("trackersView"));
+    trackersView->hideColumn(TrackerListModel::ColTier);
+    trackersView->hideColumn(TrackerListModel::ColLeechers);
+    trackersView->setColumnWidth(TrackerListModel::ColAnnounce, 250);
+    trackersView->setColumnWidth(TrackerListModel::ColLastResult, 240);
+    trackersView->setColumnWidth(TrackerListModel::ColUpdate, 90);
     trackersView->setColumnWidth(TrackerListModel::ColSeeders, 70);
-    trackersView->setColumnWidth(TrackerListModel::ColLeechers, 70);
+    trackersView->horizontalHeader()->moveSection(
+        trackersView->horizontalHeader()->visualIndex(TrackerListModel::ColLastResult), 1);
+    trackersView->horizontalHeader()->moveSection(
+        trackersView->horizontalHeader()->visualIndex(TrackerListModel::ColUpdate), 2);
     // Контекстное меню вкладки «Трекеры» (референс — pmTrackers): Add/Edit/Remove.
     trackersView->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(trackersView, &QWidget::customContextMenuRequested,
@@ -216,8 +265,14 @@ void MainWindow::createUi()
     m_statsForm = new StatsForm(this);
 
     m_tabs = new QTabWidget(this);
+    m_tabs->setObjectName(QStringLiteral("infoPanel"));
     m_tabs->setIconSize(QSize(16, 16));
     m_tabs->setUsesScrollButtons(true);
+    m_tabs->setStyleSheet(QStringLiteral(
+        "QTabBar::tab { padding: 3px 8px; margin-right: 0; margin-top: 2px; }"
+        "QTabBar::tab:selected { padding-top: 5px; margin-top: 0; }"
+        "QTreeView::item, QTableView::item { padding: 1px 3px; min-height: 18px; }"
+        "QHeaderView::section { padding: 2px 5px; font-weight: normal; }"));
     // Названия вкладок 1:1 с референсом (tabControl: General/Trackers/Peers/
     // Files/Statistics).
     m_tabs->addTab(m_general, tgui::theme::icon(tgui::theme::Icon::TabGeneral),
@@ -230,7 +285,7 @@ void MainWindow::createUi()
                    tr("Files"));
     m_tabs->addTab(m_statsForm, tgui::theme::icon(tgui::theme::Icon::TabStatistics),
                    tr("Statistics"));
-    m_tabs->setMinimumHeight(190);
+    m_tabs->setMinimumHeight(80);
 
     auto* splitter = new QSplitter(Qt::Vertical, this);
     splitter->setHandleWidth(4);
@@ -239,7 +294,7 @@ void MainWindow::createUi()
     splitter->addWidget(m_tabs);
     splitter->setStretchFactor(0, 3);
     splitter->setStretchFactor(1, 1);
-    splitter->setSizes({540, 240});
+    splitter->setSizes({454, 326});
     setCentralWidget(splitter);
 
     if (m_view->selectionModel()) {
@@ -1355,22 +1410,33 @@ void MainWindow::createMenus()
 
     // Видимость панелей. F11/F12 и Shift+F11/Shift+F12 работают и тогда,
     // когда меню/тулбар скрыты — действия добавлены в окно.
-    m_actFilterPane = mView->addAction(tr("Filter pane"));
-    m_actFilterPane->setCheckable(true);
-    m_actFilterPane->setShortcut(QKeySequence(Qt::Key_F11));
-    m_actFilterPane->setChecked(QSettings().value("ui/filterPane", true).toBool());
-    connect(m_actFilterPane, &QAction::toggled, this, [this](bool on) {
+    // Ключи QSettings переименованы (ui/filterPane→ui/filterPanel и т.д.);
+    // старое имя считывается как fallback, чтобы не потерять сохранённое состояние.
+    auto uiBool = [](const char* key, const char* legacy, bool def) {
+        QSettings s;
+        if (s.contains(key))
+            return s.value(key, def).toBool();
+        if (s.contains(legacy))
+            return s.value(legacy, def).toBool();
+        return def;
+    };
+
+    m_actFilterPanel = mView->addAction(tr("Filter panel"));
+    m_actFilterPanel->setCheckable(true);
+    m_actFilterPanel->setShortcut(QKeySequence(Qt::Key_F11));
+    m_actFilterPanel->setChecked(uiBool("ui/filterPanel", "ui/filterPane", true));
+    connect(m_actFilterPanel, &QAction::toggled, this, [this](bool on) {
         m_filterPanel->setVisible(on);
-        QSettings().setValue("ui/filterPane", on);
+        QSettings().setValue("ui/filterPanel", on);
     });
 
-    m_actInfoPane = mView->addAction(tr("Info pane"));
-    m_actInfoPane->setCheckable(true);
-    m_actInfoPane->setShortcut(QKeySequence(Qt::Key_F12));
-    m_actInfoPane->setChecked(QSettings().value("ui/infoPane", true).toBool());
-    connect(m_actInfoPane, &QAction::toggled, this, [this](bool on) {
+    m_actInfoPanel = mView->addAction(tr("Info panel"));
+    m_actInfoPanel->setCheckable(true);
+    m_actInfoPanel->setShortcut(QKeySequence(Qt::Key_F12));
+    m_actInfoPanel->setChecked(uiBool("ui/infoPanel", "ui/infoPane", true));
+    connect(m_actInfoPanel, &QAction::toggled, this, [this](bool on) {
         m_tabs->setVisible(on);
-        QSettings().setValue("ui/infoPane", on);
+        QSettings().setValue("ui/infoPanel", on);
     });
 
     m_actToolbar = mView->addAction(tr("Toolbar"));
@@ -1433,10 +1499,10 @@ void MainWindow::createMenus()
 // восстанавливался, но сами панели оставались видимыми).
 void MainWindow::applyViewVisibility()
 {
-    if (m_actFilterPane && m_filterPanel)
-        m_filterPanel->setVisible(m_actFilterPane->isChecked());
-    if (m_actInfoPane && m_tabs)
-        m_tabs->setVisible(m_actInfoPane->isChecked());
+    if (m_actFilterPanel && m_filterPanel)
+        m_filterPanel->setVisible(m_actFilterPanel->isChecked());
+    if (m_actInfoPanel && m_tabs)
+        m_tabs->setVisible(m_actInfoPanel->isChecked());
     if (m_actToolbar && m_toolBar)
         m_toolBar->setVisible(m_actToolbar->isChecked());
     if (m_actStatusBar)
@@ -2101,16 +2167,16 @@ void MainWindow::onFilesContextMenu(const QPoint& pos)
 {
     if (!m_rpc || m_currentId < 0)
         return;
-    auto* view = qobject_cast<QTableView*>(sender());
+    auto* view = qobject_cast<QTreeView*>(sender());
     if (!view || !view->selectionModel())
         return;
     const auto selected = view->selectionModel()->selectedRows();
     const auto& files = m_fileModel.files();
     QVector<int> fileIds;
-    for (const QModelIndex& idx : selected) {
-        if (idx.row() >= 0 && idx.row() < files.size())
-            fileIds.append(files.at(idx.row()).index);
-    }
+    for (const QModelIndex& idx : selected)
+        for (int row : m_fileTree->sourceRows(idx))
+            if (row >= 0 && row < files.size() && !fileIds.contains(files.at(row).index))
+                fileIds.append(files.at(row).index);
     if (fileIds.isEmpty())
         return;
 

@@ -32,6 +32,7 @@ private:
     QVBoxLayout* m_layout = nullptr;
     QScrollArea* m_scroll = nullptr;
     QWidget* m_content = nullptr;
+    QWidget* m_progressRow = nullptr;
     std::optional<tgui::Torrent> m_torrent;
     std::optional<tgui::SessionInfo> m_session;
     // Сохранение прокрутки между пересборками (автообновление раз в 2 с).

@@ -1553,8 +1553,8 @@ Restart the application to apply the changes.</source>
 Перезапустите приложение, чтобы применить изменения.</translation>
     </message>
     <message>
-      <location filename="../app/src/mainwindow.cpp" line="1331" />
-      <source>Filter pane</source>
+      <location filename="../app/src/mainwindow.cpp" line="1370" />
+      <source>Filter panel</source>
       <translation>Панель фильтров</translation>
     </message>
     <message>
@@ -1562,8 +1562,8 @@ Restart the application to apply the changes.</source>
       <translation type="vanished">Большая панель инструментов</translation>
     </message>
     <message>
-      <location filename="../app/src/mainwindow.cpp" line="1340" />
-      <source>Info pane</source>
+      <location filename="../app/src/mainwindow.cpp" line="1379" />
+      <source>Info panel</source>
       <translation>Панель информации</translation>
     </message>
     <message>
@@ -1775,6 +1775,14 @@ Used when opening files/torrents with double-click.</source>
   </context>
   <context>
     <name>PropsForm</name>
+    <message>
+      <source>Copy</source>
+      <translation>Копировать</translation>
+    </message>
+    <message>
+      <source>Open link</source>
+      <translation>Открыть ссылку</translation>
+    </message>
     <message>
       <location filename="../app/src/propsform.cpp" line="192" />
       <source>Torrent not selected</source>
@@ -1988,6 +1996,11 @@ Used when opening files/torrents with double-click.</source>
   </context>
   <context>
     <name>QObject</name>
+    <message><source>Host</source><translation>Хост</translation></message>
+    <message><source>Have</source><translation>Есть</translation></message>
+    <message><source>Flags</source><translation>Флаги</translation></message>
+    <message><source>Port</source><translation>Порт</translation></message>
+    <message><source>Update in</source><translation>Обновление через</translation></message>
     <message>
       <location filename="../app/src/detailmodels.cpp" line="37" />
       <location filename="../app/src/torrentmodel.cpp" line="119" />
@@ -2329,6 +2342,8 @@ Used when opening files/torrents with double-click.</source>
   </context>
   <context>
     <name>StatsForm</name>
+    <message><source>Global statistics:</source><translation>Общая статистика:</translation></message>
+    <message><source>Cumulative</source><translation>Всего</translation></message>
     <message>
       <location filename="../app/src/statsform.cpp" line="88" />
       <source>Statistics unavailable</source>
@@ -2375,4 +2390,12 @@ Used when opening files/torrents with double-click.</source>
       <translation>Активность</translation>
     </message>
   </context>
+<context><name>QStandardItemModel</name>
+    <message><source>File name</source><translation>Имя файла</translation></message>
+    <message><source>Size</source><translation>Размер</translation></message>
+    <message><source>Done</source><translation>Скачано</translation></message>
+    <message><source>Priority</source><translation>Приоритет</translation></message>
+    <message><source>Mixed</source><translation>Разный</translation></message>
+    <message><source>Skip</source><translation>Пропустить</translation></message>
+</context>
 </TS>

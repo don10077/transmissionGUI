@@ -1,6 +1,9 @@
 #include "detailmodels.h"
 
 #include <algorithm>
+#include <QApplication>
+#include <QStyle>
+#include <QDateTime>
 
 #include "tgui/util.h"
 
@@ -151,6 +154,10 @@ QVariant PeerListModel::data(const QModelIndex& index, int role) const
         case ColAddress:
             return p.address + (p.port > 0 ? QStringLiteral(":") + QString::number(p.port)
                                            : QString());
+        case ColFlags:
+            return p.flagStr;
+        case ColPort:
+            return p.port;
         case ColClient:
             return p.clientName;
         case ColProgress:
@@ -169,15 +176,19 @@ QVariant PeerListModel::headerData(int section, Qt::Orientation orientation, int
         return {};
     switch (section) {
         case ColAddress:
-            return QObject::tr("Address");
+            return QObject::tr("Host");
+        case ColFlags:
+            return QObject::tr("Flags");
+        case ColPort:
+            return QObject::tr("Port");
         case ColClient:
             return QObject::tr("Client");
         case ColProgress:
-            return QObject::tr("Progress");
+            return QObject::tr("Have");
         case ColRateDown:
-            return QObject::tr("↓ Speed");
+            return QObject::tr("Down speed");
         case ColRateUp:
-            return QObject::tr("↑ Speed");
+            return QObject::tr("Up speed");
     }
     return {};
 }
@@ -224,7 +235,13 @@ QVariant TrackerListModel::data(const QModelIndex& index, int role) const
         case ColLeechers:
             return t.leecherCount >= 0 ? QString::number(t.leecherCount) : QObject::tr("—");
         case ColLastResult:
+            if (t.announceState == 2 || t.announceState == 3)
+                return QObject::tr("Updating...");
             return t.lastAnnounceResult;
+        case ColUpdate:
+            return t.nextAnnounceTime > 0 ? QString::fromStdString(tgui::formatEta(
+                qMax<qint64>(0, t.nextAnnounceTime - QDateTime::currentSecsSinceEpoch()))) :
+                QStringLiteral("—");
     }
     return {};
 }
@@ -235,15 +252,111 @@ QVariant TrackerListModel::headerData(int section, Qt::Orientation orientation, 
         return {};
     switch (section) {
         case ColAnnounce:
-            return QObject::tr("Announce");
+            return QObject::tr("Name");
         case ColTier:
             return QObject::tr("Tier");
         case ColSeeders:
-            return QObject::tr("Seeders");
+            return QObject::tr("Seeds");
         case ColLeechers:
             return QObject::tr("Leechers");
         case ColLastResult:
-            return QObject::tr("Last result");
+            return QObject::tr("Status");
+        case ColUpdate:
+            return QObject::tr("Update in");
     }
     return {};
+}
+FileTreeModel::FileTreeModel(QObject* parent) : QStandardItemModel(parent) {}
+
+void FileTreeModel::setFiles(const QVector<tgui::FileStat>& files)
+{
+    QStringList paths;
+    for (const auto& file : files)
+        paths.append(file.name);
+    if (paths != m_paths || columnCount() == 0) {
+        clear();
+        m_nodes.clear();
+        m_paths = paths;
+        setHorizontalHeaderLabels({tr("File name"), tr("Size"), tr("Done"),
+                                   QStringLiteral("%"), tr("Priority")});
+        for (const auto& file : files) {
+            QString path;
+            QStandardItem* parent = invisibleRootItem();
+            const auto parts = file.name.split('/', Qt::SkipEmptyParts);
+            for (int i = 0; i < parts.size(); ++i) {
+                if (!path.isEmpty()) path += '/';
+                path += parts.at(i);
+                if (!m_nodes.contains(path)) {
+                    QList<QStandardItem*> row;
+                    for (int column = 0; column < ColumnCount; ++column) {
+                        auto* item = new QStandardItem;
+                        item->setEditable(false);
+                        item->setData(path, PathRole);
+                        row.append(item);
+                    }
+                    row[Name]->setText(parts.at(i));
+                    row[Name]->setIcon(QApplication::style()->standardIcon(
+                        i + 1 < parts.size() ? QStyle::SP_DirIcon : QStyle::SP_FileIcon));
+                    parent->appendRow(row);
+                    m_nodes.insert(path, row[Name]);
+                }
+                parent = m_nodes.value(path);
+            }
+        }
+    }
+    struct Aggregate {
+        double size = 0, done = 0;
+        QVariantList rows;
+        int priority = 0;
+        bool first = true, mixed = false, allSkipped = true;
+    };
+    QHash<QString, Aggregate> totals;
+    for (int row = 0; row < files.size(); ++row) {
+        const auto& file = files.at(row);
+        QString path;
+        for (const auto& part : file.name.split('/', Qt::SkipEmptyParts)) {
+            if (!path.isEmpty()) path += '/';
+            path += part;
+            auto& total = totals[path];
+            total.size += file.size;
+            total.done += file.size * file.completion;
+            total.rows.append(row);
+            const int priority = file.wanted ? file.priority : -2;
+            if (!total.first && total.priority != priority) total.mixed = true;
+            total.priority = priority;
+            total.first = false;
+            total.allSkipped &= !file.wanted;
+        }
+    }
+    for (auto it = totals.cbegin(); it != totals.cend(); ++it) {
+        auto* name = m_nodes.value(it.key());
+        if (!name) continue;
+        auto* parent = name->parent() ? name->parent() : invisibleRootItem();
+        const auto& total = it.value();
+        for (int column = 0; column < ColumnCount; ++column) {
+            auto* item = parent->child(name->row(), column);
+            item->setData(total.rows, SourceRowsRole);
+            item->setToolTip(it.key());
+            item->setForeground(total.allSkipped ? QBrush(Qt::gray) : QBrush());
+            if (column == Size || column == Done)
+                item->setText(QString::fromStdString(tgui::formatSize(
+                    column == Size ? total.size : total.done)));
+            if (column == Progress)
+                item->setData(total.size > 0 ? total.done * 100.0 / total.size : 100.0,
+                              Qt::DisplayRole);
+            if (column == Priority)
+                item->setText(total.mixed ? tr("Mixed") : total.priority == -2 ?
+                              tr("Skip") : priorityText(total.priority));
+            if (column == Size || column == Done)
+                item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        }
+    }
+}
+
+QVector<int> FileTreeModel::sourceRows(const QModelIndex& index) const
+{
+    QVector<int> rows;
+    for (const auto& value : index.data(SourceRowsRole).toList())
+        rows.append(value.toInt());
+    return rows;
 }

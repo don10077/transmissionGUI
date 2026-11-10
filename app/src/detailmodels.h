@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QAbstractTableModel>
+#include <QStandardItemModel>
+#include <QHash>
 
 #include "tgui/models.h"
 
@@ -50,6 +52,8 @@ public:
         ColProgress,
         ColRateDown,
         ColRateUp,
+        ColFlags,
+        ColPort,
         ColumnCount
     };
 
@@ -77,6 +81,7 @@ public:
         ColSeeders,
         ColLeechers,
         ColLastResult,
+        ColUpdate,
         ColumnCount
     };
 
@@ -92,4 +97,16 @@ public:
 
 private:
     QVector<tgui::TrackerStat> m_trackers;
+};
+/** File hierarchy with aggregated folder sizes and stable items on refresh. */
+class FileTreeModel : public QStandardItemModel {
+public:
+    enum Column { Name, Size, Done, Progress, Priority, ColumnCount };
+    enum Role { SourceRowsRole = Qt::UserRole + 31, PathRole };
+    explicit FileTreeModel(QObject* parent = nullptr);
+    void setFiles(const QVector<tgui::FileStat>& files);
+    QVector<int> sourceRows(const QModelIndex& index) const;
+private:
+    QStringList m_paths;
+    QHash<QString, QStandardItem*> m_nodes;
 };

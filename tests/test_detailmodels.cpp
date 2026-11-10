@@ -179,3 +179,26 @@ TEST(DetailModels, OffscreenTableViewRenders)
               "http://tracker.example/announce");
     view.hide();
 }
+TEST(FileTree, AggregatesFoldersAndPreservesItemsOnRefresh)
+{
+    FileTreeModel model;
+    auto files = makeFiles();
+    model.setFiles(files);
+    ASSERT_EQ(model.rowCount(), 1);
+    const auto folder = model.index(0, 0);
+    EXPECT_EQ(folder.data().toString(), QStringLiteral("dir"));
+    EXPECT_EQ(model.rowCount(folder), 2);
+    EXPECT_EQ(model.sourceRows(folder), (QVector<int>{0, 1}));
+    EXPECT_EQ(model.index(0, FileTreeModel::Done).data().toString(),
+              QString::fromStdString(formatSize(500)));
+    QPersistentModelIndex leaf(model.index(0, 0, folder));
+    files[0].completion = 1.;
+    model.setFiles(files);
+    EXPECT_TRUE(leaf.isValid());
+    EXPECT_EQ(leaf.data().toString(), QStringLiteral("a.mp4"));
+    EXPECT_EQ(model.sourceRows(leaf), (QVector<int>{0}));
+    EXPECT_DOUBLE_EQ(model.index(0, FileTreeModel::Progress, folder).data().toDouble(), 100.);
+    model.setFiles({});
+    EXPECT_FALSE(leaf.isValid());
+    EXPECT_EQ(model.rowCount(), 0);
+}

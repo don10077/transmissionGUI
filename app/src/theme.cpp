@@ -754,11 +754,6 @@ QProgressBar::chunk {
     /* Как в эталоне: сплошная синяя заливка #0078D7. */
     background: #0078D7;
 }
-/* Верхняя тонкая полоса шкалы General (нижняя — карта кусков, рисуется кодом). */
-QProgressBar#progressTop {
-    min-height: 4px;
-    max-height: 4px;
-}
 
 QGroupBox {
     background: #FFFFFF;
@@ -775,16 +770,18 @@ QGroupBox::title {
     color: #000000;
 }
 
-QFrame#infoCard, QFrame#statsCard {
-    background: #FFFFFF;
-    border: 1px solid #C0C0C0;
-    border-radius: 2px;
+/* Вкладка «General»: секции «Transfer»/«Torrent» — как в старом transgui,
+   плоские блоки: жирный заголовок без рамки и без серой полосы
+   (вкладку Statistics тоже оформили так же). */
+QFrame#sectionPanel {
+    background: transparent;
+    border: none;
 }
-QLabel#infoCardTitle {
-    background: #E1E1E1;
+QLabel#sectionTitle {
     color: #000000;
     font-weight: 700;
-    padding: 4px 8px;
+    font-size: 13px;
+    padding: 2px;
 }
 QLabel#fieldLabel { color: #000000; }
 QLabel#fieldValue { color: #000000; }

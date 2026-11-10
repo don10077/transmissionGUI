@@ -1,12 +1,17 @@
 #include "propsform.h"
 
+#include <QAction>
+#include <QApplication>
+#include <QClipboard>
+#include <QDesktopServices>
 #include <QDateTime>
+#include <QUrl>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPainter>
-#include <QProgressBar>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QTimer>
@@ -37,27 +42,27 @@ QString dash()
     return QStringLiteral("—");
 }
 
-QColor statusColor(int status, bool finished, bool error)
+/** Attach whole-value copying to either the caption or its value. */
+void addCopyAction(QWidget* widget, const QString& value, const QString& caption)
 {
-    using namespace tgui::theme::color;
-    if (error)
-        return red;
-    if (finished)
-        return green;
-    switch (status) {
-        case 4:
-            return accent;
-        case 6:
-            return green;
-        case 1:
-        case 3:
-        case 5:
-            return amber;
-        case 2:
-            return purple;
-        default:
-            return textFaint;
-    }
+    auto* copy = new QAction(caption, widget);
+    copy->setObjectName(QStringLiteral("copyFieldValue"));
+    QObject::connect(copy, &QAction::triggered, widget, [value] {
+        QApplication::clipboard()->setText(value);
+    });
+    widget->addAction(copy);
+    widget->setContextMenuPolicy(Qt::ActionsContextMenu);
+}
+
+/** Return a supported external link, or an empty URL for ordinary text. */
+QUrl fieldLink(const QString& value)
+{
+    const QUrl url(value.trimmed(), QUrl::StrictMode);
+    const QString scheme = url.scheme().toLower();
+    if (url.isValid() && ((scheme == QStringLiteral("http") ||
+                           scheme == QStringLiteral("https")) && !url.host().isEmpty()))
+        return url;
+    return {};
 }
 
 // Нижняя часть шкалы General — карта кусков (референс: FTorrentProgress).
@@ -66,7 +71,7 @@ class PieceMapBar : public QWidget {
 public:
     explicit PieceMapBar(QWidget* parent = nullptr) : QWidget(parent)
     {
-        setFixedHeight(14);
+        setFixedHeight(21);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
 
@@ -82,39 +87,35 @@ protected:
     void paintEvent(QPaintEvent*) override
     {
         QPainter p(this);
-        const QRect r = rect();
-        p.fillRect(r, QColor(0xA0, 0xA0, 0xA0));
-        const QRect inner = r.adjusted(1, 1, -1, -1);
-        p.fillRect(inner, Qt::white);
-        if (inner.width() <= 0)
+        const QColor highlight = palette().color(QPalette::Highlight);
+        const QColor background = palette().color(QPalette::Base);
+        const QColor border = palette().color(QPalette::Shadow);
+        p.fillRect(rect(), background);
+        // ProcessPieces: six-pixel overall bar, a gap, then the piece map.
+        const bool hasMap = m_pieceCount > 0;
+        const QRect overall(0, 0, width(), hasMap ? 6 : height());
+        p.fillRect(overall, border);
+        const QRect fill = overall.adjusted(1, 1, -1, -1);
+        p.fillRect(fill, background);
+        p.fillRect(QRect(fill.topLeft(), QSize(qRound(fill.width() *
+                       qBound(0.0, m_percent, 100.0) / 100.0), fill.height())), highlight);
+        if (!hasMap)
             return;
+        const QRect map(0, 7, width(), 14);
+        p.fillRect(map, border);
+        const QRect inner = map.adjusted(1, 1, -1, -1);
+        p.fillRect(inner, background);
+        const QByteArray bits = QByteArray::fromBase64(m_pieces.toLatin1());
+        // Preserve every present piece when reducing maps above 4000 pieces,
+        // matching the reference bitmap before stretching it to the panel.
+        const int samples = qMin(m_pieceCount, 4000);
+        QImage bitmap(samples, 1, QImage::Format_RGB32);
+        bitmap.fill(background);
+        for (int piece = 0; piece < m_pieceCount && piece / 8 < bits.size(); ++piece)
+            if (static_cast<unsigned char>(bits.at(piece / 8)) & (0x80u >> (piece % 8)))
+                bitmap.setPixelColor(int(qint64(piece) * samples / m_pieceCount), 0, highlight);
+        p.drawImage(inner, bitmap);
 
-        if (m_pieceCount > 0 && !m_pieces.isEmpty()) {
-            const QByteArray bits = QByteArray::fromBase64(m_pieces.toLatin1());
-            if (!bits.isEmpty()) {
-                const int w = inner.width();
-                p.setPen(Qt::NoPen);
-                p.setBrush(tgui::theme::color::accent);
-                for (int px = 0; px < w; ++px) {
-                    const int piece =
-                        static_cast<int>(qint64(px) * m_pieceCount / w);
-                    const int byteIndex = piece / 8;
-                    if (byteIndex >= bits.size())
-                        break;
-                    const int bit = 7 - (piece % 8);
-                    if (static_cast<unsigned char>(bits.at(byteIndex)) & (1u << bit))
-                        p.drawRect(inner.left() + px, inner.top(), 1, inner.height());
-                }
-                return;
-            }
-        }
-
-        // RPC < 5 (нет карты кусков): заливка по общему проценту.
-        const int fill =
-            qRound(inner.width() * qBound(0.0, m_percent, 100.0) / 100.0);
-        if (fill > 0)
-            p.fillRect(QRect(inner.left(), inner.top(), fill, inner.height()),
-                       tgui::theme::color::accent);
     }
 
 private:
@@ -129,6 +130,7 @@ PropsForm::PropsForm(QWidget* parent) : QWidget(parent)
 {
     m_layout = new QVBoxLayout(this);
     m_layout->setContentsMargins(0, 0, 0, 0);
+    m_layout->setSpacing(0);
 
     m_scroll = new QScrollArea(this);
     m_scroll->setWidgetResizable(true);
@@ -173,6 +175,9 @@ void PropsForm::rebuild()
         m_pendingScroll = m_scroll->verticalScrollBar()->value();
     m_builtTorrentId = torrentId;
 
+    delete m_progressRow;
+    m_progressRow = nullptr;
+
     if (m_content) {
         m_scroll->takeWidget();
         delete m_content;
@@ -182,8 +187,8 @@ void PropsForm::rebuild()
     m_content = new QWidget;
     // QScrollArea::setWidget() требует, чтобы layout уже был у виджета.
     auto* contentLayout = new QVBoxLayout(m_content);
-    contentLayout->setContentsMargins(12, 12, 12, 12);
-    contentLayout->setSpacing(12);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setSpacing(0);
     // Let the scroll area use the content's real minimum height, including
     // labels whose height changes when the panel is resized.
     contentLayout->setSizeConstraint(QLayout::SetMinimumSize);
@@ -205,8 +210,9 @@ void PropsForm::rebuild()
     const double percent = tgui::percentComplete(swd, ltd);
 
     // «Downloaded: [======] 100.0%» (panProgress, tabGeneral).
-    // Обычная строка без карточки: в эталоне это не рамка и не «кнопка».
-    auto* progressCard = new QFrame(m_content);
+    // Одна шкала — карта кусков, как pbDownloaded/FTorrentProgress в старом transgui.
+    auto* progressCard = new QFrame(this);
+    m_progressRow = progressCard;
     progressCard->setObjectName(QStringLiteral("progressRow"));
     auto* progressLayout = new QHBoxLayout(progressCard);
     progressLayout->setContentsMargins(8, 6, 8, 6);
@@ -214,50 +220,36 @@ void PropsForm::rebuild()
     auto* downloadedLabel = new QLabel(tr("Downloaded:"), progressCard);
     downloadedLabel->setObjectName(QStringLiteral("fieldLabel"));
     progressLayout->addWidget(downloadedLabel);
-    auto* bars = new QWidget(progressCard);
-    auto* barsLayout = new QVBoxLayout(bars);
-    barsLayout->setContentsMargins(0, 0, 0, 0);
-    barsLayout->setSpacing(1);
-
-    // Верхняя тонкая полоса — общий процент загрузки.
-    auto* overallBar = new QProgressBar(bars);
-    overallBar->setObjectName(QStringLiteral("progressTop"));
-    overallBar->setRange(0, 1000);
-    overallBar->setValue(qRound(percent * 10.0));
-    overallBar->setFormat(QStringLiteral("%1%").arg(percent, 0, 'f', 1));
-    overallBar->setTextVisible(false);
-    barsLayout->addWidget(overallBar);
-
-    // Нижняя толстая полоса — карта кусков (FTorrentProgress в эталоне).
-    auto* pieceBar = new PieceMapBar(bars);
+    auto* pieceBar = new PieceMapBar(progressCard);
     pieceBar->setData(percent, t.pieces, t.pieceCount.value_or(0));
-    barsLayout->addWidget(pieceBar);
-
-    progressLayout->addWidget(bars, 1);
+    progressLayout->addWidget(pieceBar, 1);
     // Процент — отдельной меткой справа от шкалы, как в эталоне.
     auto* percentLabel = new QLabel(
         QStringLiteral("%1%").arg(percent, 0, 'f', 1), progressCard);
     percentLabel->setObjectName(QStringLiteral("fieldValue"));
     progressLayout->addWidget(percentLabel);
-    contentLayout->addWidget(progressCard);
+    m_layout->insertWidget(0, progressCard);
 
     auto makeCard = [this, contentLayout](const QString& title, int pairs = 3) {
         auto* card = new QFrame(m_content);
-        card->setObjectName(QStringLiteral("infoCard"));
+        // Без рамки/подложки: в старом transgui секции — плоский блок
+        // (panel BevelOuter = bvNone), а не «карточка».
+        card->setObjectName(QStringLiteral("sectionPanel"));
         auto* cardLayout = new QVBoxLayout(card);
         cardLayout->setContentsMargins(0, 0, 0, 0);
         cardLayout->setSpacing(0);
 
-        // Заголовок секции — серая полоса на всю ширину (как в эталоне).
+        // Заголовок секции — просто жирный текст
+        // (txTransferHeader/txTorrentHeader в старом transgui).
         auto* header = new QLabel(title, card);
-        header->setObjectName(QStringLiteral("infoCardTitle"));
+        header->setObjectName(QStringLiteral("sectionTitle"));
         cardLayout->addWidget(header);
 
         auto* body = new QWidget(card);
         auto* grid = new QGridLayout(body);
-        grid->setContentsMargins(12, 9, 12, 11);
-        grid->setHorizontalSpacing(8);
-        grid->setVerticalSpacing(6);
+        grid->setContentsMargins(4, 4, 4, 4);
+        grid->setHorizontalSpacing(16);
+        grid->setVerticalSpacing(4);
         // Тянутся только колонки значений реально используемых пар, иначе
         // пустая колонка забирает ширину и текст уезжает за край.
         for (int i = 1; i < pairs * 2; i += 2)
@@ -269,17 +261,30 @@ void PropsForm::rebuild()
     };
 
     auto makeCell = [this](QGridLayout* grid, int row, int col, const QString& label,
-                           const QString& value, bool rich = false,
+                           const QString& value,
                            const QColor& valueColor = QColor()) -> QLabel* {
         auto* l = new QLabel(label + ":", m_content);
         l->setObjectName(QStringLiteral("fieldLabel"));
+        addCopyAction(l, value, tr("Copy"));
         grid->addWidget(l, row, col);
 
         auto* v = new QLabel(value, m_content);
         v->setObjectName(QStringLiteral("fieldValue"));
-        v->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        v->setWordWrap(true);
-        v->setTextFormat(rich ? Qt::RichText : Qt::PlainText);
+        v->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+        v->setWordWrap(false);
+        v->setToolTip(value);
+        v->setTextFormat(Qt::PlainText);
+        addCopyAction(v, value, tr("Copy"));
+        const QUrl link = fieldLink(value);
+        if (!link.isEmpty()) {
+            v->setTextFormat(Qt::RichText);
+            v->setText(QStringLiteral("<a href=\"%1\">%2</a>")
+                           .arg(link.toString(QUrl::FullyEncoded).toHtmlEscaped(),
+                                value.toHtmlEscaped()));
+            v->setTextInteractionFlags(v->textInteractionFlags() |
+                                      Qt::LinksAccessibleByMouse | Qt::LinksAccessibleByKeyboard);
+            v->setOpenExternalLinks(true);
+        }
         // Ignored по горизонтали: длинные неразрывные значения (magnet, hash)
         // не должны распирать карточку шире панели.
         v->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
@@ -295,21 +300,13 @@ void PropsForm::rebuild()
 
     const bool finished = tgui::statusIsFinished(
         t.status.value_or(-1), t.sizeWhenDone.value_or(0.0), t.leftUntilDone.value_or(0.0));
-    const bool errored =
-        t.errorString.has_value() && !t.errorString->isEmpty() && t.status.value_or(-1) != 0;
     const QString error = (t.errorString.has_value() && !t.errorString->isEmpty())
                               ? *t.errorString
                               : dash();
-    const int status = t.status.value_or(-1);
-    const QColor statusTint = statusColor(status, finished, errored);
-    const QString statusRich =
-        QStringLiteral("<span style=\"color:%1; font-size:12pt;\">●</span>&nbsp;%2")
-            .arg(statusTint.name(),
-                 TorrentModel::statusText(status, finished));
-
     Q_UNUSED(transferCard);
-    makeCell(grid, 0, 0, tr("Status"), statusRich, true);
-    makeCell(grid, 0, 2, tr("Error"), error, false,
+    makeCell(grid, 0, 0, tr("Status"),
+             TorrentModel::statusText(t.status.value_or(-1), finished));
+    makeCell(grid, 0, 2, tr("Error"), error,
              error == dash() ? QColor() : tgui::theme::color::red);
     QString remaining = fmtSize(ltd);
     if (t.eta.has_value() && t.eta.value() >= 0) {
@@ -448,7 +445,39 @@ void PropsForm::rebuild()
     makeCell(tgrid, 2, 2, tr("Comment"), t.comment.value_or(dash()));
     makeCell(tgrid, 3, 0, tr("Added on"), fmtUnixTime(t.addedDate.value_or(0)));
     makeCell(tgrid, 3, 2, tr("Completed on"), fmtUnixTime(t.doneDate.value_or(0)));
-    makeCell(tgrid, 4, 0, tr("Magnet Link"), t.magnetLink.value_or(dash()));
+    auto* magnetLabel = new QLabel(tr("Magnet Link") + ":", m_content);
+    magnetLabel->setObjectName(QStringLiteral("fieldLabel"));
+    addCopyAction(magnetLabel, t.magnetLink.value_or(dash()), tr("Copy"));
+    tgrid->addWidget(magnetLabel, 4, 0);
+    // Like txMagnetLink: a single read-only line, selectable without wrapping.
+    auto* magnet = new QLineEdit(t.magnetLink.value_or(dash()), m_content);
+    magnet->setObjectName(QStringLiteral("magnetLink"));
+    magnet->setReadOnly(true);
+    magnet->setFrame(false);
+    magnet->setMinimumWidth(0);
+    magnet->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    magnet->setToolTip(magnet->text());
+    magnet->setStyleSheet(QStringLiteral("border: none; padding: 0; background: transparent;"));
+    magnet->setCursorPosition(0);
+    // Copy the entire link even when it is clipped or partially selected.
+    auto* copyMagnet = new QAction(tr("Copy"), magnet);
+    copyMagnet->setObjectName(QStringLiteral("copyFieldValue"));
+    connect(copyMagnet, &QAction::triggered, magnet, [magnet] {
+        QApplication::clipboard()->setText(magnet->text());
+    });
+    magnet->addAction(copyMagnet);
+    magnet->setContextMenuPolicy(Qt::ActionsContextMenu);
+    const QUrl magnetUrl(magnet->text(), QUrl::StrictMode);
+    if (magnetUrl.isValid() && magnetUrl.scheme() == QStringLiteral("magnet")) {
+        auto* open = new QAction(tr("Open link"), magnet);
+        open->setObjectName(QStringLiteral("openFieldLink"));
+        connect(open, &QAction::triggered, magnet, [magnetUrl] {
+            QDesktopServices::openUrl(magnetUrl);
+        });
+        magnet->addAction(open);
+        connect(magnet, &QLineEdit::returnPressed, open, &QAction::trigger);
+    }
+    tgrid->addWidget(magnet, 4, 1);
     makeCell(tgrid, 4, 2, tr("Labels"),
              t.labels.has_value() ? t.labels->join(QStringLiteral(", ")) : dash());
 

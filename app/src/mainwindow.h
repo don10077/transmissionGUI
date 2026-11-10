@@ -191,7 +191,8 @@ private:
     StatsForm* m_statsForm = nullptr;
     FilterPanel* m_filterPanel = nullptr;
     QTreeView* m_view = nullptr;
-    QTableView* m_filesView = nullptr;
+    QTreeView* m_filesView = nullptr;
+    FileTreeModel* m_fileTree = nullptr;
     QToolBar* m_toolBar = nullptr;
     // Кнопка подключения-дропдаун (аналог OLD tbConnect, tbsDropDown).
     QToolButton* m_connectButton = nullptr;
@@ -227,8 +228,8 @@ private:
     QAction* m_actAbout = nullptr;
     // View (visibility/grouping) — нужны для применения сохранённого состояния
     // при старте и для горячих клавиш (F11/F12/Shift+F11/Shift+F12).
-    QAction* m_actFilterPane = nullptr;
-    QAction* m_actInfoPane = nullptr;
+    QAction* m_actFilterPanel = nullptr;
+    QAction* m_actInfoPanel = nullptr;
     QAction* m_actToolbar = nullptr;
     QAction* m_actMenu = nullptr;
     QAction* m_actStatusBar = nullptr;

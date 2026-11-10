@@ -3,6 +3,8 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QLabel>
+#include <QTableWidget>
+#include <QHeaderView>
 #include <QScrollArea>
 #include <QVBoxLayout>
 
@@ -79,74 +81,44 @@ void StatsForm::rebuild()
     }
 
     m_content = new QWidget;
-    m_scroll->setWidget(m_content);
     auto* contentLayout = new QVBoxLayout(m_content);
-    contentLayout->setContentsMargins(12, 12, 12, 12);
-    contentLayout->setSpacing(12);
-
-    if (!m_stats.has_value()) {
-        auto* placeholder = new QLabel(tr("Statistics unavailable"), m_content);
-        placeholder->setObjectName(QStringLiteral("fieldLabel"));
-        contentLayout->addWidget(placeholder);
-        contentLayout->addStretch(1);
-        return;
-    }
-
-    auto* card = new QFrame(m_content);
-    card->setObjectName(QStringLiteral("statsCard"));
-    auto* cardLayout = new QVBoxLayout(card);
-    cardLayout->setContentsMargins(0, 0, 0, 0);
-    cardLayout->setSpacing(0);
-
-    auto* title = new QLabel(tr("Session"), card);
-    title->setObjectName(QStringLiteral("infoCardTitle"));
-    cardLayout->addWidget(title);
-
-    auto* body = new QWidget(card);
-    auto* grid = new QGridLayout(body);
-    grid->setContentsMargins(12, 8, 12, 12);
-    grid->setHorizontalSpacing(20);
-    grid->setVerticalSpacing(6);
-    grid->setColumnStretch(0, 1);
-    cardLayout->addWidget(body);
-
-    const auto& s = *m_stats;
-
-    auto cell = [this, grid](int r, int c, const QString& text, bool header = false,
-                             Qt::Alignment align = Qt::AlignLeft | Qt::AlignVCenter) {
-        auto* label = new QLabel(text, m_content);
-        if (header)
-            label->setObjectName(QStringLiteral("statsHeader"));
-        else
-            label->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        label->setAlignment(align);
-        grid->addWidget(label, r, c);
-        return label;
+    contentLayout->setContentsMargins(4, 4, 4, 4);
+    contentLayout->setSpacing(4);
+    m_scroll->setWidget(m_content);
+    auto* title = new QLabel(tr("Global statistics:"), m_content);
+    contentLayout->addWidget(title);
+    auto* table = new QTableWidget(4, 3, m_content);
+    table->setObjectName(QStringLiteral("statisticsTable"));
+    table->setHorizontalHeaderLabels({QString(), tr("Current"), tr("Cumulative")});
+    table->verticalHeader()->hide();
+    table->verticalHeader()->setMinimumSectionSize(20);
+    table->verticalHeader()->setDefaultSectionSize(20);
+    table->setColumnWidth(0, 200);
+    table->setColumnWidth(1, 120);
+    table->setColumnWidth(2, 120);
+    table->horizontalHeader()->setStretchLastSection(false);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setAlternatingRowColors(true);
+    table->setShowGrid(true);
+    table->setFrameShape(QFrame::NoFrame);
+    table->setStyleSheet(QStringLiteral("QTableView { gridline-color: #D9D9D9; }"));
+    const tgui::SessionStats stats = m_stats.value_or(tgui::SessionStats{});
+    const QStringList names{tr("Downloaded"), tr("Uploaded"), tr("Files added"), tr("Active for")};
+    auto values = [](const tgui::StatsBlock& block) {
+        return QStringList{QString::fromStdString(tgui::formatSize(block.downloadedBytes)),
+                           QString::fromStdString(tgui::formatSize(block.uploadedBytes)),
+                           QString::number(block.filesAdded), fmtDuration(block.secondsActive)};
     };
+    const auto current = values(stats.current);
+    const auto cumulative = values(stats.cumulative);
+    for (int row = 0; row < 4; ++row)
+        for (int column = 0; column < 3; ++column) {
+            auto* item = new QTableWidgetItem(column == 0 ? names.at(row) :
+                !m_stats ? QString() : column == 1 ? current.at(row) : cumulative.at(row));
+            if (column > 0) item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            table->setItem(row, column, item);
+        }
+    contentLayout->addWidget(table, 1);
 
-    cell(0, 0, tr("Metric"), true);
-    cell(0, 1, tr("Current"), true, Qt::AlignRight | Qt::AlignVCenter);
-    cell(0, 2, tr("Total"), true, Qt::AlignRight | Qt::AlignVCenter);
-
-    const auto fmtSize = [](double bytes) {
-        return QString::fromStdString(tgui::formatSize(bytes));
-    };
-
-    auto row = [cell](int r, const QString& name, const QString& cur, const QString& cum) {
-        cell(r, 0, name);
-        cell(r, 1, cur, false, Qt::AlignRight | Qt::AlignVCenter);
-        cell(r, 2, cum, false, Qt::AlignRight | Qt::AlignVCenter);
-    };
-
-    row(1, tr("Downloaded"), fmtSize(s.current.downloadedBytes),
-        fmtSize(s.cumulative.downloadedBytes));
-    row(2, tr("Uploaded"), fmtSize(s.current.uploadedBytes),
-        fmtSize(s.cumulative.uploadedBytes));
-    row(3, tr("Files added"), QString::number(s.current.filesAdded),
-        QString::number(s.cumulative.filesAdded));
-    row(4, tr("Active for"), fmtDuration(s.current.secondsActive),
-        fmtDuration(s.cumulative.secondsActive));
-
-    contentLayout->addWidget(card);
-    contentLayout->addStretch(1);
 }
