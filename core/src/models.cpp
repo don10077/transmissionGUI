@@ -250,8 +250,11 @@ QVector<Peer> parsePeers(const QJsonArray& array)
         p.clientName = str("clientName", "client-name");
         p.flagStr = str("flagStr", "flag-str");
         const double progress = num("progress", "progress");
-        if (progress >= 0.0)
-            p.progress = progress;
+        if (progress >= 0.0) {
+            // Демон может возвращать fraction (0.0-1.0) или percentage (0-100).
+            // Нормализуем к 0-100.
+            p.progress = progress <= 1.0 ? progress * 100.0 : progress;
+        }
         const double rtc = num("rateToClient", "rate-to-client");
         if (rtc >= 0.0)
             p.rateToClient = static_cast<int>(rtc);

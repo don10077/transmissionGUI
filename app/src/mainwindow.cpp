@@ -32,9 +32,14 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QMimeData>
 #include <QNetworkAccessManager>
+#include <QEventLoop>
 #include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QProcess>
+#include <zlib.h>
 #include <QPainter>
 #include <QPen>
 #include <QPixmap>
@@ -42,6 +47,7 @@
 #include <QScrollBar>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QStandardPaths>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
@@ -79,6 +85,30 @@
 
 namespace {
 constexpr int kRefreshIntervalMs = 2000;
+
+// Распаковка gzip через zlib (windowBits=31 = gzip).
+bool gunzipData(const QByteArray& input, QByteArray& output)
+{
+    z_stream strm{};
+    if (inflateInit2(&strm, 31) != Z_OK)
+        return false;
+    strm.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(input.constData()));
+    strm.avail_in = uInt(input.size());
+    char buf[16384];
+    int ret;
+    do {
+        strm.next_out = reinterpret_cast<Bytef*>(buf);
+        strm.avail_out = sizeof(buf);
+        ret = inflate(&strm, Z_NO_FLUSH);
+        if (ret == Z_STREAM_ERROR || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR) {
+            inflateEnd(&strm);
+            return false;
+        }
+        output.append(buf, sizeof(buf) - strm.avail_out);
+    } while (strm.avail_out == 0 && ret != Z_STREAM_END);
+    inflateEnd(&strm);
+    return ret == Z_STREAM_END;
+}
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
@@ -92,6 +122,20 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     createActions();
     createMenus();
     createTray();
+
+    // W11b: загрузить GeoIP-базу из appdata (если есть), привязать к модели пиров.
+    {
+        const QString geoipPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                                  + QStringLiteral("/GeoIP.dat");
+        if (QFileInfo::exists(geoipPath)) {
+            m_geoip.load(geoipPath.toStdString());
+        }
+        m_peerModel.setGeoIp(&m_geoip);
+        const bool showFlags = QSettings().value("peers/showFlag", false).toBool();
+        if (showFlags)
+            ensureFlagImages(false);
+        m_peerModel.setShowFlags(showFlags);
+    }
 
     // W07: интервал обновления из настроек (секунды), по умолчанию 2 (ранее 2000 ms).
     m_refreshTimer.setInterval(QSettings().value("ui/refreshInterval", kRefreshIntervalMs / 1000).toInt() * 1000);
@@ -242,6 +286,7 @@ void MainWindow::createUi()
     auto* peersView = makeTable(&m_peerModel);
     peersView->setObjectName(QStringLiteral("peersView"));
     peersView->setColumnWidth(PeerListModel::ColAddress, 150);
+    peersView->setColumnWidth(PeerListModel::ColCountry, 150);
     peersView->setColumnWidth(PeerListModel::ColClient, 150);
     peersView->setColumnWidth(PeerListModel::ColFlags, 70);
     peersView->setColumnWidth(PeerListModel::ColProgress, 70);
@@ -249,9 +294,12 @@ void MainWindow::createUi()
     peersView->setColumnWidth(PeerListModel::ColRateUp, 85);
     peersView->hideColumn(PeerListModel::ColPort);
     peersView->horizontalHeader()->moveSection(
-        peersView->horizontalHeader()->visualIndex(PeerListModel::ColFlags), 2);
+        peersView->horizontalHeader()->visualIndex(PeerListModel::ColCountry), 0);
     peersView->horizontalHeader()->moveSection(
-        peersView->horizontalHeader()->visualIndex(PeerListModel::ColRateUp), 4);
+        peersView->horizontalHeader()->visualIndex(PeerListModel::ColFlags), 2);
+    // Контекстное меню вкладки «Пиры» (референс — pmPeers).
+    peersView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(peersView, &QWidget::customContextMenuRequested, this, &MainWindow::onPeersContextMenu);
 
     auto* trackersView = makeTable(&m_trackerModel);
     trackersView->setObjectName(QStringLiteral("trackersView"));
@@ -1567,6 +1615,8 @@ void MainWindow::createMenus()
     mTools->addAction(m_actAltSpeed);  // "Use alternate bandwidth settings"
     auto* actBlocklist = mTools->addAction(tr("Update blocklist"));
     connect(actBlocklist, &QAction::triggered, this, &MainWindow::onUpdateBlocklist);
+    auto* actGeoIp = mTools->addAction(tr("Update GeoIP database"));
+    connect(actGeoIp, &QAction::triggered, this, &MainWindow::onUpdateGeoIp);
     // --- Help (порядок — по референсу transgui) ---
     auto* mHelp = menuBar()->addMenu(tr("&Help"));
     auto* actCheck = mHelp->addAction(tr("Check for updates"));
@@ -1928,6 +1978,155 @@ void MainWindow::onUpdateBlocklist()
         m_rpc->updateBlocklist();
 }
 
+bool MainWindow::ensureFlagImages(bool allowDownload)
+{
+    const QString appDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    const QString flagsDir = appDir + QStringLiteral("/flags");
+    if (!QDir(flagsDir).entryList({QStringLiteral("*.png")}, QDir::Files).isEmpty())
+        return true;
+
+    const QString zipPath = appDir + QStringLiteral("/flags.zip");
+    if (!QFileInfo::exists(zipPath)) {
+        if (!allowDownload || !QDir().mkpath(appDir))
+            return false;
+        static const char* kFlagsUrl =
+            "https://raw.githubusercontent.com/transmission-remote-gui/transgui/master/flags.zip";
+        QNetworkRequest request{QUrl{kFlagsUrl}};
+        request.setTransferTimeout(15000);
+        QEventLoop loop;
+        auto* reply = m_nam.get(request);
+        connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+        loop.exec();
+        const bool downloaded = reply->error() == QNetworkReply::NoError;
+        const QByteArray archive = downloaded ? reply->readAll() : QByteArray();
+        reply->deleteLater();
+        if (!downloaded || archive.isEmpty())
+            return false;
+        QFile file(zipPath);
+        if (!file.open(QIODevice::WriteOnly) || file.write(archive) != archive.size())
+            return false;
+        file.close();
+    }
+
+    if (!QDir().mkpath(flagsDir))
+        return false;
+    auto quote = [](QString path) { return path.replace(QChar(0x27), QStringLiteral("''")); };
+    QProcess process;
+    process.start(QStringLiteral("powershell.exe"),
+        {QStringLiteral("-NoProfile"), QStringLiteral("-NonInteractive"),
+         QStringLiteral("-Command"),
+         QStringLiteral("Expand-Archive -LiteralPath '") + quote(zipPath) +
+         QStringLiteral("' -DestinationPath '") + quote(flagsDir) +
+         QStringLiteral("' -Force")});
+    if (!process.waitForFinished(15000) || process.exitStatus() != QProcess::NormalExit ||
+        process.exitCode() != 0)
+        return false;
+    return !QDir(flagsDir).entryList({QStringLiteral("*.png")}, QDir::Files).isEmpty();
+}
+
+void MainWindow::onUpdateGeoIp()
+{
+    static const char *kGeoIpUrl = "https://dl.miyuru.lk/geoip/maxmind/country/maxmind4.dat.gz";
+
+    auto ret = QMessageBox::question(this, tr("Update GeoIP database"),
+        tr("GeoIP database is needed to resolve country by IP address.\n"
+           "Download this database now?"),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (ret != QMessageBox::Yes)
+        return;
+
+    // Прогресс-бар (как в оригинале).
+    auto* progress = new QProgressDialog(tr("Downloading GeoIP database…"), tr("Cancel"),
+                                         0, 100, this);
+    progress->setWindowModality(Qt::WindowModal);
+    progress->setMinimumDuration(0);
+    progress->setValue(0);
+
+    const QUrl url{kGeoIpUrl};
+    auto* reply = m_nam.get(QNetworkRequest{url});
+
+    // Обновляем прогресс.
+    QObject::connect(reply, &QNetworkReply::downloadProgress, this,
+        [progress](qint64 received, qint64 total) {
+            if (total > 0)
+                progress->setValue(static_cast<int>(received * 100 / total));
+        });
+
+    // Отмена.
+    QObject::connect(progress, &QProgressDialog::canceled, this, [reply]() {
+        reply->abort();
+    });
+
+    QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, progress]() {
+        reply->deleteLater();
+        progress->setValue(100);
+
+        if (reply->error() != QNetworkReply::NoError) {
+            progress->close();
+            progress->deleteLater();
+            QMessageBox::warning(this, tr("Update GeoIP database"),
+                tr("Download failed: %1").arg(reply->errorString()));
+            return;
+        }
+        const QByteArray raw = reply->readAll();
+
+        // Определяем, gzip или raw .dat
+        const bool isGzip = raw.size() > 2 &&
+                            static_cast<quint8>(raw[0]) == 0x1f &&
+                            static_cast<quint8>(raw[1]) == 0x8b;
+
+        const QString appDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        QDir().mkpath(appDir);
+        const QString datPath = appDir + QStringLiteral("/GeoIP.dat");
+
+        if (isGzip) {
+            QByteArray dat;
+            if (!gunzipData(raw, dat)) {
+                progress->close();
+                progress->deleteLater();
+                QMessageBox::warning(this, tr("Update GeoIP database"),
+                    tr("Decompression failed."));
+                return;
+            }
+            QFile f(datPath);
+            if (f.open(QIODevice::WriteOnly))
+                f.write(dat);
+        } else {
+            QFile f(datPath);
+            if (f.open(QIODevice::WriteOnly))
+                f.write(raw);
+        }
+
+        if (!QFileInfo::exists(datPath)) {
+            progress->close();
+            progress->deleteLater();
+            QMessageBox::warning(this, tr("Update GeoIP database"),
+                tr("Save failed."));
+            return;
+        }
+
+        if (!m_geoip.load(datPath.toStdString())) {
+            progress->close();
+            progress->deleteLater();
+            QMessageBox::warning(this, tr("Update GeoIP database"),
+                tr("Database is invalid."));
+            return;
+        }
+
+        progress->close();
+        progress->deleteLater();
+
+        if (QSettings().value("peers/showFlag", false).toBool())
+            ensureFlagImages(true);
+
+        // Обновить модель пиров.
+        const auto& currentPeers = m_peerModel.peers();
+        if (!currentPeers.isEmpty())
+            m_peerModel.setPeers(currentPeers);
+        statusBar()->showMessage(tr("GeoIP database loaded."), 5000);
+    });
+}
+
 void MainWindow::onExit()
 {
     close();
@@ -2252,6 +2451,68 @@ void MainWindow::onFilesContextMenu(const QPoint& pos)
     QObject::connect(aWant, &QAction::triggered, this, [this, fileIds] { onFileWantSelected(fileIds); });
     QObject::connect(aSkip, &QAction::triggered, this, [this, fileIds] { onFileSkipSelected(fileIds); });
     menu->exec(global);
+    menu->deleteLater();
+}
+
+void MainWindow::onPeersContextMenu(const QPoint& pos)
+{
+    auto* view = qobject_cast<QTableView*>(sender());
+    if (!view)
+        return;
+
+    auto* menu = new QMenu(this);
+    QSettings s;
+
+    // Resolve Host (toggle — reverse DNS, persist state)
+    auto* aHost = menu->addAction(tr("Resolve Host"));
+    aHost->setCheckable(true);
+    aHost->setChecked(s.value("peers/resolveHost", false).toBool());
+    QObject::connect(aHost, &QAction::triggered, this, [](bool on) {
+        QSettings().setValue("peers/resolveHost", on);
+    });
+
+    // Resolve Country (toggle видимости колонки; при вкл. без БД — скачать)
+    auto* aCountry = menu->addAction(tr("Resolve Country"));
+    aCountry->setCheckable(true);
+    const bool countryOn = !view->isColumnHidden(PeerListModel::ColCountry);
+    aCountry->setChecked(countryOn);
+    QObject::connect(aCountry, &QAction::triggered, this, [this, view](bool on) {
+        view->setColumnHidden(PeerListModel::ColCountry, !on);
+        if (on && !m_geoip.isLoaded()) {
+            // БД не загружена — предложить скачать.
+            onUpdateGeoIp();
+        }
+    });
+
+    // Show Country Flag
+    auto* aFlag = menu->addAction(tr("Show Country Flag"));
+    aFlag->setCheckable(true);
+    aFlag->setChecked(s.value("peers/showFlag", false).toBool());
+    aFlag->setEnabled(m_geoip.isLoaded()); // активна только с загруженной БД
+    QObject::connect(aFlag, &QAction::triggered, this, [this](bool on) {
+        if (on && !ensureFlagImages(true)) {
+            QMessageBox::warning(this, tr("Show Country Flag"),
+                                 tr("Unable to load country flag images."));
+            return;
+        }
+        QSettings().setValue("peers/showFlag", on);
+        m_peerModel.setShowFlags(on);
+    });
+
+    // Setup Columns
+    menu->addSeparator();
+    auto* aCols = menu->addAction(tr("Setup Columns"));
+    QObject::connect(aCols, &QAction::triggered, this, [this, view] {
+        const int count = PeerListModel::ColumnCount;
+        QStringList titles;
+        for (int i = 0; i < count; ++i)
+            titles << view->model()->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
+        ColumnLayout cur = ColumnLayout::defaults(count);
+        ColSetupDialog dlg(cur, titles, this);
+        dlg.exec();
+    });
+
+    menu->exec(view->mapToGlobal(pos));
     menu->deleteLater();
 }
 

@@ -16,3 +16,5 @@ _deps/
 *.exe
 !tools/*.exe
 WORKFLOW.md
+test_err.txt
+test_out.txt

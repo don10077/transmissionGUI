@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "tgui/rpcclient.h"
+#include "tgui/geoip.h"
 #include "detailmodels.h"
 #include "groupedproxy.h"
 #include "torrentmodel.h"
@@ -89,6 +90,7 @@ private slots:
     void onSelectionChanged();
     void onFileWantToggled(int fileIndex, bool wanted);
     void onFilesContextMenu(const QPoint& pos);
+    void onPeersContextMenu(const QPoint& pos);
     void onFilePriority(const QVector<int>& fileIds, int priority);
     void onFileWantSelected(const QVector<int>& fileIds);
     void onFileSkipSelected(const QVector<int>& fileIds);
@@ -115,6 +117,7 @@ private slots:
     void onStartForceSelected();
     void onAddFromLink();
     void onUpdateBlocklist();
+    void onUpdateGeoIp();
     void onExit();
     void onRenameSelected();
     void onHome();
@@ -144,6 +147,7 @@ private:
     void createActions();
     void createMenus();
     void createTray();
+    bool ensureFlagImages(bool allowDownload);
     static QPixmap makeTrayIcon();
     void startConnect(const tgui::RpcClient::Options& opts);
     void maybeAutoConnect();
@@ -185,6 +189,7 @@ private:
     FileListModel m_fileModel;
     PeerListModel m_peerModel;
     TrackerListModel m_trackerModel;
+    tgui::GeoIpDb m_geoip; // GeoIP Country Edition (W11b)
     QTimer m_refreshTimer;
 
     QTabWidget* m_tabs = nullptr;

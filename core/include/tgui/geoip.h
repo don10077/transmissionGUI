@@ -15,11 +15,13 @@ namespace tgui {
 
 class GeoIpDb {
 public:
-  // Standard Country-Edition tree size: the country segment begins here.
+  // kCountryBegin is a threshold value used to distinguish tree node pointers
+  // (value < kCountryBegin) from country code indices (value >= kCountryBegin).
+  // It is NOT a minimum file size requirement.
   static constexpr std::size_t kCountryBegin = 16776960;
 
   // Load the raw database from a file. Returns false if it cannot be read or
-  // is smaller than the fixed tree.
+  // is too small to contain at least one tree node.
   bool load(const std::filesystem::path& file);
   // Load an in-memory copy (used by tests and by the database downloader).
   bool load(std::vector<unsigned char> data);
@@ -30,6 +32,10 @@ public:
   // Resolve an IPv4 address to a 2-letter ISO country code ("" if the database
   // is absent, the address is invalid, or the lookup has no data).
   std::string countryFor(const std::string& ipv4) const;
+
+  // Map a 2-letter country code to the full English country name
+  // ("" if unknown). Mirrors the reference's CountryNames array.
+  static std::string countryNameFor(const std::string& code);
 
   // True if the string is a syntactically valid dotted-quad IPv4 address.
   static bool isValidIpv4(const std::string& ipv4);

@@ -46,7 +46,7 @@ add_executable(transmissiongui WIN32
     src/aboutdialog.h
 )
 target_include_directories(transmissiongui PRIVATE src)
-target_link_libraries(transmissiongui PRIVATE tgui_core Qt6::Widgets Qt6::Network)
+target_link_libraries(transmissiongui PRIVATE tgui_core Qt6::Widgets Qt6::Network z)
 tgui_set_warnings(transmissiongui)
 
 # i18n (W06): компилируем tgui_ru.ts -> tgui_ru.qm рядом с exe (<build>/app/translations/).

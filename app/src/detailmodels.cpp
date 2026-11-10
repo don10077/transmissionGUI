@@ -4,7 +4,12 @@
 #include <QApplication>
 #include <QStyle>
 #include <QDateTime>
+#include <QDir>
+#include <QFileInfo>
+#include <QIcon>
+#include <QStandardPaths>
 
+#include "tgui/geoip.h"
 #include "tgui/util.h"
 
 // --- FileListModel ---
@@ -129,6 +134,16 @@ void PeerListModel::setPeers(const QVector<tgui::Peer>& peers)
     endResetModel();
 }
 
+void PeerListModel::setShowFlags(bool show)
+{
+    if (m_showFlags == show)
+        return;
+    m_showFlags = show;
+    if (!m_peers.isEmpty())
+        emit dataChanged(index(0, ColCountry), index(m_peers.size() - 1, ColCountry),
+                         {Qt::DecorationRole});
+}
+
 int PeerListModel::rowCount(const QModelIndex& parent) const
 {
     return parent.isValid() ? 0 : static_cast<int>(m_peers.size());
@@ -147,13 +162,38 @@ QVariant PeerListModel::data(const QModelIndex& index, int role) const
 
     if (role == Qt::TextAlignmentRole && index.column() >= ColProgress)
         return static_cast<int>(Qt::AlignRight | Qt::AlignVCenter);
-    if (role != Qt::DisplayRole)
+    if (role != Qt::DisplayRole && role != Qt::DecorationRole)
+        return {};
+    if (role == Qt::DecorationRole && index.column() != ColCountry)
         return {};
 
     switch (index.column()) {
         case ColAddress:
             return p.address + (p.port > 0 ? QStringLiteral(":") + QString::number(p.port)
                                            : QString());
+        case ColCountry: {
+            if (!m_geoip || !m_geoip->isLoaded())
+                return {};
+            const std::string code = m_geoip->countryFor(p.address.toStdString());
+            if (code.empty())
+                return {};
+            if (role == Qt::DecorationRole) {
+                if (!m_showFlags)
+                    return {};
+                const QString flagsDir = m_flagsDirectory.isEmpty()
+                    ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/flags"
+                    : m_flagsDirectory;
+                const QString flagPath = flagsDir + "/" +
+                                         QString::fromStdString(code).toLower() + ".png";
+                if (QFileInfo::exists(flagPath))
+                    return QIcon(flagPath);
+                return {};
+            }
+            // DisplayRole: full country name
+            const std::string name = tgui::GeoIpDb::countryNameFor(code);
+            return name.empty() ? QString::fromStdString(code)
+                                : QString::fromStdString(name);
+        }
         case ColFlags:
             return p.flagStr;
         case ColPort:
@@ -177,6 +217,8 @@ QVariant PeerListModel::headerData(int section, Qt::Orientation orientation, int
     switch (section) {
         case ColAddress:
             return QObject::tr("Host");
+        case ColCountry:
+            return QObject::tr("Country");
         case ColFlags:
             return QObject::tr("Flags");
         case ColPort:

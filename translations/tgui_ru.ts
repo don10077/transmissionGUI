@@ -1440,6 +1440,64 @@ Are you sure to start verification of %1 torrents?</source>
       <translation>Обновить блок-лист</translation>
     </message>
     <message>
+      <source>Update GeoIP database</source>
+      <translation>Обновить базу GeoIP</translation>
+    </message>
+    <message>
+      <source>GeoIP database is needed to resolve country by IP address.
+Download this database now?</source>
+      <translation>Для определения страны по IP-адресу нужна база GeoIP.
+Скачать базу сейчас?</translation>
+    </message>
+    <message>
+      <source>Resolve Country</source>
+      <translation>Определять страну</translation>
+    </message>
+    <message>
+      <source>Resolve Host</source>
+      <translation>Определять хост</translation>
+    </message>
+    <message>
+      <source>Show Country Flag</source>
+      <translation>Показывать флаг страны</translation>
+    </message>
+    <message>
+      <source>Unable to load country flag images.</source>
+      <translation>Не удалось загрузить изображения флагов стран.</translation>
+    </message>
+    <message>
+      <source>Setup Columns</source>
+      <translation>Настроить колонки</translation>
+    </message>
+    <message>
+      <source>Downloading GeoIP database…</source>
+      <translation>Загрузка базы GeoIP…</translation>
+    </message>
+    <message>
+      <source>GeoIP download failed: %1</source>
+      <translation>Ошибка загрузки GeoIP: %1</translation>
+    </message>
+    <message>
+      <source>GeoIP decompression timed out.</source>
+      <translation>Таймаут распаковки GeoIP.</translation>
+    </message>
+    <message>
+      <source>GeoIP decompression failed.</source>
+      <translation>Ошибка распаковки GeoIP.</translation>
+    </message>
+    <message>
+      <source>GeoIP save failed.</source>
+      <translation>Не удалось сохранить GeoIP.</translation>
+    </message>
+    <message>
+      <source>GeoIP database is invalid.</source>
+      <translation>База GeoIP некорректна.</translation>
+    </message>
+    <message>
+      <source>GeoIP database loaded.</source>
+      <translation>База GeoIP загружена.</translation>
+    </message>
+    <message>
       <location filename="../app/src/mainwindow.cpp" line="1394" />
       <source>&amp;Help</source>
       <translation>&amp;Справка</translation>
@@ -1588,11 +1646,6 @@ Restart the application to apply the changes.</source>
       <location filename="../app/src/mainwindow.cpp" line="1368" />
       <source>Menu</source>
       <translation>Меню</translation>
-    </message>
-    <message>
-      <location filename="../app/src/mainwindow.cpp" line="1388" />
-      <source>Update GeoIP database</source>
-      <translation>Обновить базу GeoIP</translation>
     </message>
     <message>
       <location filename="../app/src/mainwindow.cpp" line="1390" />
@@ -2043,6 +2096,7 @@ Used when opening files/torrents with double-click.</source>
     <message><source>Paused</source><translation>На паузе</translation></message>
     <message><source>Completed (paused)</source><translation>Завершён (на паузе)</translation></message>
     <message><source>Host</source><translation>Хост</translation></message>
+    <message><source>Country</source><translation>Страна</translation></message>
     <message><source>Have</source><translation>Есть</translation></message>
     <message><source>Flags</source><translation>Флаги</translation></message>
     <message><source>Port</source><translation>Порт</translation></message>

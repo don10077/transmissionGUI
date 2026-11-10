@@ -63,7 +63,7 @@ TEST(GeoIpDb, UnloadedResolvesNothing) {
 
 TEST(GeoIpDb, RejectsFileTooSmall) {
   GeoIpDb db;
-  EXPECT_FALSE(db.load(std::vector<unsigned char>(10, 0))); // < tree size
+  EXPECT_FALSE(db.load(std::vector<unsigned char>(5, 0))); // < one tree node (6 bytes)
 }
 
 } // namespace

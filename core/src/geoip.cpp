@@ -1,6 +1,7 @@
 #include <tgui/geoip.h>
 
 #include <fstream>
+#include <map>
 
 namespace tgui {
 namespace {
@@ -74,7 +75,10 @@ bool GeoIpDb::load(const std::filesystem::path& file) {
 }
 
 bool GeoIpDb::load(std::vector<unsigned char> data) {
-  if (data.size() < kCountryBegin) return false; // must contain the full tree
+  // kCountryBegin is a threshold for distinguishing tree pointers from country
+  // code indices, NOT a minimum file size. The tree starts at offset 0 and
+  // pointer values >= kCountryBegin encode country codes.
+  if (data.size() < kRecordSize) return false; // must contain at least one node
   m_data = std::move(data);
   m_loaded = true;
   return true;
@@ -102,6 +106,76 @@ std::string GeoIpDb::countryFor(const std::string& ipv4) const {
     }
     offset = choice;
   }
+  return "";
+}
+
+std::string GeoIpDb::countryNameFor(const std::string& code) {
+  static const char * const kNames[] = {
+      "", "Asia/Pacific Region", "Europe", "Andorra", "United Arab Emirates",
+      "Afghanistan", "Antigua & Barbuda", "Anguilla", "Albania", "Armenia",
+      "N. America & Carib.", "Angola", "Antarctica", "Argentina", "American Samoa",
+      "Austria", "Australia", "Aruba", "Azerbaijan", "Bosnia & Herzegovina",
+      "Barbados", "Bangladesh", "Belgium", "Burkina Faso", "Bulgaria",
+      "Bahrain", "Burundi", "Benin", "St. Barthelemy", "Brunei",
+      "Bolivia", "Brazil", "Bahamas", "Bhutan", "Bouvet Island",
+      "Botswana", "Belarus", "Belize", "Canada", "Cocos & Keeling Is.",
+      "Congo (Kinshasa)", "Central African Rep.", "Congo (Brazzaville)",
+      "Switzerland", "Cote d'Ivoire", "Cook Is.", "Chile", "Cameroon",
+      "China", "Colombia", "Costa Rica", "Cuba", "Cape Verde",
+      "Christmas Island", "Cyprus", "Czech Republic", "Germany", "Djibouti",
+      "Denmark", "Dominica", "Dominican Rep.", "Algeria", "Ecuador",
+      "Estonia", "Egypt", "Western Sahara", "Eritrea", "Spain",
+      "Ethiopia", "Finland", "Fiji", "Falkland Is.", "Micronesia",
+      "Faroe Is.", "France", "Met. France", "Gabon", "United Kingdom",
+      "Grenada", "Georgia", "French Guiana", "Ghana", "Gibraltar",
+      "Greenland", "Gambia", "Guinea", "Guadeloupe", "Eq. Guinea",
+      "Greece", "S. Geo. & S. Sandw. Is.", "Guatemala", "Guam",
+      "Guinea-Bissau", "Guyana", "Hong Kong", "Heard & McDonald Is.",
+      "Honduras", "Croatia", "Haiti", "Hungary", "Indonesia",
+      "Ireland", "Israel", "India", "Indian Ocean", "Iraq",
+      "Iran", "Iceland", "Italy", "Jamaica", "Jordan",
+      "Japan", "Kenya", "Kyrgyzstan", "Cambodia", "Kiribati",
+      "Comoros", "St. Kitts & Nevis", "North Korea", "South Korea", "Kuwait",
+      "Cayman Is.", "Kazakhstan", "Laos", "Lebanon", "St. Lucia",
+      "Liechtenstein", "Sri Lanka", "Liberia", "Lesotho", "Lithuania",
+      "Luxembourg", "Latvia", "Libya", "Morocco", "Monaco",
+      "Moldova", "Madagascar", "Marshall Is.", "Macedonia", "Mali",
+      "Myanmar", "Mongolia", "Macau", "N. Mariana Is.", "Martinique",
+      "Mauritania", "Montserrat", "Malta", "Mauritius", "Maldives",
+      "Malawi", "Mexico", "Malaysia", "Mozambique", "Namibia",
+      "New Caledonia", "Niger", "Norfolk Is.", "Nigeria", "Nicaragua",
+      "Netherlands", "Norway", "Nepal", "Nauru", "Niue",
+      "New Zealand", "Oman", "Panama", "Peru", "Fr. Polynesia",
+      "Papua New Guinea", "Philippines", "Pakistan", "Poland", "St. Pierre & Miquelon",
+      "Pitcairn Is.", "Puerto Rico", "Palestinian Territory", "Portugal", "Palau",
+      "Paraguay", "Qatar", "Reunion", "Romania", "Russia",
+      "Rwanda", "Saudi Arabia", "Solomon Is.", "Seychelles", "Sudan",
+      "Sweden", "Singapore", "St. Helena", "Slovenia", "Svalbard & Jan Mayen",
+      "Slovakia", "Sierra Leone", "San Marino", "Senegal", "Somalia",
+      "Suriname", "Sao Tome & Principe", "El Salvador", "Syria", "Swaziland",
+      "Turks & Caicos Is.", "Chad", "Fr. Southern & Ant. Lands", "Togo",
+      "Thailand", "Tajikistan", "Tokelau", "Turkmenistan", "Tunisia",
+      "Tonga", "Timor-Leste", "Turkey", "Trinidad & Tobago", "Tuvalu",
+      "Taiwan", "Tanzania", "Ukraine", "Uganda", "US Outlying Is.",
+      "United States", "Uruguay", "Uzbekistan", "Vatican City", "St. Vincent & Gren.",
+      "Venezuela", "British Virgin Is.", "US Virgin Is.", "Vietnam", "Vanuatu",
+      "Wallis & Futuna", "Samoa", "Yemen", "Mayotte", "Serbia",
+      "South Africa", "Zambia", "Montenegro", "Zimbabwe", "Anonymous Proxy",
+      "Satellite Provider", "Other", "Aland Is.", "Guernsey",
+      "Isle of Man", "Jersey", "St. Barthelemy", "St. Martin"};
+  static_assert(sizeof(kNames) / sizeof(kNames[0]) == 253, "Must match kCountryCodes");
+
+  // Build index: code -> index in kCountryCodes array
+  static std::map<std::string, std::size_t> kIndex = [] {
+    std::map<std::string, std::size_t> m;
+    for (std::size_t i = 0; i < 253; ++i)
+      m[kCountryCodes[i]] = i;
+    return m;
+  }();
+
+  auto it = kIndex.find(code);
+  if (it != kIndex.end())
+    return kNames[it->second];
   return "";
 }
 

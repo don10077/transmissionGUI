@@ -64,7 +64,7 @@ add_executable(tgui_tests
     ${CMAKE_SOURCE_DIR}/app/src/movedialog.h
 )
 target_include_directories(tgui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/app/src)
-target_link_libraries(tgui_tests PRIVATE tgui_core Qt6::Widgets Qt6::Network GTest::gtest)
+target_link_libraries(tgui_tests PRIVATE tgui_core Qt6::Widgets Qt6::Network GTest::gtest z)
 tgui_set_warnings(tgui_tests)
 
 # W06: путь к скомпилированному .qm (проверка конвейера переводов без «железного» русского).

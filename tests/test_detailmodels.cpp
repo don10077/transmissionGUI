@@ -2,6 +2,9 @@
 #include <gtest/gtest.h>
 
 #include <QTableView>
+#include <QImage>
+#include <QIcon>
+#include <QTemporaryDir>
 
 #include "detailmodels.h"
 #include "tgui/util.h"
@@ -128,6 +131,99 @@ TEST(DetailPeerModel, DataRendering)
     m.setPeers(p2);
     EXPECT_EQ(m.data(m.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(),
               "192.168.0.9");
+}
+
+TEST(DetailPeerModel, CountryColumnWithoutGeoIp)
+{
+    PeerListModel m;
+    QVector<Peer> peers;
+    Peer p;
+    p.address = "8.8.8.8";
+    p.port = 0;
+    p.clientName = "test/1.0";
+    peers.push_back(p);
+    m.setPeers(peers);
+    ASSERT_EQ(m.rowCount(), 1);
+    // Без GeoIP — пустая страна.
+    EXPECT_TRUE(m.data(m.index(0, PeerListModel::ColCountry), Qt::DisplayRole).toString().isEmpty());
+    // Заголовок.
+    EXPECT_EQ(m.headerData(PeerListModel::ColCountry, Qt::Horizontal, Qt::DisplayRole).toString(),
+              QStringLiteral("Country"));
+}
+
+TEST(DetailPeerModel, CountryColumnWithGeoIp)
+{
+    // Создаём минимальную GeoIP-базу: все указатели → country index 1 ("AP").
+    // GeoIpDb читает указатели в little-endian (байт 0 = младший).
+    GeoIpDb db;
+    const auto size = GeoIpDb::kCountryBegin;
+    std::vector<unsigned char> data(size, 0);
+    // Корневой узел (offset 0): оба указателя = kCountryBegin + 1 (24 bit LE).
+    const uint32_t countryOffset = static_cast<uint32_t>(GeoIpDb::kCountryBegin + 1);
+    auto writeLE3 = [](unsigned char* dst, uint32_t val) {
+        dst[0] = static_cast<unsigned char>(val & 0xFF);
+        dst[1] = static_cast<unsigned char>((val >> 8) & 0xFF);
+        dst[2] = static_cast<unsigned char>((val >> 16) & 0xFF);
+    };
+    writeLE3(data.data() + 0, countryOffset); // low pointer
+    writeLE3(data.data() + 3, countryOffset); // high pointer
+    ASSERT_TRUE(db.load(std::move(data)));
+    EXPECT_TRUE(db.isLoaded());
+    EXPECT_EQ(db.countryFor("1.2.3.4"), "AP");
+
+    PeerListModel m;
+    m.setGeoIp(&db);
+    QVector<Peer> peers;
+    Peer p;
+    p.address = "1.2.3.4";
+    p.port = 5000;
+    peers.push_back(p);
+    m.setPeers(peers);
+    ASSERT_EQ(m.rowCount(), 1);
+    EXPECT_EQ(m.data(m.index(0, PeerListModel::ColCountry), Qt::DisplayRole).toString(),
+              "Asia/Pacific Region");
+
+    QTemporaryDir flagsDir;
+    ASSERT_TRUE(flagsDir.isValid());
+    QImage image(16, 11, QImage::Format_RGB32);
+    image.fill(Qt::red);
+    ASSERT_TRUE(image.save(flagsDir.filePath("ap.png")));
+    m.setFlagsDirectory(flagsDir.path());
+    const QModelIndex country = m.index(0, PeerListModel::ColCountry);
+    EXPECT_FALSE(m.data(country, Qt::DecorationRole).isValid());
+    m.setShowFlags(true);
+    const QIcon icon = m.data(country, Qt::DecorationRole).value<QIcon>();
+    EXPECT_FALSE(icon.isNull());
+    EXPECT_FALSE(icon.pixmap(16, 11).isNull());
+    m.setShowFlags(false);
+    EXPECT_FALSE(m.data(country, Qt::DecorationRole).isValid());
+}
+
+TEST(DetailPeerModel, CountryColumnInvalidIp)
+{
+    GeoIpDb db;
+    const auto size = GeoIpDb::kCountryBegin;
+    std::vector<unsigned char> data(size, 0);
+    const uint32_t countryOffset = static_cast<uint32_t>(GeoIpDb::kCountryBegin + 1);
+    auto writeLE3 = [](unsigned char* dst, uint32_t val) {
+        dst[0] = static_cast<unsigned char>(val & 0xFF);
+        dst[1] = static_cast<unsigned char>((val >> 8) & 0xFF);
+        dst[2] = static_cast<unsigned char>((val >> 16) & 0xFF);
+    };
+    writeLE3(data.data() + 0, countryOffset);
+    writeLE3(data.data() + 3, countryOffset);
+    ASSERT_TRUE(db.load(std::move(data)));
+
+    PeerListModel m;
+    m.setGeoIp(&db);
+    QVector<Peer> peers;
+    Peer p;
+    p.address = "not-a-valid-ip";
+    p.port = 0;
+    peers.push_back(p);
+    m.setPeers(peers);
+    // Невалидный IP → пустая страна.
+    EXPECT_TRUE(m.data(m.index(0, PeerListModel::ColCountry), Qt::DisplayRole).toString().isEmpty());
 }
 
 TEST(DetailTrackerModel, DataRendering)

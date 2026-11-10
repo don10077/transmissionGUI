@@ -5,6 +5,7 @@
 #include <QHash>
 
 #include "tgui/models.h"
+#include "tgui/geoip.h"
 
 // Модель вкладки «Файлы»: имя, размер, прогресс, приоритет, want/skip.
 // Колонка «Включён» редактируется (setData) → сигнал wantChanged.
@@ -48,6 +49,7 @@ class PeerListModel : public QAbstractTableModel {
 public:
     enum Column {
         ColAddress = 0,
+        ColCountry,
         ColClient,
         ColProgress,
         ColRateDown,
@@ -62,6 +64,13 @@ public:
     void setPeers(const QVector<tgui::Peer>& peers);
     const QVector<tgui::Peer>& peers() const { return m_peers; }
 
+    // Установить GeoIP-базу для разрешения страны (nullptr — без страны).
+    void setGeoIp(const tgui::GeoIpDb* geoip) { m_geoip = geoip; }
+    const tgui::GeoIpDb* geoIp() const { return m_geoip; }
+    void setShowFlags(bool show);
+    bool showFlags() const { return m_showFlags; }
+    void setFlagsDirectory(const QString& directory) { m_flagsDirectory = directory; }
+
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     int columnCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role) const override;
@@ -69,6 +78,9 @@ public:
 
 private:
     QVector<tgui::Peer> m_peers;
+    const tgui::GeoIpDb* m_geoip = nullptr;
+    bool m_showFlags = false;
+    QString m_flagsDirectory;
 };
 
 // Модель вкладки «Трекеры» (только чтение).
