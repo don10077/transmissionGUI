@@ -3,9 +3,12 @@ $ErrorActionPreference = 'Stop'
 $dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $dir 'map_a.ps1')
 . (Join-Path $dir 'map_b.ps1')
+. (Join-Path $dir 'map_c.ps1')
+
 $map = @{}
-$mapA.GetEnumerator() | ForEach-Object { $map[$_.Key] = $_.Value }
-$mapB.GetEnumerator() | ForEach-Object { $map[$_.Key] = $_.Value }
+$mapA.GetEnumerator() | ForEach-Object { $map[$_.Key.Replace('\n', "`n")] = $_.Value }
+$mapB.GetEnumerator() | ForEach-Object { $map[$_.Key.Replace('\n', "`n")] = $_.Value }
+$mapC.GetEnumerator() | ForEach-Object { $map[$_.Key.Replace('\n', "`n")] = $_.Value }
 
 $tsPath = Join-Path $dir 'tgui_ru.ts'
 $xml = [xml](Get-Content $tsPath -Raw -Encoding UTF8)
@@ -21,6 +24,7 @@ foreach ($c in $xml.TS.context) {
         if ($ctxMap.ContainsKey($key)) { $trans = $ctxMap[$key] }
         elseif ($map.ContainsKey($src)) { $trans = $map[$src] }
         if ($null -eq $trans) { $missed += $key; continue }
+        $trans = $trans.Replace('\n', "`n")
         foreach ($old in @($m.GetElementsByTagName('translation'))) { $m.RemoveChild($old) }
         $node = $xml.CreateElement('translation')
         $node.InnerText = $trans

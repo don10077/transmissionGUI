@@ -111,6 +111,7 @@ bool parseTorrent(const QJsonObject& j, Torrent& t)
     t.leftUntilDone = optNum(j, "leftUntilDone");
     t.downloadedEver = optNum(j, "downloadedEver");
     t.uploadedEver = optNum(j, "uploadedEver");
+    t.corruptEver = optNum(j, "corruptEver");
     t.uploadRatio = optNum(j, "uploadRatio");
     t.metadataPercentComplete = optNum(j, "metadataPercentComplete");
     t.rateDownload = optInt(j, "rateDownload");
@@ -203,6 +204,7 @@ QVector<TrackerStat> parseTrackerStats(const QJsonArray& array)
         s.lastAnnounceSucceeded = j.value("lastAnnounceSucceeded").toBool();
         s.lastAnnounceResult = j.value("lastAnnounceResult").toString();
         s.lastAnnounceTime = j.value("lastAnnounceTime").toInt();
+        s.nextAnnounceTime = j.value("nextAnnounceTime").toInt();
         s.seederCount = j.value("seederCount").isDouble() ? j.value("seederCount").toInt() : -1;
         s.leecherCount =
             j.value("leecherCount").isDouble() ? j.value("leecherCount").toInt() : -1;

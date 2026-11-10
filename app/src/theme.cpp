@@ -7,6 +7,8 @@
 #include <QPalette>
 #include <QStyleFactory>
 
+#include <cmath>
+
 namespace {
 
 using tgui::theme::Icon;
@@ -30,6 +32,7 @@ QColor defaultColor(Icon id)
         case Icon::Start:
         case Icon::StartAll:
         case Icon::Add:
+        case Icon::AddLink:
         case Icon::FilterCompleted:
         case Icon::FilterActive:
         case Icon::FilterWaiting:
@@ -192,6 +195,14 @@ void drawIcon(QPainter& p, Icon id, const QColor& c)
             p.drawLine(QPointF(7.8, 12), QPointF(16.2, 12));
             break;
         }
+        case Icon::AddLink: {
+            // Цепочка + «плюс»: добавление торрента по ссылке.
+            stroke(p, c, 1.9);
+            p.drawArc(QRectF(3.8, 9.0, 9.0, 6.0), 90 * 16, 180 * 16);
+            p.drawArc(QRectF(11.2, 9.0, 9.0, 6.0), 270 * 16, 180 * 16);
+            p.drawLine(QPointF(8.0, 12), QPointF(16.0, 12));
+            break;
+        }
         case Icon::Start: {
             fill(p, c);
             QPainterPath path;
@@ -251,6 +262,22 @@ void drawIcon(QPainter& p, Icon id, const QColor& c)
             p.drawEllipse(QPointF(9, 6.5), 2.4, 2.4);
             p.drawEllipse(QPointF(15, 12.0), 2.4, 2.4);
             p.drawEllipse(QPointF(10.5, 17.5), 2.4, 2.4);
+            break;
+        }
+        case Icon::DaemonOptions:
+        case Icon::AppOptions: {
+            // Шестерёнка настроек (у Transmission-опций — точка-индикатор).
+            stroke(p, c, 1.8);
+            p.drawEllipse(QPointF(12, 12), 4.2, 4.2);
+            for (int i = 0; i < 8; ++i) {
+                const qreal a = i * 3.14159265358979 / 4.0;
+                p.drawLine(QPointF(12 + std::cos(a) * 6.2, 12 + std::sin(a) * 6.2),
+                           QPointF(12 + std::cos(a) * 8.4, 12 + std::sin(a) * 8.4));
+            }
+            if (id == Icon::DaemonOptions) {
+                fill(p, accent);
+                p.drawEllipse(QPointF(18.5, 18.5), 2.0, 2.0);
+            }
             break;
         }
         case Icon::Move: {

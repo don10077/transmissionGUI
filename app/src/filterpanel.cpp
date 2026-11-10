@@ -2,7 +2,6 @@
 
 #include <QAbstractItemView>
 #include <QFontMetrics>
-#include <QLineEdit>
 #include <QPainter>
 #include <QPainterPath>
 #include <QScrollBar>
@@ -21,6 +20,7 @@ constexpr int kRoleTracker = Qt::UserRole + 3;
 constexpr int kRoleBase = Qt::UserRole + 4; // базовое имя строки (без счётчика)
 constexpr int kRoleCount = Qt::UserRole + 5;
 constexpr int kRoleSection = Qt::UserRole + 6;
+constexpr int kRoleLabel = Qt::UserRole + 7;
 
 tgui::theme::Icon statusIcon(int group)
 {
@@ -93,10 +93,13 @@ public:
         QIcon ic;
         const QVariant folder = index.data(kRoleFolder);
         const QVariant tracker = index.data(kRoleTracker);
+        const QVariant labelValue = index.data(kRoleLabel);
         if (folder.isValid())
             ic = tgui::theme::icon(Icon::Folder);
         else if (tracker.isValid())
             ic = tgui::theme::icon(Icon::Tracker);
+        else if (labelValue.isValid())
+            ic = tgui::theme::icon(Icon::Properties);
         else
             ic = tgui::theme::icon(statusIcon(index.data(kRoleGroup).toInt()));
 
@@ -166,18 +169,10 @@ FilterPanel::FilterPanel(QWidget* parent) : QWidget(parent)
     m_tree->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_tree->setItemDelegate(new FilterTreeDelegate(m_tree));
 
-    m_search = new QLineEdit(this);
-    m_search->setObjectName(QStringLiteral("searchEdit"));
-    m_search->setPlaceholderText(tr("Search torrents"));
-    m_search->setClearButtonEnabled(true);
-    m_search->addAction(tgui::theme::icon(tgui::theme::Icon::Search),
-                        QLineEdit::LeadingPosition);
-
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(8, 8, 8, 8);
     layout->setSpacing(6);
     layout->addWidget(m_tree, 1);
-    layout->addWidget(m_search);
 
     // Статусные строки (порядок — как в референсе, lvFilter.Rows[0..7]).
     const struct {
@@ -202,14 +197,18 @@ FilterPanel::FilterPanel(QWidget* parent) : QWidget(parent)
         it->setToolTip(0, tr(s.name));
     }
 
-    auto* foldersSection = new QTreeWidgetItem(m_tree);
-    foldersSection->setText(0, tr("Folders"));
-    foldersSection->setData(0, kRoleSection, true);
-    foldersSection->setFlags(Qt::ItemIsEnabled);
-    auto* trackersSection = new QTreeWidgetItem(m_tree);
-    trackersSection->setText(0, tr("Trackers"));
-    trackersSection->setData(0, kRoleSection, true);
-    trackersSection->setFlags(Qt::ItemIsEnabled);
+    m_foldersSection = new QTreeWidgetItem(m_tree);
+    m_foldersSection->setText(0, tr("Folders"));
+    m_foldersSection->setData(0, kRoleSection, true);
+    m_foldersSection->setFlags(Qt::ItemIsEnabled);
+    m_labelsSection = new QTreeWidgetItem(m_tree);
+    m_labelsSection->setText(0, tr("Labels"));
+    m_labelsSection->setData(0, kRoleSection, true);
+    m_labelsSection->setFlags(Qt::ItemIsEnabled);
+    m_trackersSection = new QTreeWidgetItem(m_tree);
+    m_trackersSection->setText(0, tr("Trackers"));
+    m_trackersSection->setData(0, kRoleSection, true);
+    m_trackersSection->setFlags(Qt::ItemIsEnabled);
 
     connect(m_tree, &QTreeWidget::currentItemChanged, this,
             [this](QTreeWidgetItem* cur, QTreeWidgetItem*) {
@@ -217,11 +216,12 @@ FilterPanel::FilterPanel(QWidget* parent) : QWidget(parent)
                     return;
                 m_selStatus = cur->data(0, kRoleGroup).toInt();
                 m_selFolder = cur->data(0, kRoleFolder).toString();
+                m_selLabel = cur->data(0, kRoleLabel).toString();
                 m_selTracker = cur->data(0, kRoleTracker).toString();
-                const bool plainStatus =
-                    m_selFolder.isEmpty() && m_selTracker.isEmpty();
+                const bool plainStatus = m_selFolder.isEmpty() && m_selLabel.isEmpty() &&
+                                         m_selTracker.isEmpty();
                 emit filterChanged(plainStatus ? m_selStatus : TorrentModel::GroupAll,
-                                   m_selFolder, m_selTracker);
+                                   m_selFolder, m_selTracker, m_selLabel);
             });
 
     // По умолчанию выбран «All torrents» — как в эталоне.
@@ -236,35 +236,48 @@ QTreeWidgetItem* FilterPanel::itemAt(int row) const
 
 int FilterPanel::selectedGroup() const
 {
-    if (!m_selFolder.isEmpty() || !m_selTracker.isEmpty())
+    if (!m_selFolder.isEmpty() || !m_selLabel.isEmpty() || !m_selTracker.isEmpty())
         return TorrentModel::GroupAll;
     return m_selStatus;
 }
 
 QString FilterPanel::selectedFolder() const { return m_selFolder; }
+QString FilterPanel::selectedLabel() const { return m_selLabel; }
 QString FilterPanel::selectedTracker() const { return m_selTracker; }
+
+void FilterPanel::selectAllTorrents()
+{
+    if (QTreeWidgetItem* first = itemAt(0))
+        m_tree->setCurrentItem(first);
+}
 
 void FilterPanel::setFolderGroupingEnabled(bool enabled)
 {
-    if (QTreeWidgetItem* it = itemAt(8))
-        it->setHidden(!enabled);
+    if (m_foldersSection)
+        m_foldersSection->setHidden(!enabled);
+}
+
+void FilterPanel::setLabelGroupingEnabled(bool enabled)
+{
+    if (m_labelsSection)
+        m_labelsSection->setHidden(!enabled);
 }
 
 void FilterPanel::setTrackerGroupingEnabled(bool enabled)
 {
-    if (QTreeWidgetItem* it = itemAt(9))
-        it->setHidden(!enabled);
+    if (m_trackersSection)
+        m_trackersSection->setHidden(!enabled);
 }
 
 void FilterPanel::setEnabledUi(bool enabled)
 {
     m_tree->setEnabled(enabled);
-    m_search->setEnabled(enabled);
 }
 
 void FilterPanel::setCounts(int all, int downloading, int completed, int active,
                             int inactive, int stopped, int error, int waiting,
                             const QVector<QPair<QString, int>>& folders,
+                            const QVector<QPair<QString, int>>& labels,
                             const QVector<QPair<QString, int>>& trackers)
 {
     const int scrollPosition = m_tree->verticalScrollBar()->value();
@@ -279,9 +292,9 @@ void FilterPanel::setCounts(int all, int downloading, int completed, int active,
         }
     }
 
-    auto fillSection = [this](int row, const QVector<QPair<QString, int>>& items,
+    auto fillSection = [this](QTreeWidgetItem* section,
+                              const QVector<QPair<QString, int>>& items,
                               int role) {
-        QTreeWidgetItem* section = itemAt(row);
         if (!section)
             return;
         // Reuse rows by their key so an RPC refresh retains the selection.
@@ -315,8 +328,9 @@ void FilterPanel::setCounts(int all, int downloading, int completed, int active,
         // = false), поэтому свёрнутое состояние сделало бы строки недоступными.
         section->setExpanded(!items.isEmpty());
     };
-    fillSection(8, folders, kRoleFolder);
-    fillSection(9, trackers, kRoleTracker);
+    fillSection(m_foldersSection, folders, kRoleFolder);
+    fillSection(m_labelsSection, labels, kRoleLabel);
+    fillSection(m_trackersSection, trackers, kRoleTracker);
     m_tree->doItemsLayout();
     m_tree->verticalScrollBar()->setValue(scrollPosition);
 }

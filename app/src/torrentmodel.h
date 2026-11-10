@@ -91,6 +91,7 @@ public:
     // TorrentModel::StatusGroup; GroupAll (-1) — без фильтра.
     void setStatusGroup(int group);
     void setFolderFilter(const QString& folder); // пусто — без фильтра
+    void setLabelFilter(const QString& label);   // пусто — без фильтра
     void setTrackerFilter(const QString& announce); // пусто — без фильтра
     void setSearchText(const QString& text);
 
@@ -102,6 +103,7 @@ public:
 private:
     int m_group = TorrentModel::GroupAll;
     QString m_folder;
+    QString m_label;
     QString m_tracker;
     QString m_search;
 };

@@ -1,0 +1,229 @@
+Configuring Debug...
+-- Configuring done (0.2s)
+-- Generating done (0.2s)
+-- Build files have been written to: D:/Work/transmissionGUI/build/win-debug
+Building transmissiongui...
+ninja: no work to do.
+Building tests...
+ninja: no work to do.
+Running tests...
+[==========] Running 131 tests from 41 test suites.
+[----------] Global test environment set-up.
+[----------] 6 tests from GeoIpDb
+[ RUN      ] GeoIpDb.ResolvesKnownIp
+[       OK ] GeoIpDb.ResolvesKnownIp (2 ms)
+[ RUN      ] GeoIpDb.NoDataReturnsEmpty
+[       OK ] GeoIpDb.NoDataReturnsEmpty (2 ms)
+[ RUN      ] GeoIpDb.InvalidAddressReturnsEmpty
+[       OK ] GeoIpDb.InvalidAddressReturnsEmpty (2 ms)
+[ RUN      ] GeoIpDb.IsValidIpv4Checks
+[       OK ] GeoIpDb.IsValidIpv4Checks (0 ms)
+[ RUN      ] GeoIpDb.UnloadedResolvesNothing
+[       OK ] GeoIpDb.UnloadedResolvesNothing (0 ms)
+[ RUN      ] GeoIpDb.RejectsFileTooSmall
+[       OK ] GeoIpDb.RejectsFileTooSmall (0 ms)
+[----------] 6 tests from GeoIpDb (8 ms total)
+
+[----------] 7 tests from PathMap
+[ RUN      ] PathMap.ExactMatch
+[       OK ] PathMap.ExactMatch (0 ms)
+[ RUN      ] PathMap.PrefixMatch
+[       OK ] PathMap.PrefixMatch (0 ms)
+[ RUN      ] PathMap.NoMatchReturnsOriginal
+[       OK ] PathMap.NoMatchReturnsOriginal (0 ms)
+[ RUN      ] PathMap.WindowsSeparatorsNormalized
+[       OK ] PathMap.WindowsSeparatorsNormalized (0 ms)
+[ RUN      ] PathMap.TrailingSlashInRule
+[       OK ] PathMap.TrailingSlashInRule (0 ms)
+[ RUN      ] PathMap.EmptyMappings
+[       OK ] PathMap.EmptyMappings (0 ms)
+[ RUN      ] PathMap.FirstMatchingRuleWins
+[       OK ] PathMap.FirstMatchingRuleWins (0 ms)
+[----------] 7 tests from PathMap (0 ms total)
+
+[----------] 2 tests from AboutDialog
+[ RUN      ] AboutDialog.Texts
+[       OK ] AboutDialog.Texts (0 ms)
+[ RUN      ] AboutDialog.Construct
+[       OK ] AboutDialog.Construct (16 ms)
+[----------] 2 tests from AboutDialog (16 ms total)
+
+[----------] 4 tests from ColumnLayout
+[ RUN      ] ColumnLayout.Defaults
+[       OK ] ColumnLayout.Defaults (0 ms)
+[ RUN      ] ColumnLayout.MoveItem
+[       OK ] ColumnLayout.MoveItem (0 ms)
+[ RUN      ] ColumnLayout.EnsureAtLeastOneVisible
+[       OK ] ColumnLayout.EnsureAtLeastOneVisible (0 ms)
+[ RUN      ] ColumnLayout.SettingsRoundTrip
+[       OK ] ColumnLayout.SettingsRoundTrip (2 ms)
+[----------] 4 tests from ColumnLayout (2 ms total)
+
+[----------] 1 test from ColSetupDialog
+[ RUN      ] ColSetupDialog.OrderVisibleRoundTrip
+[       OK ] ColSetupDialog.OrderVisibleRoundTrip (0 ms)
+[----------] 1 test from ColSetupDialog (0 ms total)
+
+[----------] 2 tests from DaemonSettings
+[ RUN      ] DaemonSettings.FromSessionMapsFields
+[       OK ] DaemonSettings.FromSessionMapsFields (0 ms)
+[ RUN      ] DaemonSettings.ToSessionSetJsonKeys
+[       OK ] DaemonSettings.ToSessionSetJsonKeys (0 ms)
+[----------] 2 tests from DaemonSettings (0 ms total)
+
+[----------] 1 test from DaemonOptionsDialog
+[ RUN      ] DaemonOptionsDialog.RoundTripSettings
+[       OK ] DaemonOptionsDialog.RoundTripSettings (0 ms)
+[----------] 1 test from DaemonOptionsDialog (0 ms total)
+
+[----------] 4 tests from DaemonProfile
+[ RUN      ] DaemonProfile.UrlHttpAndHttps
+[       OK ] DaemonProfile.UrlHttpAndHttps (0 ms)
+[ RUN      ] DaemonProfile.ToOptionsAuthRpcPathAndNoProxy
+[       OK ] DaemonProfile.ToOptionsAuthRpcPathAndNoProxy (0 ms)
+[ RUN      ] DaemonProfile.ToOptionsHttpProxy
+[       OK ] DaemonProfile.ToOptionsHttpProxy (0 ms)
+[ RUN      ] DaemonProfile.ToOptionsSocksProxy
+[       OK ] DaemonProfile.ToOptionsSocksProxy (0 ms)
+[----------] 4 tests from DaemonProfile (0 ms total)
+
+[----------] 4 tests from ProfileStore
+[ RUN      ] ProfileStore.AddSaveReadRoundTrip
+[       OK ] ProfileStore.AddSaveReadRoundTrip (3 ms)
+[ RUN      ] ProfileStore.AddDuplicateIgnored
+[       OK ] ProfileStore.AddDuplicateIgnored (2 ms)
+[ RUN      ] ProfileStore.RemoveSwitchesCurrent
+[       OK ] ProfileStore.RemoveSwitchesCurrent (3 ms)
+[ RUN      ] ProfileStore.RenameKeepsDataAndCurrent
+[       OK ] ProfileStore.RenameKeepsDataAndCurrent (3 ms)
+[----------] 4 tests from ProfileStore (13 ms total)
+
+[----------] 4 tests from OptionsDialog
+[ RUN      ] OptionsDialog.DefaultsAfterReset
+[       OK ] OptionsDialog.DefaultsAfterReset (1 ms)
+[ RUN      ] OptionsDialog.SaveAndPersist
+[       OK ] OptionsDialog.SaveAndPersist (1 ms)
+[ RUN      ] OptionsDialog.RefreshOnlyNoRestart
+[       OK ] OptionsDialog.RefreshOnlyNoRestart (2 ms)
+[ RUN      ] OptionsDialog.TrayDefaultsPersist
+[       OK ] OptionsDialog.TrayDefaultsPersist (2 ms)
+[----------] 4 tests from OptionsDialog (8 ms total)
+
+[----------] 1 test from I18n
+[ RUN      ] I18n.FallbackEnglishThenQmTranslates
+[       OK ] I18n.FallbackEnglishThenQmTranslates (0 ms)
+[----------] 1 test from I18n (0 ms total)
+
+[----------] 4 tests from AddLinkDialog
+[ RUN      ] AddLinkDialog.BufferAndLinkGetter
+[       OK ] AddLinkDialog.BufferAndLinkGetter (0 ms)
+[ RUN      ] AddLinkDialog.EmptyLinkNotAccepted
+[       OK ] AddLinkDialog.EmptyLinkNotAccepted (0 ms)
+[ RUN      ] AddLinkDialog.ValidLinkAccepted
+[       OK ] AddLinkDialog.ValidLinkAccepted (0 ms)
+[ RUN      ] AddLinkDialog.CancelRejects
+[       OK ] AddLinkDialog.CancelRejects (0 ms)
+[----------] 4 tests from AddLinkDialog (0 ms total)
+
+[----------] 33 tests from RpcClientTest
+[ RUN      ] RpcClientTest.ConnectAndSessionInfo
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:96: Failure
+Value of: connected
+  Actual: false
+Expected: true
+
+[  FAILED  ] RpcClientTest.ConnectAndSessionInfo (5004 ms)
+[ RUN      ] RpcClientTest.ConnectFailure
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:134: Failure
+Value of: failed
+  Actual: false
+Expected: true
+
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:135: Failure
+Expected equality of these values:
+  error
+    Which is: {}
+  "bad request"
+    Which is: 0x7ff7454bc4b1
+
+[  FAILED  ] RpcClientTest.ConnectFailure (5003 ms)
+[ RUN      ] RpcClientTest.GetTorrentsRpc18FieldsAndTable
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:67: Failure
+Value of: connected
+  Actual: false
+Expected: true
+
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:164: Failure
+Value of: got
+  Actual: false
+Expected: true
+
+[  FAILED  ] RpcClientTest.GetTorrentsRpc18FieldsAndTable (10008 ms)
+[ RUN      ] RpcClientTest.GetTorrentsOldRpcGates
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:67: Failure
+Value of: connected
+  Actual: false
+Expected: true
+
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:215: Failure
+Value of: got
+  Actual: false
+Expected: true
+
+[  FAILED  ] RpcClientTest.GetTorrentsOldRpcGates (9994 ms)
+[ RUN      ] RpcClientTest.AddTorrentSequentialGate
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:67: Failure
+Value of: connected
+  Actual: false
+Expected: true
+
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:262: Failure
+Value of: done
+  Actual: false
+Expected: true
+
+[  FAILED  ] RpcClientTest.AddTorrentSequentialGate (10008 ms)
+[ RUN      ] RpcClientTest.AddTorrentRpc17NoSequential
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:67: Failure
+Value of: connected
+  Actual: false
+Expected: true
+
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:298: Failure
+Value of: done
+  Actual: false
+Expected: true
+
+[  FAILED  ] RpcClientTest.AddTorrentRpc17NoSequential (9993 ms)
+[ RUN      ] RpcClientTest.RemoveWithLocalData
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:67: Failure
+Value of: connected
+  Actual: false
+Expected: true
+
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:325: Failure
+Value of: done
+  Actual: false
+Expected: true
+
+[  FAILED  ] RpcClientTest.RemoveWithLocalData (9996 ms)
+[ RUN      ] RpcClientTest.StartAllWithoutIds
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:67: Failure
+Value of: connected
+  Actual: false
+Expected: true
+
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:352: Failure
+Value of: done
+  Actual: false
+Expected: true
+
+[  FAILED  ] RpcClientTest.StartAllWithoutIds (10009 ms)
+[ RUN      ] RpcClientTest.SetFilePriorityHigh
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:67: Failure
+Value of: connected
+  Actual: false
+Expected: true
+
+
+Build succeeded: "D:\Work\transmissionGUI\build\win-debug\app\transmissiongui.exe"

@@ -12,6 +12,8 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+#include <cmath>
+
 #include "theme.h"
 #include "torrentmodel.h"
 #include "tgui/util.h"
@@ -309,16 +311,28 @@ void PropsForm::rebuild()
     makeCell(grid, 0, 0, tr("Status"), statusRich, true);
     makeCell(grid, 0, 2, tr("Error"), error, false,
              error == dash() ? QColor() : tgui::theme::color::red);
-    makeCell(grid, 0, 4, tr("Left"), fmtSize(ltd));
+    QString remaining = fmtSize(ltd);
+    if (t.eta.has_value() && t.eta.value() >= 0) {
+        const QString eta = QString::fromStdString(tgui::formatEta(t.eta.value()));
+        if (!eta.isEmpty())
+            remaining = QStringLiteral("%1 (%2)").arg(eta, fmtSize(ltd));
+    }
+    makeCell(grid, 0, 4, tr("Remaining"), remaining);
 
     makeCell(grid, 1, 0, tr("Downloaded"),
              t.downloadedEver ? fmtSize(*t.downloadedEver) : dash());
     makeCell(grid, 1, 2, tr("Uploaded"), t.uploadedEver ? fmtSize(*t.uploadedEver) : dash());
-    const int seeders = (!t.trackerStats.isEmpty() && t.trackerStats.first().seederCount >= 0)
-                            ? t.trackerStats.first().seederCount
-                            : -1;
-    makeCell(grid, 1, 4, tr("Loaded peers"),
-             QStringLiteral("%1 of %2").arg(t.peersSendingToUs.value_or(0)).arg(seeders));
+    QString wasted = dash();
+    if (t.corruptEver.has_value()) {
+        int hashfails = 0;
+        if (t.pieceSize.value_or(0.0) > 0.0)
+            hashfails = static_cast<int>(std::llround(*t.corruptEver / *t.pieceSize));
+        wasted = QStringLiteral("%1 (%2 %3)")
+                     .arg(fmtSize(*t.corruptEver))
+                     .arg(hashfails)
+                     .arg(QObject::tr("hashfails"));
+    }
+    makeCell(grid, 1, 4, tr("Wasted"), wasted);
 
     auto speedText = [](int rate, std::optional<double> total, std::optional<int> seconds) {
         QString s = QString::fromStdString(tgui::formatRate(rate));
@@ -329,16 +343,20 @@ void PropsForm::rebuild()
                          tgui::formatRate(static_cast<qint64>(total.value() / seconds.value()))));
         return s;
     };
-    makeCell(grid, 2, 0, tr("Speed"), speedText(t.rateDownload.value_or(0), t.downloadedEver,
-                                                t.secondsDownloading));
-    makeCell(grid, 2, 2, tr("Up speed"), speedText(t.rateUpload.value_or(0), t.uploadedEver,
-                                                   t.secondsSeeding));
-    makeCell(grid, 2, 4, tr("Ratio"),
-             t.uploadRatio ? QString::fromStdString(tgui::formatRatio(*t.uploadRatio)) : dash());
+    makeCell(grid, 2, 0, tr("Download speed"),
+             speedText(t.rateDownload.value_or(0), t.downloadedEver, t.secondsDownloading));
+    makeCell(grid, 2, 2, tr("Upload speed"),
+             speedText(t.rateUpload.value_or(0), t.uploadedEver, t.secondsSeeding));
+    QString ratio = t.uploadRatio ? QString::fromStdString(tgui::formatRatio(*t.uploadRatio))
+                                  : dash();
+    if (t.secondsSeeding.has_value() && t.secondsSeeding.value() > 0)
+        ratio += QStringLiteral(" (%1)")
+                     .arg(QString::fromStdString(tgui::formatEta(*t.secondsSeeding)));
+    makeCell(grid, 2, 4, tr("Share ratio"), ratio);
 
     auto limitText = [this](bool enabled, int limitKb) {
         if (!m_session.has_value())
-            return dash();
+            return QStringLiteral("—");
         if (!enabled || limitKb < 0)
             return tr("Unlimited");
         return fmtSize(limitKb * 1024.0) + "/s";
@@ -349,24 +367,46 @@ void PropsForm::rebuild()
     makeCell(grid, 3, 2, tr("Up limit"),
              limitText(m_session ? m_session->speedLimitUpEnabled : false,
                        m_session ? m_session->speedLimitUp : 0));
-    makeCell(grid, 3, 4, tr("Max peers"),
+
+    const int seeders = (!t.trackerStats.isEmpty() && t.trackerStats.first().seederCount >= 0)
+                            ? t.trackerStats.first().seederCount
+                            : -1;
+    const int leechers = (!t.trackerStats.isEmpty() && t.trackerStats.first().leecherCount >= 0)
+                             ? t.trackerStats.first().leecherCount
+                             : -1;
+    QString seedsText = QStringLiteral("%1 %2").arg(t.peersSendingToUs.value_or(0))
+                            .arg(QObject::tr("connected"));
+    if (seeders >= 0)
+        seedsText = QStringLiteral("%1 %2 %3 %4")
+                        .arg(t.peersSendingToUs.value_or(0))
+                        .arg(QObject::tr("of"))
+                        .arg(seeders)
+                        .arg(QObject::tr("connected"));
+    makeCell(grid, 4, 0, tr("Seeds"), seedsText);
+    QString peersText = QStringLiteral("%1 %2").arg(t.peersGettingFromUs.value_or(0))
+                            .arg(QObject::tr("connected"));
+    if (leechers >= 0)
+        peersText = QStringLiteral("%1 %2 %3 %4")
+                        .arg(t.peersGettingFromUs.value_or(0))
+                        .arg(QObject::tr("of"))
+                        .arg(leechers)
+                        .arg(QObject::tr("in swarm"));
+    makeCell(grid, 4, 2, tr("Peers"), peersText);
+    makeCell(grid, 4, 4, tr("Max peers"),
              t.maxConnectedPeers ? QString::number(*t.maxConnectedPeers) : dash());
 
-    makeCell(grid, 4, 0, tr("Seeds"),
-             QStringLiteral("%1 %2").arg(t.peersSendingToUs.value_or(0))
-                 .arg(QObject::tr("connected")));
-    makeCell(grid, 4, 2, tr("Peers"),
-             QStringLiteral("%1 %2").arg(t.peersGettingFromUs.value_or(0))
-                 .arg(QObject::tr("in swarm")));
-
     QString trackerUpdate = dash();
-    if (!t.trackerStats.isEmpty() &&
-        (t.trackerStats.first().announceState == 2 || t.trackerStats.first().announceState == 3))
-        trackerUpdate = tr("Updating...");
+    if (!t.trackerStats.isEmpty()) {
+        const auto& st = t.trackerStats.first();
+        if (st.announceState == 2 || st.announceState == 3)
+            trackerUpdate = tr("Updating...");
+        else if (st.nextAnnounceTime > 0)
+            trackerUpdate = fmtUnixTime(st.nextAnnounceTime);
+    }
     makeCell(grid, 5, 0, tr("Tracker"),
              t.trackerStats.isEmpty() ? tr("No tracker") : t.trackerStats.first().announce);
-    makeCell(grid, 5, 2, tr("Tracker update"), trackerUpdate);
-    makeCell(grid, 6, 0, tr("Last active"), fmtUnixTime(t.activityDate.value_or(0)));
+    makeCell(grid, 5, 2, tr("Tracker update on"), trackerUpdate);
+    makeCell(grid, 5, 4, tr("Last active"), fmtUnixTime(t.activityDate.value_or(0)));
 
     // Секция «Torrent» (panGeneralInfo) — две пары label/value на строку.
     auto [torrentCard, tgrid] = makeCard(tr("Torrent"), 2);
@@ -379,7 +419,7 @@ void PropsForm::rebuild()
     QString created = fmtUnixTime(t.dateCreated.value_or(0));
     if (t.creator.has_value() && !t.creator->isEmpty())
         created += " by " + *t.creator;
-    makeCell(tgrid, 0, 2, tr("Created"), created);
+    makeCell(tgrid, 0, 2, tr("Created on"), created);
 
     const QString totalSizeText = (swd > 0.0)
                                       ? QStringLiteral("%1 (%2 %3)")
@@ -406,9 +446,11 @@ void PropsForm::rebuild()
 
     makeCell(tgrid, 2, 0, tr("Hash"), t.hashString.value_or(dash()));
     makeCell(tgrid, 2, 2, tr("Comment"), t.comment.value_or(dash()));
-    makeCell(tgrid, 3, 0, tr("Added"), fmtUnixTime(t.addedDate.value_or(0)));
-    makeCell(tgrid, 3, 2, tr("Completed"), fmtUnixTime(t.doneDate.value_or(0)));
-    makeCell(tgrid, 4, 0, tr("Magnet link"), t.magnetLink.value_or(dash()));
+    makeCell(tgrid, 3, 0, tr("Added on"), fmtUnixTime(t.addedDate.value_or(0)));
+    makeCell(tgrid, 3, 2, tr("Completed on"), fmtUnixTime(t.doneDate.value_or(0)));
+    makeCell(tgrid, 4, 0, tr("Magnet Link"), t.magnetLink.value_or(dash()));
+    makeCell(tgrid, 4, 2, tr("Labels"),
+             t.labels.has_value() ? t.labels->join(QStringLiteral(", ")) : dash());
 
     Q_UNUSED(torrentCard);
     contentLayout->addStretch(1);

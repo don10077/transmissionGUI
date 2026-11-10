@@ -130,8 +130,8 @@ void RpcClient::getTorrents(const QStringList& extraFields)
         "sizeWhenDone", "leftUntilDone", "rateDownload", "rateUpload", "trackerStats",
         "metadataPercentComplete", "sequential_download", "downloadDir",
         // Расширенные поля для списка и диалога «Свойства».
-        "addedDate", "doneDate", "downloadedEver", "uploadedEver", "isPrivate",
-        "isStalled", "queuePosition", "uploadRatio",
+        "addedDate", "doneDate", "downloadedEver", "uploadedEver", "corruptEver",
+        "isPrivate", "isStalled", "queuePosition", "uploadRatio",
         // 26-колоночный грид (референс раскладки — см. WORKFLOW.md).
         "totalSize", "activityDate", "secondsSeeding", "bandwidthPriority",
         // Вкладка «General» (референс — tabGeneral): hash, чанки, комментарий,

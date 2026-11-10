@@ -4,11 +4,13 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QSettings>
 #include <QSpinBox>
+#include <QTabWidget>
 #include <QVBoxLayout>
 
 #include "pathmap.h"
@@ -27,13 +29,72 @@ constexpr char kKeyPaths[] = "paths/mappings";
 OptionsDialog::OptionsDialog(QWidget* parent)
     : QDialog(parent)
 {
-    setWindowTitle(tr("Options"));
+    // Как transgui/options.lfm: «Application options» + вкладки
+    // General / Advanced (+ Paths для маппинга путей).
+    setWindowTitle(tr("Application options"));
+    resize(560, 380);
 
-    // --- Интерфейс: язык, масштаб, интервал обновления -------------------
-    auto* iface = new QGroupBox(tr("Interface"), this);
-    auto* ifaceForm = new QFormLayout(iface);
+    auto* tabs = new QTabWidget(this);
 
-    m_language = new QComboBox(iface);
+    // --- General: Data display -------------------------------------------
+    auto* general = new QWidget(tabs);
+    auto* generalLayout = new QVBoxLayout(general);
+    generalLayout->setContentsMargins(10, 10, 10, 10);
+
+    auto* dataGroup = new QGroupBox(tr("Data display"), general);
+    auto* dataForm = new QFormLayout(dataGroup);
+    dataForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+
+    m_refresh = new QSpinBox(dataGroup);
+    m_refresh->setRange(1, 999);
+    m_refresh->setSuffix(tr(" seconds"));
+    m_refresh->setValue(QSettings().value(kKeyRefresh, 2).toInt());
+    dataForm->addRow(tr("Data refresh interval:"), m_refresh);
+
+    generalLayout->addWidget(dataGroup);
+    generalLayout->addStretch(1);
+    tabs->addTab(general, tr("General"));
+
+    // --- Advanced: tray, font size, language ------------------------------
+    auto* advanced = new QWidget(tabs);
+    auto* advancedLayout = new QVBoxLayout(advanced);
+    advancedLayout->setContentsMargins(10, 10, 10, 10);
+    advancedLayout->setSpacing(10);
+
+    auto* tray = new QGroupBox(tr("Tray icon"), advanced);
+    auto* trayGrid = new QGridLayout(tray);
+    trayGrid->setHorizontalSpacing(16);
+    trayGrid->setVerticalSpacing(6);
+
+    m_minimizeToTray = new QCheckBox(tr("Minimize to tray"), tray);
+    m_minimizeToTray->setChecked(QSettings().value(kKeyMinimizeToTray, false).toBool());
+    m_closeToTray = new QCheckBox(tr("Close to tray"), tray);
+    m_closeToTray->setChecked(QSettings().value(kKeyCloseToTray, true).toBool());
+    m_trayIcon = new QCheckBox(tr("Tray icon always visible"), tray);
+    m_trayIcon->setChecked(QSettings().value(kKeyTrayIcon, true).toBool());
+    m_trayNotify = new QCheckBox(tr("Show notifications in tray icon"), tray);
+    m_trayNotify->setChecked(QSettings().value(kKeyTrayNotify, false).toBool());
+
+    trayGrid->addWidget(m_minimizeToTray, 0, 0);
+    trayGrid->addWidget(m_closeToTray, 0, 1);
+    trayGrid->addWidget(m_trayIcon, 1, 0);
+    trayGrid->addWidget(m_trayNotify, 1, 1);
+    trayGrid->setColumnStretch(0, 1);
+    trayGrid->setColumnStretch(1, 1);
+    advancedLayout->addWidget(tray);
+
+    auto* look = new QGroupBox(tr("Interface"), advanced);
+    auto* lookForm = new QFormLayout(look);
+    lookForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+
+    m_scale = new QSpinBox(look);
+    m_scale->setRange(75, 200);
+    m_scale->setSingleStep(5);
+    m_scale->setSuffix(tr(" %"));
+    m_scale->setValue(QSettings().value(kKeyScale, 100).toInt());
+    lookForm->addRow(tr("Font size:"), m_scale);
+
+    m_language = new QComboBox(look);
     m_language->addItem(tr("English"), QStringLiteral("en"));
     m_language->addItem(QStringLiteral("Русский"), QStringLiteral("ru"));
     {
@@ -42,55 +103,32 @@ OptionsDialog::OptionsDialog(QWidget* parent)
         if (idx >= 0)
             m_language->setCurrentIndex(idx);
     }
-    ifaceForm->addRow(tr("Language"), m_language);
+    lookForm->addRow(tr("Language:"), m_language);
+    advancedLayout->addWidget(look);
+    advancedLayout->addStretch(1);
+    tabs->addTab(advanced, tr("Advanced"));
 
-    m_scale = new QSpinBox(iface);
-    m_scale->setRange(50, 200);
-    m_scale->setSingleStep(5);
-    m_scale->setSuffix(tr(" %"));
-    m_scale->setValue(QSettings().value(kKeyScale, 100).toInt());
-    ifaceForm->addRow(tr("Interface scale"), m_scale);
+    // --- Paths: маппинг remote→local (как вкладка Paths transgui) ----------
+    auto* pathsPage = new QWidget(tabs);
+    auto* pathsLayout = new QVBoxLayout(pathsPage);
+    pathsLayout->setContentsMargins(10, 10, 10, 10);
 
-    m_refresh = new QSpinBox(iface);
-    m_refresh->setRange(1, 3600);
-    m_refresh->setSuffix(tr(" s"));
-    m_refresh->setValue(QSettings().value(kKeyRefresh, 2).toInt());
-    ifaceForm->addRow(tr("Refresh interval"), m_refresh);
-
-    // --- Трей -------------------------------------------------------------
-    auto* tray = new QGroupBox(tr("Tray"), this);
-    auto* trayLayout = new QVBoxLayout(tray);
-
-    m_closeToTray = new QCheckBox(tr("Close to tray (instead of quitting)"), tray);
-    m_closeToTray->setChecked(QSettings().value(kKeyCloseToTray, true).toBool());
-    m_minimizeToTray = new QCheckBox(tr("Minimize to tray"), tray);
-    m_minimizeToTray->setChecked(QSettings().value(kKeyMinimizeToTray, false).toBool());
-    m_trayIcon = new QCheckBox(tr("Always show tray icon"), tray);
-    m_trayIcon->setChecked(QSettings().value(kKeyTrayIcon, true).toBool());
-    m_trayNotify = new QCheckBox(tr("Show tray notifications"), tray);
-    m_trayNotify->setChecked(QSettings().value(kKeyTrayNotify, false).toBool());
-
-    for (QCheckBox* cb : {m_closeToTray, m_minimizeToTray, m_trayIcon, m_trayNotify})
-        trayLayout->addWidget(cb);
-
-    // --- Пути: маппинг remote→local (референс — вкладка Paths transgui) -----
-    // Сервер хранит файлы в своём пути (напр. /var/downloads/music); чтобы двойным
-    // кликом открыть их локально, задаём "remote=local" — префикс заменяется.
-    auto* paths = new QGroupBox(tr("Paths (remote→local mapping)"), this);
-    auto* pathsLayout = new QVBoxLayout(paths);
     auto* pathsHint = new QLabel(
         tr("Map the daemon's (remote) paths to local ones, one per line: "
            "remote=local\n"
            "Example: /var/downloads/music=Z:/music\n"
            "Used when opening files/torrents with double-click."),
-        paths);
+        pathsPage);
     pathsHint->setWordWrap(true);
-    m_paths = new QPlainTextEdit(paths);
-    m_paths->setPlainText(QSettings().value(kKeyPaths, QStringList()).toStringList().join(QLatin1Char('\n')));
+    m_paths = new QPlainTextEdit(pathsPage);
+    m_paths->setPlainText(
+        QSettings().value(kKeyPaths, QStringList()).toStringList().join(QLatin1Char('\n')));
     pathsLayout->addWidget(pathsHint);
-    pathsLayout->addWidget(m_paths);
+    pathsLayout->addWidget(m_paths, 1);
+    tabs->addTab(pathsPage, tr("Paths"));
 
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    auto* buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, [this] {
         apply();
         accept();
@@ -98,10 +136,7 @@ OptionsDialog::OptionsDialog(QWidget* parent)
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     auto* root = new QVBoxLayout(this);
-    root->addWidget(iface);
-    root->addWidget(tray);
-    root->addWidget(paths);
-    root->addStretch(1);
+    root->addWidget(tabs, 1);
     root->addWidget(buttons);
 }
 

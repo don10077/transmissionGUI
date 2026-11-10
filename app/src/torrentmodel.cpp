@@ -487,6 +487,15 @@ void TorrentFilterProxy::setTrackerFilter(const QString& announce)
     endFilterChange();
 }
 
+void TorrentFilterProxy::setLabelFilter(const QString& label)
+{
+    if (m_label == label)
+        return;
+    beginFilterChange();
+    m_label = label;
+    endFilterChange();
+}
+
 void TorrentFilterProxy::setSearchText(const QString& text)
 {
     if (m_search == text)
@@ -513,6 +522,8 @@ bool TorrentFilterProxy::filterAcceptsRow(int row, const QModelIndex& parent) co
     if (m_group != TorrentModel::GroupAll && !TorrentModel::matchesGroup(t, m_group))
         return false;
     if (!m_folder.isEmpty() && t.downloadDir.value_or(QString()) != m_folder)
+        return false;
+    if (!m_label.isEmpty() && !t.labels.value_or(QStringList()).contains(m_label))
         return false;
     if (!m_tracker.isEmpty() &&
         (t.trackerStats.isEmpty() || t.trackerStats.first().announce != m_tracker))

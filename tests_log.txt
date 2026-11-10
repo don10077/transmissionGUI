@@ -1,0 +1,426 @@
+Note: Google Test filter = -RpcClientTest.*
+[==========] Running 98 tests from 40 test suites.
+[----------] Global test environment set-up.
+[----------] 6 tests from GeoIpDb
+[ RUN      ] GeoIpDb.ResolvesKnownIp
+[       OK ] GeoIpDb.ResolvesKnownIp (2 ms)
+[ RUN      ] GeoIpDb.NoDataReturnsEmpty
+[       OK ] GeoIpDb.NoDataReturnsEmpty (3 ms)
+[ RUN      ] GeoIpDb.InvalidAddressReturnsEmpty
+[       OK ] GeoIpDb.InvalidAddressReturnsEmpty (2 ms)
+[ RUN      ] GeoIpDb.IsValidIpv4Checks
+[       OK ] GeoIpDb.IsValidIpv4Checks (0 ms)
+[ RUN      ] GeoIpDb.UnloadedResolvesNothing
+[       OK ] GeoIpDb.UnloadedResolvesNothing (0 ms)
+[ RUN      ] GeoIpDb.RejectsFileTooSmall
+[       OK ] GeoIpDb.RejectsFileTooSmall (0 ms)
+[----------] 6 tests from GeoIpDb (9 ms total)
+
+[----------] 7 tests from PathMap
+[ RUN      ] PathMap.ExactMatch
+[       OK ] PathMap.ExactMatch (0 ms)
+[ RUN      ] PathMap.PrefixMatch
+[       OK ] PathMap.PrefixMatch (0 ms)
+[ RUN      ] PathMap.NoMatchReturnsOriginal
+[       OK ] PathMap.NoMatchReturnsOriginal (0 ms)
+[ RUN      ] PathMap.WindowsSeparatorsNormalized
+[       OK ] PathMap.WindowsSeparatorsNormalized (0 ms)
+[ RUN      ] PathMap.TrailingSlashInRule
+[       OK ] PathMap.TrailingSlashInRule (0 ms)
+[ RUN      ] PathMap.EmptyMappings
+[       OK ] PathMap.EmptyMappings (0 ms)
+[ RUN      ] PathMap.FirstMatchingRuleWins
+[       OK ] PathMap.FirstMatchingRuleWins (0 ms)
+[----------] 7 tests from PathMap (0 ms total)
+
+[----------] 2 tests from AboutDialog
+[ RUN      ] AboutDialog.Texts
+[       OK ] AboutDialog.Texts (0 ms)
+[ RUN      ] AboutDialog.Construct
+[       OK ] AboutDialog.Construct (17 ms)
+[----------] 2 tests from AboutDialog (17 ms total)
+
+[----------] 4 tests from ColumnLayout
+[ RUN      ] ColumnLayout.Defaults
+[       OK ] ColumnLayout.Defaults (0 ms)
+[ RUN      ] ColumnLayout.MoveItem
+[       OK ] ColumnLayout.MoveItem (0 ms)
+[ RUN      ] ColumnLayout.EnsureAtLeastOneVisible
+[       OK ] ColumnLayout.EnsureAtLeastOneVisible (0 ms)
+[ RUN      ] ColumnLayout.SettingsRoundTrip
+[       OK ] ColumnLayout.SettingsRoundTrip (1 ms)
+[----------] 4 tests from ColumnLayout (1 ms total)
+
+[----------] 1 test from ColSetupDialog
+[ RUN      ] ColSetupDialog.OrderVisibleRoundTrip
+[       OK ] ColSetupDialog.OrderVisibleRoundTrip (0 ms)
+[----------] 1 test from ColSetupDialog (0 ms total)
+
+[----------] 2 tests from DaemonSettings
+[ RUN      ] DaemonSettings.FromSessionMapsFields
+[       OK ] DaemonSettings.FromSessionMapsFields (0 ms)
+[ RUN      ] DaemonSettings.ToSessionSetJsonKeys
+[       OK ] DaemonSettings.ToSessionSetJsonKeys (0 ms)
+[----------] 2 tests from DaemonSettings (0 ms total)
+
+[----------] 1 test from DaemonOptionsDialog
+[ RUN      ] DaemonOptionsDialog.RoundTripSettings
+[       OK ] DaemonOptionsDialog.RoundTripSettings (0 ms)
+[----------] 1 test from DaemonOptionsDialog (0 ms total)
+
+[----------] 4 tests from DaemonProfile
+[ RUN      ] DaemonProfile.UrlHttpAndHttps
+[       OK ] DaemonProfile.UrlHttpAndHttps (0 ms)
+[ RUN      ] DaemonProfile.ToOptionsAuthRpcPathAndNoProxy
+[       OK ] DaemonProfile.ToOptionsAuthRpcPathAndNoProxy (0 ms)
+[ RUN      ] DaemonProfile.ToOptionsHttpProxy
+[       OK ] DaemonProfile.ToOptionsHttpProxy (0 ms)
+[ RUN      ] DaemonProfile.ToOptionsSocksProxy
+[       OK ] DaemonProfile.ToOptionsSocksProxy (0 ms)
+[----------] 4 tests from DaemonProfile (0 ms total)
+
+[----------] 4 tests from ProfileStore
+[ RUN      ] ProfileStore.AddSaveReadRoundTrip
+[       OK ] ProfileStore.AddSaveReadRoundTrip (3 ms)
+[ RUN      ] ProfileStore.AddDuplicateIgnored
+[       OK ] ProfileStore.AddDuplicateIgnored (2 ms)
+[ RUN      ] ProfileStore.RemoveSwitchesCurrent
+[       OK ] ProfileStore.RemoveSwitchesCurrent (2 ms)
+[ RUN      ] ProfileStore.RenameKeepsDataAndCurrent
+[       OK ] ProfileStore.RenameKeepsDataAndCurrent (3 ms)
+[----------] 4 tests from ProfileStore (11 ms total)
+
+[----------] 4 tests from OptionsDialog
+[ RUN      ] OptionsDialog.DefaultsAfterReset
+[       OK ] OptionsDialog.DefaultsAfterReset (1 ms)
+[ RUN      ] OptionsDialog.SaveAndPersist
+[       OK ] OptionsDialog.SaveAndPersist (1 ms)
+[ RUN      ] OptionsDialog.RefreshOnlyNoRestart
+[       OK ] OptionsDialog.RefreshOnlyNoRestart (2 ms)
+[ RUN      ] OptionsDialog.TrayDefaultsPersist
+[       OK ] OptionsDialog.TrayDefaultsPersist (2 ms)
+[----------] 4 tests from OptionsDialog (7 ms total)
+
+[----------] 1 test from I18n
+[ RUN      ] I18n.FallbackEnglishThenQmTranslates
+[       OK ] I18n.FallbackEnglishThenQmTranslates (0 ms)
+[----------] 1 test from I18n (0 ms total)
+
+[----------] 4 tests from AddLinkDialog
+[ RUN      ] AddLinkDialog.BufferAndLinkGetter
+[       OK ] AddLinkDialog.BufferAndLinkGetter (0 ms)
+[ RUN      ] AddLinkDialog.EmptyLinkNotAccepted
+[       OK ] AddLinkDialog.EmptyLinkNotAccepted (0 ms)
+[ RUN      ] AddLinkDialog.ValidLinkAccepted
+[       OK ] AddLinkDialog.ValidLinkAccepted (0 ms)
+[ RUN      ] AddLinkDialog.CancelRejects
+[       OK ] AddLinkDialog.CancelRejects (0 ms)
+[----------] 4 tests from AddLinkDialog (0 ms total)
+
+[----------] 1 test from RpcLive
+[ RUN      ] RpcLive.Trackers
+D:/Work/transmissionGUI/tests/test_rpcclient.cpp:1041: Skipped
+TGUI_E2E_URL/TGUI_E2E_USER не заданы
+
+[  SKIPPED ] RpcLive.Trackers (0 ms)
+[----------] 1 test from RpcLive (0 ms total)
+
+[----------] 1 test from E2ETabs
+[ RUN      ] E2ETabs.SelectionLoadsDetails
+D:/Work/transmissionGUI/tests/test_e2e_tabs.cpp:33: Skipped
+E2E-демон не задан (TGUI_E2E_URL/TGUI_E2E_USER/TGUI_E2E_PASS)
+
+[  SKIPPED ] E2ETabs.SelectionLoadsDetails (0 ms)
+[----------] 1 test from E2ETabs (0 ms total)
+
+[----------] 1 test from FilterPanel
+[ RUN      ] FilterPanel.WheelAndRefreshKeepFolderSelection
+[       OK ] FilterPanel.WheelAndRefreshKeepFolderSelection (13 ms)
+[----------] 1 test from FilterPanel (13 ms total)
+
+[----------] 3 tests from PropsForm
+[ RUN      ] PropsForm.RendersTorrent
+[       OK ] PropsForm.RendersTorrent (4 ms)
+[ RUN      ] PropsForm.ScrollKeepsPositionAcrossRefresh
+[       OK ] PropsForm.ScrollKeepsPositionAcrossRefresh (10 ms)
+[ RUN      ] PropsForm.ClearShowsPlaceholder
+[       OK ] PropsForm.ClearShowsPlaceholder (2 ms)
+[----------] 3 tests from PropsForm (18 ms total)
+
+[----------] 1 test from StatsForm
+[ RUN      ] StatsForm.RendersStats
+[       OK ] StatsForm.RendersStats (0 ms)
+[----------] 1 test from StatsForm (0 ms total)
+
+[----------] 5 tests from MainWindowLayout
+[ RUN      ] MainWindowLayout.RefreshKeepsSelectionAndDetails
+[       OK ] MainWindowLayout.RefreshKeepsSelectionAndDetails (23 ms)
+[ RUN      ] MainWindowLayout.RefreshClearsDetailsWhenTorrentGone
+[       OK ] MainWindowLayout.RefreshClearsDetailsWhenTorrentGone (16 ms)
+[ RUN      ] MainWindowLayout.RefreshKeepsListScrollPosition
+[       OK ] MainWindowLayout.RefreshKeepsListScrollPosition (50 ms)
+[ RUN      ] MainWindowLayout.SelectAllSurvivesRefresh
+[       OK ] MainWindowLayout.SelectAllSurvivesRefresh (21 ms)
+[ RUN      ] MainWindowLayout.GridTopTabsBottom
+[       OK ] MainWindowLayout.GridTopTabsBottom (15 ms)
+[----------] 5 tests from MainWindowLayout (127 ms total)
+
+[----------] 3 tests from DetailFileModel
+[ RUN      ] DetailFileModel.DataAndHeaders
+[       OK ] DetailFileModel.DataAndHeaders (0 ms)
+[ RUN      ] DetailFileModel.ToggleWantEmits
+[       OK ] DetailFileModel.ToggleWantEmits (0 ms)
+[ RUN      ] DetailFileModel.WantedColumnEditableOnly
+[       OK ] DetailFileModel.WantedColumnEditableOnly (0 ms)
+[----------] 3 tests from DetailFileModel (0 ms total)
+
+[----------] 1 test from DetailPeerModel
+[ RUN      ] DetailPeerModel.DataRendering
+[       OK ] DetailPeerModel.DataRendering (0 ms)
+[----------] 1 test from DetailPeerModel (0 ms total)
+
+[----------] 1 test from DetailTrackerModel
+[ RUN      ] DetailTrackerModel.DataRendering
+[       OK ] DetailTrackerModel.DataRendering (0 ms)
+[----------] 1 test from DetailTrackerModel (0 ms total)
+
+[----------] 1 test from DetailModels
+[ RUN      ] DetailModels.OffscreenTableViewRenders
+[       OK ] DetailModels.OffscreenTableViewRenders (0 ms)
+[----------] 1 test from DetailModels (0 ms total)
+
+[----------] 3 tests from ModelTorrent
+[ RUN      ] ModelTorrent.ParseFull
+[       OK ] ModelTorrent.ParseFull (0 ms)
+[ RUN      ] ModelTorrent.OptionalFieldsAbsent
+[       OK ] ModelTorrent.OptionalFieldsAbsent (0 ms)
+[ RUN      ] ModelTorrent.RequiresId
+[       OK ] ModelTorrent.RequiresId (0 ms)
+[----------] 3 tests from ModelTorrent (0 ms total)
+
+[----------] 1 test from ModelTorrents
+[ RUN      ] ModelTorrents.ParseArraySkipsNonObjects
+[       OK ] ModelTorrents.ParseArraySkipsNonObjects (0 ms)
+[----------] 1 test from ModelTorrents (0 ms total)
+
+[----------] 1 test from ModelTorrentsTable
+[ RUN      ] ModelTorrentsTable.ParseTable
+[       OK ] ModelTorrentsTable.ParseTable (0 ms)
+[----------] 1 test from ModelTorrentsTable (0 ms total)
+
+[----------] 2 tests from ModelPeers
+[ RUN      ] ModelPeers.Parse
+[       OK ] ModelPeers.Parse (0 ms)
+[ RUN      ] ModelPeers.ParseKebabCase
+[       OK ] ModelPeers.ParseKebabCase (0 ms)
+[----------] 2 tests from ModelPeers (0 ms total)
+
+[----------] 2 tests from ModelFiles
+[ RUN      ] ModelFiles.ParseWithPrioritiesAndWanted
+[       OK ] ModelFiles.ParseWithPrioritiesAndWanted (0 ms)
+[ RUN      ] ModelFiles.ParseCompletion
+[       OK ] ModelFiles.ParseCompletion (0 ms)
+[----------] 2 tests from ModelFiles (0 ms total)
+
+[----------] 1 test from ModelTrackerStats
+[ RUN      ] ModelTrackerStats.ParseWithTier
+[       OK ] ModelTrackerStats.ParseWithTier (0 ms)
+[----------] 1 test from ModelTrackerStats (0 ms total)
+
+[----------] 1 test from ModelSessionInfo
+[ RUN      ] ModelSessionInfo.Parse
+[       OK ] ModelSessionInfo.Parse (0 ms)
+[----------] 1 test from ModelSessionInfo (0 ms total)
+
+[----------] 2 tests from ModelSessionStats
+[ RUN      ] ModelSessionStats.ParseValid
+[       OK ] ModelSessionStats.ParseValid (0 ms)
+[ RUN      ] ModelSessionStats.RejectInvalid
+[       OK ] ModelSessionStats.RejectInvalid (0 ms)
+[----------] 2 tests from ModelSessionStats (0 ms total)
+
+[----------] 1 test from ModelStatus
+[ RUN      ] ModelStatus.Helpers
+[       OK ] ModelStatus.Helpers (0 ms)
+[----------] 1 test from ModelStatus (0 ms total)
+
+[----------] 2 tests from GuiListChain
+[ RUN      ] GuiListChain.ListVisibleAfterModelReset
+[       OK ] GuiListChain.ListVisibleAfterModelReset (0 ms)
+[ RUN      ] GuiListChain.OffscreenTreeViewRendersRows
+[       OK ] GuiListChain.OffscreenTreeViewRendersRows (4 ms)
+[----------] 2 tests from GuiListChain (5 ms total)
+
+[----------] 12 tests from JsonRpcTest
+[ RUN      ] JsonRpcTest.SuccessAndRequestShape
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:38: Failure
+Value of: r.ok
+  Actual: false
+Expected: true
+
+[  FAILED  ] JsonRpcTest.SuccessAndRequestShape (5010 ms)
+[ RUN      ] JsonRpcTest.CustomRpcPath
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:57: Failure
+Value of: r.ok
+  Actual: false
+Expected: true
+
+[  FAILED  ] JsonRpcTest.CustomRpcPath (4995 ms)
+[ RUN      ] JsonRpcTest.SessionIdRetryOn409
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:68: Failure
+Value of: r.ok
+  Actual: false
+Expected: true
+
+[  FAILED  ] JsonRpcTest.SessionIdRetryOn409 (4998 ms)
+[ RUN      ] JsonRpcTest.SessionId409WithoutHeader
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:87: Failure
+Expected equality of these values:
+  r.httpCode
+    Which is: 0
+  409
+
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:88: Failure
+Expected equality of these values:
+  server.requestCount()
+    Which is: 0
+  1
+
+[  FAILED  ] JsonRpcTest.SessionId409WithoutHeader (4996 ms)
+[ RUN      ] JsonRpcTest.BasicAuthHeaderSent
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:97: Failure
+Value of: r.ok
+  Actual: false
+Expected: true
+
+[  FAILED  ] JsonRpcTest.BasicAuthHeaderSent (5007 ms)
+[ RUN      ] JsonRpcTest.Unauthorized401
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:112: Failure
+Expected equality of these values:
+  r.httpCode
+    Which is: 0
+  401
+
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:113: Failure
+Expected equality of these values:
+  r.error
+    Which is: {}
+  "unauthorized"
+    Which is: 0x7ff7454b493e
+
+[  FAILED  ] JsonRpcTest.Unauthorized401 (5004 ms)
+[ RUN      ] JsonRpcTest.RpcLevelError
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:125: Failure
+Expected equality of these values:
+  r.httpCode
+    Which is: 0
+  200
+
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:126: Failure
+Expected equality of these values:
+  r.status
+    Which is: {}
+  "failure"
+    Which is: 0x7ff7454b499a
+
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:127: Failure
+Expected equality of these values:
+  r.error
+    Which is: {}
+  "duplicate torrent"
+    Which is: 0x7ff7454b49b6
+
+[  FAILED  ] JsonRpcTest.RpcLevelError (5002 ms)
+[ RUN      ] JsonRpcTest.InvalidServerResponse
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:138: Failure
+Expected equality of these values:
+  r.error
+    Which is: {}
+  "Invalid server response."
+    Which is: 0x7ff7454b49ee
+
+[  FAILED  ] JsonRpcTest.InvalidServerResponse (5007 ms)
+[ RUN      ] JsonRpcTest.ArgumentsPassed
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:147: Failure
+Value of: r.ok
+  Actual: false
+Expected: true
+
+[  FAILED  ] JsonRpcTest.ArgumentsPassed (4999 ms)
+[ RUN      ] JsonRpcTest.MovedPermanentRedirectToWeb
+D:/Work/transmissionGUI/tests/test_jsonrpc.cpp:166: Failure
+Value of: r.ok
+  Actual: false
+Expected: true
+
+[  FAILED  ] JsonRpcTest.MovedPermanentRedirectToWeb (4993 ms)
+[ RUN      ] JsonRpcTest.ConnectionRefused
+[       OK ] JsonRpcTest.ConnectionRefused (1997 ms)
+[ RUN      ] JsonRpcTest.Timeout
+[       OK ] JsonRpcTest.Timeout (327 ms)
+[----------] 12 tests from JsonRpcTest (52342 ms total)
+
+[----------] 5 tests from Bencode
+[ RUN      ] Bencode.EncodePrimitives
+[       OK ] Bencode.EncodePrimitives (0 ms)
+[ RUN      ] Bencode.EncodeListAndDict
+[       OK ] Bencode.EncodeListAndDict (0 ms)
+[ RUN      ] Bencode.DecodeRoundTrip
+[       OK ] Bencode.DecodeRoundTrip (0 ms)
+[ RUN      ] Bencode.DecodeStringEscapesBinary
+[       OK ] Bencode.DecodeStringEscapesBinary (0 ms)
+[ RUN      ] Bencode.DecodeErrors
+[       OK ] Bencode.DecodeErrors (0 ms)
+[----------] 5 tests from Bencode (0 ms total)
+
+[----------] 2 tests from UtilFormatSize
+[ RUN      ] UtilFormatSize.Behavior
+[       OK ] UtilFormatSize.Behavior (0 ms)
+[ RUN      ] UtilFormatSize.RateMode
+[       OK ] UtilFormatSize.RateMode (0 ms)
+[----------] 2 tests from UtilFormatSize (0 ms total)
+
+[----------] 1 test from UtilFormatRate
+[ RUN      ] UtilFormatRate.PerSecond
+[       OK ] UtilFormatRate.PerSecond (0 ms)
+[----------] 1 test from UtilFormatRate (0 ms total)
+
+[----------] 1 test from UtilFormatSeconds
+[ RUN      ] UtilFormatSeconds.Behavior
+[       OK ] UtilFormatSeconds.Behavior (0 ms)
+[----------] 1 test from UtilFormatSeconds (0 ms total)
+
+[----------] 1 test from UtilFormatEta
+[ RUN      ] UtilFormatEta.Behavior
+[       OK ] UtilFormatEta.Behavior (0 ms)
+[----------] 1 test from UtilFormatEta (0 ms total)
+
+[----------] 1 test from UtilFormatRatio
+[ RUN      ] UtilFormatRatio.Behavior
+[       OK ] UtilFormatRatio.Behavior (0 ms)
+[----------] 1 test from UtilFormatRatio (0 ms total)
+
+[----------] 1 test from UtilPercentComplete
+[ RUN      ] UtilPercentComplete.Behavior
+[       OK ] UtilPercentComplete.Behavior (0 ms)
+[----------] 1 test from UtilPercentComplete (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 98 tests from 40 test suites ran. (52558 ms total)
+[  PASSED  ] 86 tests.
+[  SKIPPED ] 2 tests, listed below:
+[  SKIPPED ] RpcLive.Trackers
+[  SKIPPED ] E2ETabs.SelectionLoadsDetails
+[  FAILED  ] 10 tests, listed below:
+[  FAILED  ] JsonRpcTest.SuccessAndRequestShape
+[  FAILED  ] JsonRpcTest.CustomRpcPath
+[  FAILED  ] JsonRpcTest.SessionIdRetryOn409
+[  FAILED  ] JsonRpcTest.SessionId409WithoutHeader
+[  FAILED  ] JsonRpcTest.BasicAuthHeaderSent
+[  FAILED  ] JsonRpcTest.Unauthorized401
+[  FAILED  ] JsonRpcTest.RpcLevelError
+[  FAILED  ] JsonRpcTest.InvalidServerResponse
+[  FAILED  ] JsonRpcTest.ArgumentsPassed
+[  FAILED  ] JsonRpcTest.MovedPermanentRedirectToWeb
+
+10 FAILED TESTS

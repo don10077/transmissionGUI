@@ -38,6 +38,7 @@ struct TrackerStat {
     bool lastAnnounceSucceeded = false;
     QString lastAnnounceResult;
     int lastAnnounceTime = 0;       // unix-время
+    int nextAnnounceTime = 0;       // unix-время следующего анонса
     int seederCount = -1;
     int leecherCount = -1;
     int tier = 0;
@@ -58,6 +59,7 @@ struct Torrent {
     std::optional<double> leftUntilDone;           // байты
     std::optional<double> downloadedEver;          // байты
     std::optional<double> uploadedEver;            // байты
+    std::optional<double> corruptEver;             // «wasted» — байты
     std::optional<double> uploadRatio;
     std::optional<double> metadataPercentComplete; // 0..1
     std::optional<int> rateDownload;               // Б/с

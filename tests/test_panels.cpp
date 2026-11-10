@@ -29,7 +29,7 @@ TEST(FilterPanel, WheelAndRefreshKeepFolderSelection)
     QVector<QPair<QString, int>> folders;
     for (int i = 0; i < 50; ++i)
         folders.push_back({QStringLiteral("/folder/%1").arg(i), 1});
-    panel.setCounts(50, 0, 0, 0, 0, 0, 0, 0, folders, {});
+    panel.setCounts(50, 0, 0, 0, 0, 0, 0, 0, folders, {}, {});
     panel.show();
     QCoreApplication::processEvents();
     auto* tree = panel.findChild<QTreeWidget*>();
@@ -45,7 +45,7 @@ TEST(FilterPanel, WheelAndRefreshKeepFolderSelection)
     ASSERT_GT(bar->value(), before);
     const int scrolled = bar->value();
     folders[0].second = 2;
-    panel.setCounts(51, 0, 0, 0, 0, 0, 0, 0, folders, {});
+    panel.setCounts(51, 0, 0, 0, 0, 0, 0, 0, folders, {}, {});
     QCoreApplication::processEvents();
     EXPECT_EQ(bar->value(), scrolled);
     EXPECT_EQ(panel.selectedFolder(), QStringLiteral("/folder/0"));
@@ -272,6 +272,38 @@ TEST(MainWindowLayout, RefreshKeepsListScrollPosition)
     w.applyTorrentsUpdate(torrents);
     QCoreApplication::processEvents();
     EXPECT_EQ(bar->value(), target);
+}
+
+TEST(MainWindowLayout, SelectAllSurvivesRefresh)
+{
+    QCoreApplication::setOrganizationName(QStringLiteral("tgui-test"));
+    QCoreApplication::setApplicationName(QStringLiteral("tgui-test"));
+
+    MainWindow w;
+    w.torrentView()->sortByColumn(TorrentModel::ColName, Qt::AscendingOrder);
+    auto mk = [](int id, const char* name) {
+        Torrent t;
+        t.id = id;
+        t.name = name;
+        t.status = 4;
+        return t;
+    };
+    QVector<Torrent> torrents = {mk(1, "alpha"), mk(2, "beta"), mk(3, "gamma")};
+    w.applyTorrentsUpdate(torrents);
+
+    // Ctrl+A: выделены все строки. Автообновление не должно сбрасывать
+    // множественное выделение на одну строку (регресс-тест к selectedTorrentIds).
+    w.torrentView()->selectAll();
+    ASSERT_EQ(w.torrentView()->selectionModel()->selectedRows().size(), 3);
+
+    w.applyTorrentsUpdate(torrents);
+    EXPECT_EQ(w.torrentView()->selectionModel()->selectedRows().size(), 3);
+
+    // Небольшое изменение данных (как при обычном refresh) — выделение цело.
+    torrents[1].rateDownload = 4096;
+    w.applyTorrentsUpdate(torrents);
+    EXPECT_EQ(w.torrentView()->selectionModel()->selectedRows().size(), 3);
+    EXPECT_EQ(w.currentId(), 1);
 }
 
 TEST(MainWindowLayout, GridTopTabsBottom)

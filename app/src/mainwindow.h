@@ -17,6 +17,8 @@ class QTabWidget;
 class QTableView;
 class QTreeView;
 class QAction;
+class QToolBar;
+class QToolButton;
 class QNetworkAccessManager;
 class QDragEnterEvent;
 class QDropEvent;
@@ -94,7 +96,8 @@ private slots:
     void onAbout();
     void onColumns();
     void onContextMenu(const QPoint& pos);
-    void onFilterChanged(int group, const QString& folder, const QString& tracker);
+    void onFilterChanged(int group, const QString& folder, const QString& tracker,
+                         const QString& label);
     void onSelectAll();
     void onCopyPath();
     void onOpenFolder();
@@ -153,6 +156,10 @@ private:
     void setConnectionState(const QString& text, const QColor& color);
     void updateStatusBarTotals();
     void updateFilterPanel(const QVector<tgui::Torrent>& torrents);
+    void updateSelectionActions();
+    void applyViewVisibility();
+    void restoreTorrentSelection(const QVector<int>& ids, int currentId);
+    int proxyRowForId(int id) const;
     void startAdd(const tgui::RpcClient::AddTorrent& params, bool doSave,
                   const QString& savePath);
     void finishAdd();
@@ -185,6 +192,10 @@ private:
     FilterPanel* m_filterPanel = nullptr;
     QTreeView* m_view = nullptr;
     QTableView* m_filesView = nullptr;
+    QToolBar* m_toolBar = nullptr;
+    // Кнопка подключения-дропдаун (аналог OLD tbConnect, tbsDropDown).
+    QToolButton* m_connectButton = nullptr;
+    QLineEdit* m_searchEdit = nullptr;
     // ID торрента, для которого загружаются вкладки Файлы/Пиры/Трекеры.
     int m_currentId = -1;
     // true только в момент modelReset при автообновлении: onSelectionChanged
@@ -200,6 +211,7 @@ private:
     QAction* m_actConnect = nullptr;
     QAction* m_actDisconnect = nullptr;
     QAction* m_actAdd = nullptr;
+    QAction* m_actAddLink = nullptr;
     QAction* m_actStart = nullptr;
     QAction* m_actStop = nullptr;
     QAction* m_actStartAll = nullptr;
@@ -210,7 +222,19 @@ private:
     QAction* m_actRefresh = nullptr;
     QAction* m_actAutoRefresh = nullptr;
     QAction* m_actAltSpeed = nullptr;
+    QAction* m_actDaemonOptions = nullptr;
+    QAction* m_actOptions = nullptr;
     QAction* m_actAbout = nullptr;
+    // View (visibility/grouping) — нужны для применения сохранённого состояния
+    // при старте и для горячих клавиш (F11/F12/Shift+F11/Shift+F12).
+    QAction* m_actFilterPane = nullptr;
+    QAction* m_actInfoPane = nullptr;
+    QAction* m_actToolbar = nullptr;
+    QAction* m_actMenu = nullptr;
+    QAction* m_actStatusBar = nullptr;
+    QAction* m_actFolderGrouping = nullptr;
+    QAction* m_actLabelGrouping = nullptr;
+    QAction* m_actTrackerGrouping = nullptr;
 
     QSystemTrayIcon* m_tray = nullptr;
 };
