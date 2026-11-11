@@ -579,6 +579,10 @@
   </context>
   <context>
     <name>MainWindow</name>
+    <message><source>Corrupted torrent file</source><translation>Повреждённый торрент-файл</translation></message>
+    <message><source>The file appears to be corrupted and was repaired automatically:\n%1\n\nThe repaired torrent will still be added.</source><translation>Похоже, файл повреждён; он был автоматически восстановлен:\n%1\n\nОтремонтированный торрент всё равно будет добавлен.</translation></message>
+    <message><source>The file appears to be corrupted and automatic repair failed:\n%1\n\nThe original file will still be sent to the daemon — it may reject the torrent.</source><translation>Похоже, файл повреждён, и автоматический ремонт не удался:\n%1\n\nОригинальный файл всё равно будет передан демону — он может отклонить торрент.</translation></message>
+    <message><source>Note: part of the fix falls inside the "info" section — the InfoHash may change, and peers of the original torrent will not find it.</source><translation>Примечание: часть исправлений попала в секцию «info» — InfoHash может измениться, и пиров оригинального торрента он не найдёт.</translation></message>
     <message><source>Add</source><translation>Добавить</translation></message>
     <message><source>Magnet</source><translation>Magnet</translation></message>
     <message><source>Limit</source><translation>Лимит</translation></message>

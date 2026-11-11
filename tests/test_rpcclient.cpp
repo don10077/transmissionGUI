@@ -5,6 +5,7 @@
 #include <QEventLoop>
 #include <QFile>
 #include <QTimer>
+#include <QTemporaryFile>
 
 #include <gtest/gtest.h>
 
@@ -443,6 +444,35 @@ TEST_F(RpcClientTest, SetFilePriorityEmptyIsNoop)
     const int before = server.requestCount();
     client->setFilePriority(7, {}, 1); // пустой список — запрос не шлём
     EXPECT_EQ(server.requestCount(), before);
+}
+
+// Приоритет всего торрента (W04): torrent-set с ключом bandwidthPriority
+// (camelCase, как в образце). Регистр важен: lowercase-ключ демон игнорирует.
+TEST_F(RpcClientTest, SetTorrentPriorityKeyCase)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{200, "{\"result\": \"success\", \"arguments\": {}}", {}});
+    QEventLoop loop;
+    bool done = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::requestCompleted,
+                     [&done, &loop](const QString&, bool, const QString&, const QJsonObject&) {
+                         done = true;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->setPriority(7, 1); // high
+    loop.exec();
+    ASSERT_TRUE(done);
+
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "torrent-set");
+    EXPECT_EQ(req.arguments.value("ids").toArray().first().toInt(), 7);
+    EXPECT_TRUE(req.arguments.contains("bandwidthPriority"));
+    EXPECT_EQ(req.arguments.value("bandwidthPriority").toInt(), 1);
+    EXPECT_FALSE(req.arguments.contains("bandwidthpriority")); // не lowercase
 }
 
 TEST_F(RpcClientTest, SetFilePriorityVersionGate)
@@ -1134,5 +1164,55 @@ TEST_F(RpcClientTest, MoveUsesSetLocationWithExplicitMoveFlag)
         EXPECT_EQ(request.arguments.value("location").toString(), QStringLiteral("/server/target"));
         EXPECT_EQ(request.arguments.value("move").toBool(), move);
         EXPECT_EQ(request.arguments.value("ids").toArray().first().toInt(), 42);
+    }
+}
+
+TEST_F(RpcClientTest, AddTorrentRepairsMetadataInMemory)
+{
+    connectWith(18);
+    const QByteArray info = "d6:lengthi1e4:name1:x12:piece lengthi16384e6:pieces20:12345678901234567890e";
+    const QByteArray good = "d8:announce22:http://tracker.example4:info" + info + "e";
+    const QByteArray corrupt = "d8:announce22://tracker.example4:info" + info + "e";
+    const QByteArray broken = "d4:infod6:pieces20:truncated";
+    for (auto source : {RpcClient::AddTorrent::Source::File, RpcClient::AddTorrent::Source::Base64}) {
+        for (const QByteArray& content : {good, corrupt, broken}) {
+            QTemporaryFile file;
+            ASSERT_TRUE(file.open());
+            ASSERT_EQ(file.write(content), content.size());
+            ASSERT_TRUE(file.flush());
+            server.enqueue(MockRpcServer::Response{
+                200, "{\"result\":\"success\",\"arguments\":{}}", {}});
+            QEventLoop loop;
+            QTimer timer;
+            timer.setSingleShot(true);
+            bool done = false;
+            QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+            const auto connection = QObject::connect(
+                client.get(), &RpcClient::requestCompleted, &loop,
+                [&](const QString& method, bool, const QString&, const QJsonObject&) {
+                    if (method == "torrent-add") {
+                        done = true;
+                        loop.quit();
+                    }
+                });
+            RpcClient::AddTorrent add;
+            add.source = source;
+            add.file = file.fileName();
+            add.metainfoBase64 = QString::fromLatin1(content.toBase64());
+            add.start = true;
+            add.downloadDir = "/downloads/repaired";
+            timer.start(5000);
+            client->addTorrent(add);
+            loop.exec();
+            QObject::disconnect(connection);
+            ASSERT_TRUE(done);
+            const auto request = server.requests().last();
+            const auto sent = QByteArray::fromBase64(request.arguments.value("metainfo").toString().toLatin1());
+            EXPECT_EQ(sent, content == corrupt ? good : content);
+            EXPECT_FALSE(request.arguments.value("paused").toBool());
+            EXPECT_EQ(request.arguments.value("path").toString(), add.downloadDir);
+            ASSERT_TRUE(file.seek(0));
+            EXPECT_EQ(file.readAll(), content);
+        }
     }
 }

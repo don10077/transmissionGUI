@@ -1,4 +1,5 @@
 #include "tgui/rpcclient.h"
+#include "tgui/bencode.h"
 
 #include <algorithm>
 
@@ -430,9 +431,12 @@ void RpcClient::setLabels(int id, const QStringList& labels)
 
 void RpcClient::setPriority(int id, int priority)
 {
+    // Ключ 'bandwidthPriority' (camelCase) — как в образце (SetTorrentPriority)
+    // и в legacy-диалекте RPC, который мы говорим. Демон ищет ключ с учётом
+    // регистра; lowercase-ключ он молча игнорирует, и приоритет не применялся.
     QJsonObject args;
     torrentIds(args, id);
-    args.insert("bandwidthpriority", priority);
+    args.insert("bandwidthPriority", priority);
     requestReport("torrent-set", args);
 }
 
@@ -559,6 +563,21 @@ void RpcClient::addTorrent(const AddTorrent& params)
             // magnet/URL добавляются полем "filename".
             args.insert("filename", params.url);
             break;
+    }
+    // Общий путь для файлов и Base64: исправленная копия существует только в памяти.
+    if (args.contains("metainfo")) {
+        const QByteArray raw = QByteArray::fromBase64(args.value("metainfo").toString().toLatin1());
+        const std::string bytes(raw.constData(), static_cast<size_t>(raw.size()));
+        bencode::Value value;
+        if (!bencode::decode(bytes, value)) {
+            bencode::RepairResult repaired;
+            if (bencode::repair(bytes, repaired)) {
+                const QByteArray fixed(repaired.fixedBytes.data(),
+                                       static_cast<qsizetype>(repaired.fixedBytes.size()));
+                args.insert("metainfo", QString::fromLatin1(fixed.toBase64()));
+            }
+            // Неизвестную порчу оценивает демон: его ошибка возвращается обычным путём.
+        }
     }
     if (!params.downloadDir.isEmpty())
         args.insert("path", params.downloadDir);

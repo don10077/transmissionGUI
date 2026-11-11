@@ -47,4 +47,27 @@ std::string encode(const Value& value);
 // возрастанию, отсутствие лишних байт в конце.
 bool decode(const std::string& input, Value& out, std::string* error = nullptr);
 
+// --- Ремонт повреждённых .torrent ---
+//
+// Восстанавливаются длины текстовых полей корня и схемы URL трекеров.
+// Секция info и остальные бинарные значения копируются побайтово.
+// Неизвестная порча (включая повреждённую info) возвращает false.
+struct RepairFix {
+    size_t pos = 0; // позиция цифр длины в исходном байтовом потоке
+    std::string oldLength; // было, например «41»
+    std::string newLength; // стало, например «45»
+    std::string description; // человекочитаемое пояснение
+};
+struct RepairResult {
+    std::string fixedBytes;
+    std::vector<RepairFix> fixes;
+};
+
+// Возвращает true, если полученный результат строго декодируется как
+// валидный torrent (словарь с «info»). При ошибке — false + текст в error.
+bool repair(const std::string& input, RepairResult& out, std::string* error = nullptr);
+
+// Совместимость: repair() не изменяет info, результат всегда false.
+bool repairTouchesInfo(const std::string& fixedBytes, const std::vector<RepairFix>& fixes);
+
 } // namespace tgui::bencode

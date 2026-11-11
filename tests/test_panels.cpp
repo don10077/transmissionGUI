@@ -504,6 +504,7 @@ TEST(InfoPanel, RendersAllReferenceTabs)
 #include <QDialogButtonBox>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QCheckBox>
 
 TEST(Properties, SendsOnlyChangedTorrentSettings)
 {
@@ -521,6 +522,40 @@ TEST(Properties, SendsOnlyChangedTorrentSettings)
     changed.findChild<QSpinBox*>(QStringLiteral("peerLimit"))->setValue(75);
     changed.findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
     EXPECT_EQ(changed.changes(), (QJsonObject{{"peer-limit",75}}));
+}
+
+TEST(Properties, SequentialDownloadToggle)
+{
+    // RPC ≥ 18, торрент качается без sequential: включаем — ключ уходит в payload.
+    Torrent torrent;
+    torrent.name = QStringLiteral("Test torrent");
+    torrent.sequentialDownload = false;
+    PropsDialog on(torrent, nullptr, 18);
+    auto* seq = on.findChild<QCheckBox*>(QStringLiteral("sequentialDownload"));
+    ASSERT_NE(seq, nullptr);
+    ASSERT_TRUE(seq->isEnabled());
+    EXPECT_FALSE(seq->isChecked());
+    seq->setChecked(true);
+    on.findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
+    EXPECT_EQ(on.result(), QDialog::Accepted);
+    EXPECT_EQ(on.changes(), (QJsonObject{{"sequential_download", true}}));
+
+    // Уже включено и не трогаем — ключа в payload нет.
+    Torrent active;
+    active.name = QStringLiteral("Active");
+    active.sequentialDownload = true;
+    PropsDialog keep(active, nullptr, 18);
+    keep.findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
+    EXPECT_TRUE(keep.changes().isEmpty());
+
+    // Демон < 18: пункт неактивен, ключ в payload не попадает.
+    PropsDialog old(active, nullptr, 14);
+    auto* oldSeq = old.findChild<QCheckBox*>(QStringLiteral("sequentialDownload"));
+    ASSERT_NE(oldSeq, nullptr);
+    EXPECT_FALSE(oldSeq->isEnabled());
+    oldSeq->setChecked(false);
+    old.findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
+    EXPECT_TRUE(old.changes().isEmpty());
 }
 
 TEST(DialogAppearance, AllPagesFitAndDaemonPreservesZero)

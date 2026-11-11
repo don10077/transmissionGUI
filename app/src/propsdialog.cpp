@@ -15,7 +15,7 @@
 #include <QMessageBox>
 #include <functional>
 
-PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent) : QDialog(parent)
+PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion) : QDialog(parent)
 {
     setWindowTitle(tr("Properties — %1").arg(t.name.value_or(tr("(no name)"))));
     resize(600, 430);
@@ -39,6 +39,19 @@ PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent) : QDialog(pare
     peers->setValue(t.maxConnectedPeers.value_or(50));
     peers->setEnabled(t.maxConnectedPeers.has_value());
     form->addRow(tr("Peer limit"), peers);
+    // Последовательная загрузка (W04): переключается и для уже добавленных
+    // торрентов (torrent-set sequential_download). Гейт RPC ≥ 18 — как в образце
+    // (acSequentialDownload) и в Add-диалоге.
+    const bool sequentialSupported = rpcVersion >= 18;
+    const bool sequentialInitial = t.sequentialDownload.value_or(false);
+    auto* sequential = new QCheckBox(tr("Sequential download"), general);
+    sequential->setObjectName(QStringLiteral("sequentialDownload"));
+    sequential->setChecked(sequentialInitial);
+    if (!sequentialSupported) {
+        sequential->setEnabled(false);
+        sequential->setToolTip(tr("Requires Transmission 4.1 or newer (RPC 18)"));
+    }
+    form->addRow(QString(), sequential);
     QList<std::function<void(QJsonObject&)>> readers;
     auto limit = [&](const QString& title, const char* enabled, const char* amount) {
         auto* row = new QWidget(general);
@@ -108,6 +121,8 @@ PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent) : QDialog(pare
         QJsonObject changes;
         for (const auto& read : readers) read(changes);
         if (t.maxConnectedPeers && peers->value() != *t.maxConnectedPeers) changes["peer-limit"] = peers->value();
+        if (sequentialSupported && sequential->isChecked() != sequentialInitial)
+            changes["sequential_download"] = sequential->isChecked();
         QStringList urls;
         for (const auto& line : trackers->toPlainText().split('\n')) {
             const QString text = line.trimmed();

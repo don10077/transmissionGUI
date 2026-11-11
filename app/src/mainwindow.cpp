@@ -1228,7 +1228,7 @@ void MainWindow::onShowProperties()
     const int id = ids.first();
     for (const auto& t : m_model.torrents()) {
         if (t.id == id) {
-            PropsDialog dlg(t, this);
+            PropsDialog dlg(t, this, m_rpc->rpcVersion());
             if (dlg.exec() == QDialog::Accepted && !dlg.changes().isEmpty())
                 m_rpc->setTorrent(id, dlg.changes());
             return;
@@ -1408,11 +1408,13 @@ void MainWindow::onAddTorrent()
     startAdd(dlg.params(), dlg.saveEnabled(), dlg.savePath());
 }
 
-void MainWindow::startAdd(const tgui::RpcClient::AddTorrent& params, bool doSave,
+void MainWindow::startAdd(const tgui::RpcClient::AddTorrent& paramsIn, bool doSave,
                           const QString& savePath)
 {
     if (!m_rpc)
         return;
+    tgui::RpcClient::AddTorrent params = paramsIn;
+
     m_pendingAdd = params;
     m_pendingAddId = -1;
 

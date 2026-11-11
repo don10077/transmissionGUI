@@ -16,5 +16,13 @@ _deps/
 *.exe
 !tools/*.exe
 WORKFLOW.md
+problem.md
 test_err.txt
 test_out.txt
+*.torrent
+*.log
+*.bin
+*.ps1
+*.bak
+*.txt
+WORKFLOW.archive.md
