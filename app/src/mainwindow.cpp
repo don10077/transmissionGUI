@@ -344,6 +344,10 @@ void MainWindow::createUi()
     m_tabs->addTab(m_statsForm, tgui::theme::icon(tgui::theme::Icon::TabStatistics),
                    tr("Statistics"));
     m_tabs->setMinimumHeight(80);
+    // При переключении на «Файлы» проценты могли устареть (проверка или
+    // загрузка шли, пока открыта другая вкладка) — запрашиваем детали сразу.
+    connect(m_tabs, &QTabWidget::currentChanged, this,
+            [this](int) { refreshFilesDetails(); });
 
     auto* splitter = new QSplitter(Qt::Vertical, this);
     splitter->setHandleWidth(4);
@@ -880,7 +884,21 @@ void MainWindow::onRefresh()
     if (m_rpc && m_connected) {
         m_rpc->getTorrents();
         m_rpc->getSessionStats();
+        refreshFilesDetails();
     }
+}
+
+void MainWindow::refreshFilesDetails()
+{
+    // Прогресс файлов меняется между опросами (проверка торрента, загрузка),
+    // поэтому видимую вкладку «Файлы» обновляем вместе со списком торрентов.
+    // Иначе остаются проценты, полученные в момент выбора торрента: при
+    // начатой проверке они так и висят на нуле.
+    if (!m_rpc || m_currentId < 0 || !m_filesView || !m_tabs || m_tabs->isHidden())
+        return;
+    if (m_tabs->currentWidget() != m_filesView)
+        return;
+    m_rpc->getTorrentDetails(m_currentId);
 }
 
 void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
@@ -1576,6 +1594,8 @@ void MainWindow::createMenus()
     connect(m_actInfoPanel, &QAction::toggled, this, [this](bool on) {
         m_tabs->setVisible(on);
         QSettings().setValue("ui/infoPanel", on);
+        if (on)
+            refreshFilesDetails();
     });
 
     m_actToolbar = mView->addAction(tr("Toolbar"));

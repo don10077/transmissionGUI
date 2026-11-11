@@ -685,6 +685,61 @@ TEST(SettingsFixes, AltTogglePreservesLimitsAndEditedActiveProfileReconnects)
     store.remove(renamed);
 }
 
+TEST(InfoPanel, FilesTabRequestsProgressRefresh)
+{
+    // Проценты файлов меняются во время проверки/загрузки: вкладка «Файлы»
+    // должна перезапрашивать детали, а не показывать данные, полученные
+    // при выборе торрента (иначе при проверке так и висят нули).
+    QCoreApplication::setOrganizationName("tgui-test");
+    QCoreApplication::setApplicationName("tgui-test");
+    QSettings settings;
+    const QVariant oldProfile = settings.value("daemons/current");
+    settings.remove("daemons/current"); // иначе конструктор уйдёт на профиль из настроек
+    const QVariant oldAutoRefresh = settings.value("ui/autoRefresh");
+    settings.setValue("ui/autoRefresh", false);
+    MockRpcServer server;
+    ASSERT_NE(server.start(), 0);
+    server.setDefault({200,
+        R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","torrents":[]}})",
+        {}});
+    MainWindow window;
+    tgui::RpcClient::Options options;
+    options.url = server.url();
+    window.setAutoConnect(options);
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow(); }));
+    Torrent torrent;
+    torrent.id = 900;
+    torrent.name = QStringLiteral("checking");
+    torrent.status = static_cast<int>(TorrentStatus::Check);
+    window.applyTorrentsUpdate({torrent});
+
+    auto filesRequests = [&] {
+        int count = 0;
+        for (const auto& request : server.requests()) {
+            if (request.rpcMethod == QStringLiteral("torrent-get") &&
+                request.arguments.value("fields").toArray().contains(
+                    QJsonValue(QStringLiteral("files"))))
+                ++count;
+        }
+        return count;
+    };
+    ASSERT_TRUE(waitForSettings([&] { return filesRequests() > 0; }));
+    const int before = filesRequests();
+    auto* tabs = window.findChild<QTabWidget*>(QStringLiteral("infoPanel"));
+    ASSERT_NE(tabs, nullptr);
+    tabs->setCurrentIndex(3); // Files
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRefresh", Qt::DirectConnection));
+    EXPECT_TRUE(waitForSettings([&] { return filesRequests() > before; }));
+    if (oldAutoRefresh.isValid())
+        settings.setValue("ui/autoRefresh", oldAutoRefresh);
+    else
+        settings.remove("ui/autoRefresh");
+    if (oldProfile.isValid())
+        settings.setValue("daemons/current", oldProfile);
+    else
+        settings.remove("daemons/current");
+}
+
 
 #include <QDesktopServices>
 #include <QTemporaryDir>

@@ -162,6 +162,9 @@ private:
     void updateStatusBarTotals();
     void updateFilterPanel(const QVector<tgui::Torrent>& torrents);
     void updateSelectionActions();
+    // Обновить вкладку «Файлы» выбранного торрента (проценты меняются
+    // во время проверки и загрузки — одного запроса при выборе мало).
+    void refreshFilesDetails();
     void applyViewVisibility();
     void restoreTorrentSelection(const QVector<int>& ids, int currentId);
     int proxyRowForId(int id) const;
