@@ -123,13 +123,29 @@ private:
 };
 /** File hierarchy with aggregated folder sizes and stable items on refresh. */
 class FileTreeModel : public QStandardItemModel {
+    Q_OBJECT
 public:
-    enum Column { Name, Size, Done, Progress, Priority, ColumnCount };
+    enum Column { Want, Name, Size, Done, Progress, Priority, ColumnCount };
     enum Role { SourceRowsRole = Qt::UserRole + 31, PathRole };
     explicit FileTreeModel(QObject* parent = nullptr);
     void setFiles(const QVector<tgui::FileStat>& files);
     QVector<int> sourceRows(const QModelIndex& index) const;
+    // Переключить Want-чекбокс (файл или папку) с каскадом и пересчётом
+    // состояния родителей; результат — сигнал wantToggled (source-строки).
+    void toggleWant(const QModelIndex& index);
+    bool isFolder(const QModelIndex& index) const { return hasChildren(index); }
+    Qt::CheckState wantState(const QModelIndex& index) const
+    {
+        return static_cast<Qt::CheckState>(index.data(Qt::CheckStateRole).toInt());
+    }
+
+signals:
+    // Состояние Want изменено: rows — индексы исходных файлов, wanted — новое состояние.
+    void wantToggled(const QVector<int>& rows, bool wanted);
+
 private:
+    void setDescendants(QStandardItem* node, Qt::CheckState state);
+    void refreshAncestors(QStandardItem* node);
     QStringList m_paths;
     QHash<QString, QStandardItem*> m_nodes;
 };

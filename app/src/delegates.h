@@ -35,3 +35,17 @@ public:
                const QModelIndex& index) const override;
     static int checkSize();
 };
+
+// Колонка «Want» вкладки «Файлы»: чекбокс want/skip (референс — TFilesTree).
+// editorEvent запрашивает изменение для файла или поддерева через wantToggled.
+// paint() — явное рисование чекбокса с контрастом при выделении.
+class WantCheckDelegate : public QStyledItemDelegate {
+    Q_OBJECT
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    void paint(QPainter* painter, const QStyleOptionViewItem& option,
+               const QModelIndex& index) const override;
+    bool editorEvent(QEvent* event, QAbstractItemModel* model,
+                     const QStyleOptionViewItem& option,
+                     const QModelIndex& index) override;
+};

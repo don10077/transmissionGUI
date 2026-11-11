@@ -358,6 +358,31 @@ TEST_F(RpcClientTest, StartAllWithoutIds)
     EXPECT_FALSE(req.arguments.contains("ids"));
 }
 
+TEST_F(RpcClientTest, SetFilesWantedOmitsEmptyLists)
+{
+    for (const bool wanted : {false, true}) {
+        server.enqueue(MockRpcServer::Response{});
+        QEventLoop loop;
+        QTimer::singleShot(5000, &loop, &QEventLoop::quit);
+        bool ok = false;
+        const QVector<int> files{2, 4};
+        client->setFilesWanted(7, wanted ? files : QVector<int>{},
+                               wanted ? QVector<int>{} : files,
+                               [&](const JsonRpcResult& result) {
+            ok = result.ok;
+            loop.quit();
+        });
+        loop.exec();
+        ASSERT_TRUE(ok);
+        const auto req = server.requests().last();
+        EXPECT_EQ(req.rpcMethod, "torrent-set");
+        EXPECT_EQ(req.arguments.value("ids").toArray(), QJsonArray{7});
+        EXPECT_EQ(req.arguments.value(wanted ? "files-wanted" : "files-unwanted").toArray(),
+                  (QJsonArray{2, 4}));
+        EXPECT_FALSE(req.arguments.contains(wanted ? "files-unwanted" : "files-wanted"));
+    }
+}
+
 TEST_F(RpcClientTest, SetFilePriorityHigh)
 {
     connectWith(18);

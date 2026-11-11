@@ -469,7 +469,8 @@ void RpcClient::setPriority(int id, int priority)
     requestReport("torrent-set", args);
 }
 
-void RpcClient::setFilesWanted(int id, const QVector<int>& wanted, const QVector<int>& unwanted)
+void RpcClient::setFilesWanted(int id, const QVector<int>& wanted, const QVector<int>& unwanted,
+                               RequestCallback callback)
 {
     // files-wanted + files-unwanted (индексы файлов).
     QJsonObject args;
@@ -480,9 +481,14 @@ void RpcClient::setFilesWanted(int id, const QVector<int>& wanted, const QVector
     QJsonArray u;
     for (int index : unwanted)
         u.append(index);
-    args.insert("files-wanted", w);
-    args.insert("files-unwanted", u);
-    requestReport("torrent-set", args);
+    // Пустой массив в torrent-set означает «все файлы».
+    if (!w.isEmpty())
+        args.insert("files-wanted", w);
+    if (!u.isEmpty())
+        args.insert("files-unwanted", u);
+    if (w.isEmpty() && u.isEmpty())
+        return;
+    requestReport("torrent-set", args, std::move(callback));
 }
 
 void RpcClient::setFilePriority(int id, const QVector<int>& files, int priority)

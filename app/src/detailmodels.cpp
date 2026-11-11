@@ -386,7 +386,7 @@ void FileTreeModel::setFiles(const QVector<tgui::FileStat>& files)
         clear();
         m_nodes.clear();
         m_paths = paths;
-        setHorizontalHeaderLabels({tr("File name"), tr("Size"), tr("Done"),
+        setHorizontalHeaderLabels({tr("Want"), tr("File name"), tr("Size"), tr("Done"),
                                    QStringLiteral("%"), tr("Priority")});
         for (const auto& file : files) {
             QString path;
@@ -403,11 +403,16 @@ void FileTreeModel::setFiles(const QVector<tgui::FileStat>& files)
                         item->setData(path, PathRole);
                         row.append(item);
                     }
+                    // Want (чекбокс want/skip, референс — TFilesTree).
+                    row[Want]->setFlags(row[Want]->flags() | Qt::ItemIsUserCheckable);
+                    row[Want]->setCheckState(file.wanted ? Qt::Checked : Qt::Unchecked);
                     row[Name]->setText(parts.at(i));
                     row[Name]->setIcon(QApplication::style()->standardIcon(
                         i + 1 < parts.size() ? QStyle::SP_DirIcon : QStyle::SP_FileIcon));
                     parent->appendRow(row);
-                    m_nodes.insert(path, row[Name]);
+                    // Якорь дерева — ячейка Want (колонка 0): QStandardItem хранит
+                    // children по ячейке, поэтому поддерево привязываем к ней.
+                    m_nodes.insert(path, row[Want]);
                 }
                 parent = m_nodes.value(path);
             }
@@ -421,6 +426,8 @@ void FileTreeModel::setFiles(const QVector<tgui::FileStat>& files)
         QVariantList rows;
         int priority = 0;
         bool first = true, mixed = false, allSkipped = true;
+        // Агрегация Want (чекбоксы файлов): все/никакие/смешанное состояние папки.
+        bool firstWant = true, allWanted = true, mixedWant = false;
     };
     QHash<QString, Aggregate> totals;
     for (int row = 0; row < files.size(); ++row) {
@@ -443,6 +450,9 @@ void FileTreeModel::setFiles(const QVector<tgui::FileStat>& files)
             total.priority = priority;
             total.first = false;
             total.allSkipped &= !file.wanted;
+            if (!total.firstWant && total.allWanted != file.wanted) total.mixedWant = true;
+            total.allWanted &= file.wanted;
+            total.firstWant = false;
         }
     }
     for (auto it = totals.cbegin(); it != totals.cend(); ++it) {
@@ -455,6 +465,12 @@ void FileTreeModel::setFiles(const QVector<tgui::FileStat>& files)
             item->setData(total.rows, SourceRowsRole);
             item->setToolTip(it.key());
             item->setForeground(total.allSkipped ? QBrush(Qt::gray) : QBrush());
+            if (column == Want) {
+                // Папка: три состояния (все/ни одно/смешанное), переключение — каскад.
+                item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+                item->setCheckState(total.mixedWant ? Qt::PartiallyChecked :
+                                    total.allWanted ? Qt::Checked : Qt::Unchecked);
+            }
             if (column == Size || column == Done)
                 item->setText(QString::fromStdString(tgui::formatSize(
                     column == Size ? total.size : total.done)));
@@ -484,4 +500,54 @@ QVector<int> FileTreeModel::sourceRows(const QModelIndex& index) const
     for (const auto& value : index.data(SourceRowsRole).toList())
         rows.append(value.toInt());
     return rows;
+}
+
+// Каскад Want по всем потомкам (референс TFilesTree: клик по папке переключает все файлы).
+// Все участвующие узлы — колонка Want; child(row, col) возвращает nullptr за пределами.
+void FileTreeModel::setDescendants(QStandardItem* node, Qt::CheckState state)
+{
+    if (!node)
+        return;
+    node->setCheckState(state);
+    for (int row = 0; ; ++row) {
+        QStandardItem* child = node->child(row, Want);
+        if (!child)
+            break;
+        setDescendants(child, state);
+    }
+}
+
+// Пересчёт три-состояния Want у всех родителей после изменения листа/поддерева.
+void FileTreeModel::refreshAncestors(QStandardItem* node)
+{
+    QStandardItem* parent = node ? node->parent() : nullptr;
+    while (parent) {
+        int checked = 0, unchecked = 0;
+        for (int row = 0; ; ++row) {
+            QStandardItem* child = parent->child(row, Want);
+            if (!child)
+                break;
+            if (child->checkState() == Qt::Checked)
+                ++checked;
+            else if (child->checkState() == Qt::Unchecked)
+                ++unchecked;
+        }
+        parent->setCheckState(checked == 0 ? Qt::Unchecked :
+                              unchecked == 0 ? Qt::Checked : Qt::PartiallyChecked);
+        parent = parent->parent();
+    }
+}
+
+void FileTreeModel::toggleWant(const QModelIndex& index)
+{
+    if (!index.isValid() || index.column() != Want)
+        return;
+    QStandardItem* node = itemFromIndex(index);
+    if (!node)
+        return;
+    const bool wanted = node->checkState() != Qt::Checked;
+    // Лист: меняем его; папка: каскад на все потомки.
+    setDescendants(node, wanted ? Qt::Checked : Qt::Unchecked);
+    refreshAncestors(node);
+    emit wantToggled(sourceRows(index), wanted);
 }

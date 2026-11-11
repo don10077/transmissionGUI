@@ -2,10 +2,13 @@
 
 #include <QApplication>
 #include <QFontMetrics>
+#include <QKeyEvent>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QStyleOptionViewItem>
 
+#include "detailmodels.h"
 #include "theme.h"
 #include "torrentmodel.h"
 
@@ -300,4 +303,102 @@ void NameCheckDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opt
     // Текст с отступом под чекбокс.
     opt.rect = opt.rect.adjusted(checkSize(), 0, 0, 0);
     style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, opt.widget);
+}
+
+// --- WantCheckDelegate ---
+// Клик по чекбоксу Want (файл/папка) → эмитит wantToggled без изменения
+// локального состояния. Состояние обновится после ответа демона (getTorrentDetails).
+void WantCheckDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
+                              const QModelIndex& index) const
+{
+    QRect r = option.rect;
+    if (!r.isValid())
+        return;
+
+    painter->save();
+
+    const bool selected = option.state & QStyle::State_Selected;
+    // Фон ячейки.
+    if (selected)
+        painter->fillRect(r, option.palette.highlight().color());
+    else if (option.state & QStyle::State_MouseOver)
+        painter->fillRect(r, QColor(0xE5, 0xF3, 0xFF));
+    else
+        painter->fillRect(r, (index.row() % 2 == 0) ? QColor(0xFF, 0xFF, 0xFF)
+                                                     : QColor(0xF7, 0xF7, 0xF7));
+
+    // Размер и позиция чекбокса.
+    const int sz = 16;
+    const int x = r.left() + (r.width() - sz) / 2;
+    const int y = r.top() + (r.height() - sz) / 2;
+    QRect box(x, y, sz, sz);
+
+    // Состояние: Checked / Unchecked / PartiallyChecked.
+    const Qt::CheckState state =
+        static_cast<Qt::CheckState>(index.data(Qt::CheckStateRole).toInt());
+
+    // Цвета: при выделении — белые контуры/галочки, иначе тёмные.
+    const QColor border = selected ? Qt::white : QColor(0x6C, 0x6C, 0x6C);
+    const QColor fillBg = selected ? QColor(0x00, 0x5A, 0x9E) : Qt::white;
+    const QColor markColor = selected ? Qt::white : QColor(0x00, 0x78, 0xD7);
+
+    // Фон квадрата.
+    painter->setPen(QPen(border, 1.5));
+    painter->setBrush(fillBg);
+    painter->drawRoundedRect(box, 3, 3);
+
+    // Отметка: галочка или dash.
+    if (state == Qt::Checked) {
+        QPen checkPen(markColor, 2.0);
+        checkPen.setCapStyle(Qt::RoundCap);
+        checkPen.setJoinStyle(Qt::RoundJoin);
+        painter->setPen(checkPen);
+        painter->setBrush(Qt::NoBrush);
+        const QPointF p1(box.left() + 3, box.center().y() + 0.5);
+        const QPointF p2(box.left() + 6, box.bottom() - 4);
+        const QPointF p3(box.right() - 3, box.top() + 4);
+        painter->drawLine(p1, p2);
+        painter->drawLine(p2, p3);
+    } else if (state == Qt::PartiallyChecked) {
+        QPen dashPen(markColor, 2.0);
+        dashPen.setCapStyle(Qt::RoundCap);
+        painter->setPen(dashPen);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawLine(box.left() + 4, box.center().y(),
+                          box.right() - 4, box.center().y());
+    }
+    // Unchecked — пустой квадрат.
+
+    painter->restore();
+}
+
+bool WantCheckDelegate::editorEvent(QEvent* event, QAbstractItemModel* model,
+                                    const QStyleOptionViewItem& option,
+                                    const QModelIndex& index)
+{
+    auto* tree = qobject_cast<FileTreeModel*>(model);
+    if (!tree || index.column() != FileTreeModel::Want)
+        return QStyledItemDelegate::editorEvent(event, model, option, index);
+    if (!(index.flags() & Qt::ItemIsEnabled))
+        return false;
+
+    switch (event->type()) {
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonDblClick:
+            return static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton;
+        case QEvent::MouseButtonRelease:
+            if (static_cast<QMouseEvent*>(event)->button() != Qt::LeftButton)
+                return false;
+            break;
+        case QEvent::KeyPress: {
+            const auto* key = static_cast<QKeyEvent*>(event);
+            if (key->key() != Qt::Key_Space && key->key() != Qt::Key_Select)
+                return false;
+            break;
+        }
+        default:
+            return false;
+    }
+    emit tree->wantToggled(tree->sourceRows(index), tree->wantState(index) != Qt::Checked);
+    return true;
 }

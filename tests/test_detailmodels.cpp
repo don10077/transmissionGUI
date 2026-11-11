@@ -1,11 +1,17 @@
 // Unit-тесты моделей вкладок деталей (Файлы/Пиры/Трекеры).
 #include <gtest/gtest.h>
 
+#include <QApplication>
 #include <QTableView>
 #include <QImage>
 #include <QIcon>
 #include <QTemporaryDir>
+#include <QEventLoop>
+#include <QMouseEvent>
+#include <QTimer>
+#include <QTreeView>
 
+#include "delegates.h"
 #include "detailmodels.h"
 #include "torrentmodel.h"
 #include "tgui/util.h"
@@ -296,7 +302,7 @@ TEST(FileTree, ShowsCheckProgressWhileVerifying)
     FileTreeModel model;
     model.setFiles(files);
     const auto folder = model.index(0, 0);
-    EXPECT_EQ(folder.data().toString(), QStringLiteral("dir"));
+    EXPECT_EQ(model.index(0, FileTreeModel::Name).data().toString(), QStringLiteral("dir"));
     // Взвешенный по размеру прогресс проверки: (1000*1 + 2048*0.5) / 3048.
     EXPECT_NEAR(model.index(0, FileTreeModel::Progress).data().toDouble(),
                 (1000.0 + 2048.0 * 0.5) * 100.0 / 3048.0, 0.01);
@@ -338,12 +344,12 @@ TEST(FileTree, AggregatesFoldersAndPreservesItemsOnRefresh)
     model.setFiles(files);
     ASSERT_EQ(model.rowCount(), 1);
     const auto folder = model.index(0, 0);
-    EXPECT_EQ(folder.data().toString(), QStringLiteral("dir"));
+    EXPECT_EQ(model.index(0, FileTreeModel::Name).data().toString(), QStringLiteral("dir"));
     EXPECT_EQ(model.rowCount(folder), 2);
     EXPECT_EQ(model.sourceRows(folder), (QVector<int>{0, 1}));
     EXPECT_EQ(model.index(0, FileTreeModel::Done).data().toString(),
               QString::fromStdString(formatSize(500)));
-    QPersistentModelIndex leaf(model.index(0, 0, folder));
+    QPersistentModelIndex leaf(model.index(0, FileTreeModel::Name, folder));
     files[0].completion = 1.;
     model.setFiles(files);
     EXPECT_TRUE(leaf.isValid());
@@ -353,6 +359,90 @@ TEST(FileTree, AggregatesFoldersAndPreservesItemsOnRefresh)
     model.setFiles({});
     EXPECT_FALSE(leaf.isValid());
     EXPECT_EQ(model.rowCount(), 0);
+}
+
+// G02: чекбокс Want — отображение состояния, каскад по папке, сигнал wantToggled.
+TEST(FileTree, WantCheckboxTogglesAndCascades)
+{
+    FileTreeModel model;
+    model.setFiles(makeFiles()); // dir/a.mp4 (wanted), dir/b.txt (skip)
+
+    const auto colWant = FileTreeModel::Want;
+    // Смешанная папка (один wanted, один skip) → PartiallyChecked.
+    EXPECT_EQ(model.index(0, colWant).data(Qt::CheckStateRole).toInt(),
+              Qt::PartiallyChecked);
+    // Листы: a.mp4 → Checked, b.txt → Unchecked.
+    const auto a = model.index(0, colWant, model.index(0, 0));
+    const auto b = model.index(1, colWant, model.index(0, 0));
+    EXPECT_EQ(a.data(Qt::CheckStateRole).toInt(), Qt::Checked);
+    EXPECT_EQ(b.data(Qt::CheckStateRole).toInt(), Qt::Unchecked);
+    // У Want-ячеек флаг редактируемости (чекбокс кликабелен).
+    EXPECT_TRUE(model.flags(a) & Qt::ItemIsUserCheckable);
+
+    QVector<int> rows;
+    bool wanted = false;
+    int count = 0;
+    QObject::connect(&model, &FileTreeModel::wantToggled,
+                     [&](const QVector<int>& r, bool w) { rows = r; wanted = w; ++count; });
+
+    // Включаем b.txt (unchecked → checked): сигнал с одной строкой, папка → Checked.
+    model.toggleWant(b);
+    EXPECT_EQ(count, 1);
+    EXPECT_TRUE(wanted);
+    EXPECT_EQ(rows, (QVector<int>{1}));
+    EXPECT_EQ(b.data(Qt::CheckStateRole).toInt(), Qt::Checked);
+    EXPECT_EQ(model.index(0, colWant).data(Qt::CheckStateRole).toInt(), Qt::Checked);
+
+    // Каскад: папка (checked → unchecked) → оба файла unchecked, сигнал со всеми.
+    model.toggleWant(model.index(0, colWant));
+    EXPECT_EQ(count, 2);
+    EXPECT_FALSE(wanted);
+    EXPECT_EQ(rows, (QVector<int>{0, 1}));
+    EXPECT_EQ(a.data(Qt::CheckStateRole).toInt(), Qt::Unchecked);
+    EXPECT_EQ(b.data(Qt::CheckStateRole).toInt(), Qt::Unchecked);
+    EXPECT_EQ(model.index(0, colWant).data(Qt::CheckStateRole).toInt(), Qt::Unchecked);
+}
+
+TEST(FileTree, WantClickWaitsForServerState)
+{
+    auto files = makeFiles();
+    FileTreeModel model;
+    model.setFiles(files);
+    QTreeView view;
+    view.setModel(&model);
+    view.setTreePosition(FileTreeModel::Name);
+    view.setEditTriggers(QAbstractItemView::NoEditTriggers);
+    view.setItemDelegateForColumn(FileTreeModel::Want, new WantCheckDelegate(&view));
+    view.setColumnWidth(FileTreeModel::Want, 36);
+    view.expandAll();
+    view.show();
+    QCoreApplication::processEvents();
+
+    const auto file = model.index(0, FileTreeModel::Want, model.index(0, 0));
+    const QRect cell = view.visualRect(file);
+    ASSERT_TRUE(cell.isValid());
+    const QPoint pos = cell.center();
+    const QPoint global = view.viewport()->mapToGlobal(pos);
+    int requests = 0;
+    QObject::connect(&model, &FileTreeModel::wantToggled, &view,
+                     [&](const QVector<int>& rows, bool wanted) {
+        ++requests;
+        EXPECT_EQ(rows, (QVector<int>{0}));
+        EXPECT_FALSE(wanted);
+    });
+    QMouseEvent press(QEvent::MouseButtonPress, pos, global, Qt::LeftButton,
+                      Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent release(QEvent::MouseButtonRelease, pos, global, Qt::LeftButton,
+                        Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(view.viewport(), &press);
+    EXPECT_EQ(requests, 0);
+    QApplication::sendEvent(view.viewport(), &release);
+    EXPECT_EQ(requests, 1);
+    EXPECT_EQ(model.wantState(file), Qt::Checked);
+
+    files[0].wanted = false;
+    model.setFiles(files);
+    EXPECT_EQ(model.wantState(file), Qt::Unchecked);
 }
 
 // W11: Resolve Host — reverse DNS: кеш + показ hostname / IP при ошибке.
@@ -388,6 +478,25 @@ TEST(DetailPeerModel, ResolveHostOffKeepsIp)
     // Resolve Host выключен по умолчанию — показываем IP.
     EXPECT_EQ(m.data(m.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(),
               "1.2.3.4:5678");
+}
+
+// W12/G11 репро: уничтожение модели при незавершённом reverse DNS не должно
+// ронять процесс (Qt: QObject::connect(QHostInfoResult) → null receiver).
+TEST(DetailPeerModel, ResolveHostModelDestroyedWhileLookupPending)
+{
+    QVector<Peer> peers;
+    Peer p;
+    p.address = "192.0.2.1"; // TEST-NET: реальный lookup, завершится ошибкой
+    p.port = 6881;
+    peers.push_back(p);
+    PeerListModel* m = new PeerListModel; // heap: уничтожаем, пока lookup pending
+    m->setPeers(peers);
+    m->setResolveHost(true);
+    delete m; // lookup ещё pending
+    QEventLoop loop;
+    QTimer::singleShot(800, &loop, &QEventLoop::quit);
+    loop.exec(); // дай Qt обработать результат lookup'а на умершей модели
+    SUCCEED();
 }
 
 TEST(DetailPeerModel, ResolveHostFailedLookupKeepsIp)

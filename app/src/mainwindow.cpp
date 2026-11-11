@@ -244,10 +244,13 @@ void MainWindow::createUi()
     filesView->setEditTriggers(QAbstractItemView::NoEditTriggers);
     filesView->setFrameShape(QFrame::NoFrame);
     filesView->setIndentation(18);
+    filesView->setTreePosition(FileTreeModel::Name);
     filesView->header()->setStretchLastSection(false);
     filesView->header()->setSectionsMovable(true);
     filesView->setItemDelegateForColumn(FileTreeModel::Progress, new ProgressDelegate(filesView));
+    filesView->setItemDelegateForColumn(FileTreeModel::Want, new WantCheckDelegate(filesView));
     m_filesView = filesView;
+    filesView->setColumnWidth(FileTreeModel::Want, 36);
     filesView->setColumnWidth(FileTreeModel::Name, 350);
     filesView->setColumnWidth(FileTreeModel::Size, 90);
     filesView->setColumnWidth(FileTreeModel::Done, 90);
@@ -270,6 +273,7 @@ void MainWindow::createUi()
         m_fileTree->setFiles(m_fileModel.files());
         m_filesView->header()->restoreState(header);
         if (first) {
+            m_filesView->setColumnWidth(FileTreeModel::Want, 36);
             m_filesView->setColumnWidth(FileTreeModel::Name, 350);
             m_filesView->setColumnWidth(FileTreeModel::Size, 90);
             m_filesView->setColumnWidth(FileTreeModel::Done, 90);
@@ -279,6 +283,8 @@ void MainWindow::createUi()
         }
     });
     connect(&m_fileModel, &FileListModel::wantChanged, this, &MainWindow::onFileWantToggled);
+    // Чекбокс Want: модель эмитит wantToggled(rows, wanted) → единый RPC.
+    connect(m_fileTree, &FileTreeModel::wantToggled, this, &MainWindow::onFilesWantToggled);
     // Контекстное меню вкладки «Файлы» (референс — pmFiles): приоритет high/normal/low
     // и want/skip для выделенных строк.
     filesView->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -2540,15 +2546,9 @@ void MainWindow::onSelectionChanged()
     updateSelectionActions();
 }
 
-void MainWindow::onFileWantToggled(int, bool)
+void MainWindow::onFileWantToggled(int fileId, bool wanted)
 {
-    if (!m_rpc || m_currentId < 0)
-        return;
-    QVector<int> wanted, unwanted;
-    for (const auto& f : m_fileModel.files())
-        (f.wanted ? wanted : unwanted).push_back(f.index);
-    m_rpc->setFilesWanted(m_currentId, wanted, unwanted);
-    statusBar()->showMessage(tr("want/skip updated"), 4000);
+    setFilesDownload({fileId}, wanted);
 }
 
 void MainWindow::onFilesContextMenu(const QPoint& pos)
@@ -2558,30 +2558,78 @@ void MainWindow::onFilesContextMenu(const QPoint& pos)
     auto* view = qobject_cast<QTreeView*>(sender());
     if (!view || !view->selectionModel())
         return;
-    const auto selected = view->selectionModel()->selectedRows();
     const auto& files = m_fileModel.files();
+    const QModelIndexList selected = view->selectionModel()->selectedRows();
+
+    // Активный узел (первая выделенная строка либо текущая) — для Open/Rename/CopyPath.
+    // Опора на колонку Want (якорь дерева): там хранится поддерево.
+    QModelIndex active;
+    if (!selected.isEmpty())
+        active = selected.first().siblingAtColumn(FileTreeModel::Want);
+    else if (view->currentIndex().isValid())
+        active = view->currentIndex().siblingAtColumn(FileTreeModel::Want);
+
+    // Файлы для приоритета/skip: вся выделенная область (папки — все вложенные файлы).
     QVector<int> fileIds;
     for (const QModelIndex& idx : selected)
         for (int row : m_fileTree->sourceRows(idx))
             if (row >= 0 && row < files.size() && !fileIds.contains(files.at(row).index))
                 fileIds.append(files.at(row).index);
-    if (fileIds.isEmpty())
-        return;
 
+    const bool canRow = active.isValid();
+    const bool canIds = !fileIds.isEmpty();
+
+    // Референс (pmFiles): Open, Open containing folder, Rename, Copy file path,
+    // приоритет high/normal/low, Don't download, Setup columns.
     auto* menu = new QMenu(this);
+    auto* aOpen = menu->addAction(tr("Open"));
+    aOpen->setEnabled(canRow);
+    auto* aOpenFolder = menu->addAction(tr("Open containing folder"));
+    aOpenFolder->setEnabled(canRow);
+    auto* aRename = menu->addAction(tr("Rename"));
+    aRename->setEnabled(canRow);
+    auto* aCopyPath = menu->addAction(tr("Copy file path to clipboard"));
+    aCopyPath->setEnabled(canRow);
+    menu->addSeparator();
     auto* aHigh = menu->addAction(tr("High priority"));
     auto* aNormal = menu->addAction(tr("Normal priority"));
     auto* aLow = menu->addAction(tr("Low priority"));
+    aHigh->setEnabled(canIds);
+    aNormal->setEnabled(canIds);
+    aLow->setEnabled(canIds);
     menu->addSeparator();
-    auto* aWant = menu->addAction(tr("Wanted"));
-    auto* aSkip = menu->addAction(tr("Skip (don't download)"));
+    auto* aSkip = menu->addAction(tr("Don't download"));
+    aSkip->setEnabled(canIds);
+    menu->addSeparator();
+    auto* aCols = menu->addAction(tr("Setup columns..."));
 
     const QPoint global = view->mapToGlobal(pos);
+    QObject::connect(aOpen, &QAction::triggered, this, [this, active] { onFilesOpen(active); });
+    QObject::connect(aOpenFolder, &QAction::triggered, this, [this, active] { onFilesOpenFolder(active); });
+    QObject::connect(aRename, &QAction::triggered, this, [this, active] { onFilesRename(active); });
+    QObject::connect(aCopyPath, &QAction::triggered, this, [this, active] { onFilesCopyPath(active); });
     QObject::connect(aHigh, &QAction::triggered, this, [this, fileIds] { onFilePriority(fileIds, 1); });
     QObject::connect(aNormal, &QAction::triggered, this, [this, fileIds] { onFilePriority(fileIds, 0); });
     QObject::connect(aLow, &QAction::triggered, this, [this, fileIds] { onFilePriority(fileIds, -1); });
-    QObject::connect(aWant, &QAction::triggered, this, [this, fileIds] { onFileWantSelected(fileIds); });
-    QObject::connect(aSkip, &QAction::triggered, this, [this, fileIds] { onFileSkipSelected(fileIds); });
+    QObject::connect(aSkip, &QAction::triggered, this, [this, id = m_currentId, fileIds] {
+        if (id == m_currentId)
+            setFilesDownload(fileIds, false);
+    });
+    QObject::connect(aCols, &QAction::triggered, this, [this, view] {
+        const int count = FileTreeModel::ColumnCount;
+        QStringList titles;
+        if (auto* model = view->model())
+            for (int i = 0; i < count; ++i)
+                titles << model->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
+        const ColumnLayout cur = ColumnLayout::fromSettings(count, QStringLiteral("files/columns"));
+        ColSetupDialog dlg(cur, titles, this);
+        if (dlg.exec() != QDialog::Accepted)
+            return;
+        const ColumnLayout nl = dlg.layout();
+        nl.applyToView(view);
+        nl.saveToSettings(QStringLiteral("files/columns"));
+        statusBar()->showMessage(tr("Column layout updated."), 3000);
+    });
     menu->exec(global);
     menu->deleteLater();
 }
@@ -2662,19 +2710,121 @@ void MainWindow::onFilePriority(const QVector<int>& fileIds, int priority)
     m_rpc->getTorrentDetails(m_currentId); // перечитать детали (приоритет/статус)
 }
 
-void MainWindow::onFileWantSelected(const QVector<int>& fileIds)
+/** Изменяет выбор указанных файлов и обновляет вкладку после ответа демона. */
+void MainWindow::setFilesDownload(const QVector<int>& fileIds, bool wanted)
 {
     if (!m_rpc || m_currentId < 0 || fileIds.isEmpty())
         return;
-    m_rpc->setFilesWanted(m_currentId, fileIds, {}); // только выделенные → wanted
-    m_rpc->getTorrentDetails(m_currentId);
+    const int id = m_currentId;
+    m_rpc->setFilesWanted(id, wanted ? fileIds : QVector<int>{},
+                          wanted ? QVector<int>{} : fileIds,
+        [this, id, wanted](const tgui::JsonRpcResult& r) {
+            if (!m_rpc || id != m_currentId)
+                return;
+            if (r.ok)
+                statusBar()->showMessage(wanted ? tr("Marked for download") : tr("Marked to skip"), 3000);
+            else
+                onRequestCompleted(QStringLiteral("torrent-set"), false, r.error, r.arguments);
+            m_rpc->getTorrentDetails(id);
+        });
 }
 
-void MainWindow::onFileSkipSelected(const QVector<int>& fileIds)
+// Чекбокс Want (файл/папка) → files-wanted / files-unwanted для затронутого поддерева.
+void MainWindow::onFilesWantToggled(const QVector<int>& rows, bool wanted)
 {
-    if (!m_rpc || m_currentId < 0 || fileIds.isEmpty())
+    if (!m_rpc || m_currentId < 0 || rows.isEmpty())
         return;
-    m_rpc->setFilesWanted(m_currentId, {}, fileIds); // только выделенные → skip
+    const auto& files = m_fileModel.files();
+    QVector<int> ids;
+    for (int r : rows)
+        if (r >= 0 && r < files.size())
+            ids.append(files.at(r).index);
+    setFilesDownload(ids, wanted);
+}
+
+// downloadDir текущего торрента из основной модели (пусто, если не найден).
+QString MainWindow::currentDownloadDir() const
+{
+    for (const auto& x : m_model.torrents())
+        if (x.id == m_currentId)
+            return x.downloadDir.value_or(QString());
+    return QString();
+}
+
+// «Открыть» (референс acOpenFile): папка — открыть; файл — запустить, если готов.
+void MainWindow::onFilesOpen(const QModelIndex& index)
+{
+    if (m_currentId < 0 || !index.isValid())
+        return;
+    if (m_fileTree->isFolder(index)) {
+        const QString dir = currentDownloadDir();
+        if (!dir.isEmpty())
+            openLocalPath(dir + QStringLiteral("/") +
+                          index.data(FileTreeModel::PathRole).toString(), /*selectFile=*/false);
+        return;
+    }
+    const auto rows = m_fileTree->sourceRows(index);
+    if (!rows.isEmpty())
+        onFilesDoubleClicked(rows.first());
+}
+
+// «Открыть содержащую папку» (референс acOpenContainingFolder).
+void MainWindow::onFilesOpenFolder(const QModelIndex& index)
+{
+    if (m_currentId < 0 || !index.isValid())
+        return;
+    const QString dir = currentDownloadDir();
+    if (dir.isEmpty())
+        return;
+    const QString rel = index.data(FileTreeModel::PathRole).toString();
+    // Файл — открыть его каталог (selectFile=true → родитель); папка — открыть её.
+    openLocalPath(dir + QStringLiteral("/") + rel,
+                  /*selectFile=*/!m_fileTree->isFolder(index));
+}
+
+// «Скопировать путь файла» (референс acCopyPath): «"полный путь"».
+void MainWindow::onFilesCopyPath(const QModelIndex& index)
+{
+    if (m_currentId < 0 || !index.isValid())
+        return;
+    const QString dir = currentDownloadDir();
+    if (dir.isEmpty())
+        return;
+    const QString full = dir + QStringLiteral("/") +
+                         index.data(FileTreeModel::PathRole).toString();
+    QApplication::clipboard()->setText(QStringLiteral("\"%1\"").arg(full));
+    statusBar()->showMessage(tr("File path copied"), 3000);
+}
+
+// «Переименовать» (референс acRename): новый базовый имя файла (каталог не меняется).
+void MainWindow::onFilesRename(const QModelIndex& index)
+{
+    if (!m_rpc || m_currentId < 0 || !index.isValid())
+        return;
+    if (m_fileTree->isFolder(index)) {
+        statusBar()->showMessage(tr("Rename folders is not supported"), 3000);
+        return;
+    }
+    const auto rows = m_fileTree->sourceRows(index);
+    if (rows.isEmpty())
+        return;
+    const auto& files = m_fileModel.files();
+    const int row = rows.first();
+    if (row < 0 || row >= files.size())
+        return;
+    const QString rel = files.at(row).name;
+    const QString base = QFileInfo(rel).fileName();
+    bool ok = false;
+    const QString newName = QInputDialog::getText(this, tr("Rename"), tr("New name:"),
+                                                  QLineEdit::Normal, base, &ok);
+    if (!ok || newName.trimmed().isEmpty() || newName == base)
+        return;
+    // Родитель в рамках относительного пути («dir/sub» или корень).
+    const QString dir = QFileInfo(rel).path();
+    const QString newRel = (dir.isEmpty() || dir == QStringLiteral("."))
+                               ? newName
+                               : dir + QStringLiteral("/") + newName;
+    m_rpc->renamePath(m_currentId, rel, newRel);
     m_rpc->getTorrentDetails(m_currentId);
 }
 

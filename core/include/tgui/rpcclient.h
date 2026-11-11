@@ -89,7 +89,7 @@ public:
     void setTorrent(int id, const QJsonObject& params); // общий torrent-set
     void setLabels(int id, const QStringList& labels);  // требует rpc >= 16
     void setPriority(int id, int priority);             // -1 / 0 / 1 (весь торрент)
-    void setFilesWanted(int id, const QVector<int>& wanted, const QVector<int>& unwanted);
+    void setFilesWanted(int id, const QVector<int>& wanted, const QVector<int>& unwanted, RequestCallback callback = {});
     // Per-file приоритет (legacy): files-wanted + priority-{low|normal|high}.
     void setFilePriority(int id, const QVector<int>& files, int priority); // -1 / 0 / +1
     // Трекеры (legacy): trackerAdd / trackerRemove / trackerReplace; требует RPC >= 10.

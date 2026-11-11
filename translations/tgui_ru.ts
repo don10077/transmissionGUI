@@ -663,6 +663,50 @@
       <translation>Пропустить (не скачивать)</translation>
     </message>
     <message>
+      <source>Want</source>
+      <translation>Скачать</translation>
+    </message>
+    <message>
+      <source>Open</source>
+      <translation>Открыть</translation>
+    </message>
+    <message>
+      <source>Open containing folder</source>
+      <translation>Открыть содержащую папку</translation>
+    </message>
+    <message>
+      <source>Copy file path to clipboard</source>
+      <translation>Копировать путь файла в буфер</translation>
+    </message>
+    <message>
+      <source>Don't download</source>
+      <translation>Не скачивать</translation>
+    </message>
+    <message>
+      <source>Setup columns...</source>
+      <translation>Настроить колонки…</translation>
+    </message>
+    <message>
+      <source>Marked for download</source>
+      <translation>Отмечено к скачиванию</translation>
+    </message>
+    <message>
+      <source>Marked to skip</source>
+      <translation>Отмечено пропуском</translation>
+    </message>
+    <message>
+      <source>File path copied</source>
+      <translation>Путь файла скопирован</translation>
+    </message>
+    <message>
+      <source>Rename folders is not supported</source>
+      <translation>Переименование папок не поддерживается</translation>
+    </message>
+    <message>
+      <source>New name:</source>
+      <translation>Новое имя:</translation>
+    </message>
+    <message>
       <location filename="../app/src/mainwindow.cpp" line="2154" />
       <source>Add tracker…</source>
       <translation>Добавить трекер…</translation>

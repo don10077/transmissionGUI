@@ -480,7 +480,7 @@ TEST(InfoPanel, RendersAllReferenceTabs)
     tabs->show();
     auto* tree = tabs->findChild<QTreeView*>(QStringLiteral("filesView"));
     ASSERT_NE(tree, nullptr);
-    EXPECT_EQ(tree->model()->columnCount(), 5);
+    EXPECT_EQ(tree->model()->columnCount(), FileTreeModel::ColumnCount);
     EXPECT_EQ(tree->model()->rowCount(), 1);
     tree->expandAll();
     const QString output = qEnvironmentVariable("TGUI_PANEL_PREVIEW_DIR");

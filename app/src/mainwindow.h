@@ -93,8 +93,17 @@ private slots:
     void onFilesContextMenu(const QPoint& pos);
     void onPeersContextMenu(const QPoint& pos);
     void onFilePriority(const QVector<int>& fileIds, int priority);
-    void onFileWantSelected(const QVector<int>& fileIds);
-    void onFileSkipSelected(const QVector<int>& fileIds);
+    void setFilesDownload(const QVector<int>& fileIds, bool wanted);
+    // Чекбокс Want (сигнал FileTreeModel::wantToggled) → RPC + перечитка.
+    void onFilesWantToggled(const QVector<int>& rows, bool wanted);
+    // Контекстное меню вкладки «Файлы» (референс — pmFiles).
+    // index — активный узел дерева (файл или папка).
+    void onFilesOpen(const QModelIndex& index);
+    void onFilesOpenFolder(const QModelIndex& index);
+    void onFilesCopyPath(const QModelIndex& index);
+    void onFilesRename(const QModelIndex& index);
+    // downloadDir текущего торрента (пусто, если не выбран / не найден).
+    QString currentDownloadDir() const;
     void onTrackersContextMenu(const QPoint& pos);
     void onAddTracker();
     void onEditTracker(int trackerId, const QString& announce);
