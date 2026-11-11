@@ -74,3 +74,22 @@ TEST(ColSetupDialog, OrderVisibleRoundTrip)
     EXPECT_TRUE(dlg.layout().visible.at(0));
     EXPECT_EQ(dlg.layout().widths, layout.widths); // ширины сохраняются
 }
+
+// W11: раскладка колонок пиров хранится в отдельном пространстве имён (peers/columns)
+// и не конфликтует с колонками списка торрентов (columns).
+TEST(ColumnLayout, PeersNamespaceIsolated)
+{
+    QCoreApplication::setOrganizationName(QStringLiteral("tgui-test"));
+    QCoreApplication::setApplicationName(QStringLiteral("tgui-test"));
+    QSettings().remove("columns");
+    QSettings().remove("peers/columns");
+    auto a = ColumnLayout::defaults(8);
+    a.order.swapItemsAt(0, 3);
+    a.visible[5] = false;
+    a.saveToSettings(QStringLiteral("peers/columns"));
+    const auto loaded = ColumnLayout::fromSettings(8, QStringLiteral("peers/columns"));
+    EXPECT_EQ(loaded.order, a.order);
+    EXPECT_EQ(loaded.visible, a.visible);
+    // Общий "columns" (список торрентов) не задет.
+    EXPECT_TRUE(QSettings().value("columns/order").toStringList().isEmpty());
+}

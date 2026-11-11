@@ -8,6 +8,9 @@
 #include <QFileInfo>
 #include <QIcon>
 #include <QStandardPaths>
+#include <QHostAddress>
+#include <QHostInfo>
+#include <QPointer>
 
 #include "tgui/geoip.h"
 #include "tgui/util.h"
@@ -137,6 +140,8 @@ void PeerListModel::setPeers(const QVector<tgui::Peer>& peers)
     beginResetModel();
     m_peers = peers;
     endResetModel();
+    if (m_resolveHost)
+        startReverseLookups();
 }
 
 void PeerListModel::setShowFlags(bool show)
@@ -147,6 +152,57 @@ void PeerListModel::setShowFlags(bool show)
     if (!m_peers.isEmpty())
         emit dataChanged(index(0, ColCountry), index(m_peers.size() - 1, ColCountry),
                          {Qt::DecorationRole});
+}
+
+void PeerListModel::setResolveHost(bool on)
+{
+    if (m_resolveHost == on)
+        return;
+    m_resolveHost = on;
+    if (on)
+        startReverseLookups();
+    // Показать текущее состояние колонки (IP или уже известный hostname).
+    if (!m_peers.isEmpty())
+        emit dataChanged(index(0, ColAddress), index(m_peers.size() - 1, ColAddress),
+                         {Qt::DisplayRole});
+}
+
+void PeerListModel::setResolvedHost(const QString& ip, const QString& host)
+{
+    if (ip.isEmpty() || m_hostCache.value(ip) == host)
+        return;
+    m_hostCache.insert(ip, host);
+    if (host.isEmpty())
+        return; // кеш ошибки — показ остаётся IP, обновлять нечего
+    for (int r = 0; r < m_peers.size(); ++r)
+        if (m_peers.at(r).address == ip)
+            emit dataChanged(index(r, ColAddress), index(r, ColAddress), {Qt::DisplayRole});
+}
+
+void PeerListModel::startReverseLookups()
+{
+    QSet<QString> seen;
+    for (const auto& peer : m_peers) {
+        const QString ip = peer.address;
+        // Только IP-адреса (IPv4/IPv6); hostname не резолвим.
+        if (ip.isEmpty() || QHostAddress(ip).isNull())
+            continue;
+        if (seen.contains(ip) || m_pendingLookups.contains(ip) || m_hostCache.contains(ip))
+            continue; // кеш или уже в работе — не дублируем запрос
+        seen.insert(ip);
+        m_pendingLookups.insert(ip);
+        QPointer<PeerListModel> self(this);
+        QHostInfo::lookupHost(ip, [self, ip](QHostInfo info) {
+            if (!self)
+                return; // модель уничтожена — не трогаем её
+            self->m_pendingLookups.remove(ip);
+            QString host;
+            if (info.error() == QHostInfo::NoError && !info.hostName().isEmpty() &&
+                info.hostName() != ip)
+                host = info.hostName();
+            self->setResolvedHost(ip, host); // host=="" → кеш ошибки
+        });
+    }
 }
 
 int PeerListModel::rowCount(const QModelIndex& parent) const
@@ -173,9 +229,15 @@ QVariant PeerListModel::data(const QModelIndex& index, int role) const
         return {};
 
     switch (index.column()) {
-        case ColAddress:
-            return p.address + (p.port > 0 ? QStringLiteral(":") + QString::number(p.port)
-                                           : QString());
+        case ColAddress: {
+            QString shown = p.address;
+            if (m_resolveHost) {
+                const QString host = m_hostCache.value(p.address);
+                if (!host.isEmpty())
+                    shown = host; // reverse DNS найден — показываем hostname вместо IP
+            }
+            return shown + (p.port > 0 ? QStringLiteral(":") + QString::number(p.port) : QString());
+        }
         case ColCountry: {
             if (!m_geoip || !m_geoip->isLoaded())
                 return {};

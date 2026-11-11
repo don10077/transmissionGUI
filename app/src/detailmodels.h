@@ -3,6 +3,7 @@
 #include <QAbstractTableModel>
 #include <QStandardItemModel>
 #include <QHash>
+#include <QSet>
 
 #include "tgui/models.h"
 #include "tgui/geoip.h"
@@ -71,6 +72,12 @@ public:
     bool showFlags() const { return m_showFlags; }
     void setFlagsDirectory(const QString& directory) { m_flagsDirectory = directory; }
 
+    // W11: Resolve Host — асинхронный reverse DNS (IP → hostname) с кешем и обработкой ошибок.
+    void setResolveHost(bool on);
+    bool resolveHost() const { return m_resolveHost; }
+    // Записать результат reverse-DNS в кеш (host=="" — ошибка/отсутствие) и обновить колонку «Адрес».
+    void setResolvedHost(const QString& ip, const QString& host);
+
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     int columnCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role) const override;
@@ -81,6 +88,10 @@ private:
     const tgui::GeoIpDb* m_geoip = nullptr;
     bool m_showFlags = false;
     QString m_flagsDirectory;
+    bool m_resolveHost = false;
+    QHash<QString, QString> m_hostCache;   // ip → hostname ("" — ошибка/отсутствие); кеш результатов
+    QSet<QString> m_pendingLookups;        // ip, по которым reverse-DNS ещё выполняется
+    void startReverseLookups();
 };
 
 // Модель вкладки «Трекеры» (только чтение).

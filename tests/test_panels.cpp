@@ -651,7 +651,7 @@ TEST(SettingsFixes, AltTogglePreservesLimitsAndEditedActiveProfileReconnects)
     ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow(); }));
     QAction* toggle = nullptr;
     for (auto* action : window.findChildren<QAction*>())
-        if (action->shortcut() == QKeySequence(Qt::Key_F7)) toggle = action;
+        if (action->shortcut() == QKeySequence(Qt::Key_F8)) toggle = action;
     ASSERT_NE(toggle, nullptr);
     EXPECT_TRUE(toggle->isChecked());
     toggle->trigger();
@@ -730,6 +730,61 @@ TEST(InfoPanel, FilesTabRequestsProgressRefresh)
     tabs->setCurrentIndex(3); // Files
     ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRefresh", Qt::DirectConnection));
     EXPECT_TRUE(waitForSettings([&] { return filesRequests() > before; }));
+    if (oldAutoRefresh.isValid())
+        settings.setValue("ui/autoRefresh", oldAutoRefresh);
+    else
+        settings.remove("ui/autoRefresh");
+    if (oldProfile.isValid())
+        settings.setValue("daemons/current", oldProfile);
+    else
+        settings.remove("daemons/current");
+}
+
+TEST(InfoPanel, PeersTabRequestsRefresh)
+{
+    // Набор пиров меняется во время скачивания: при выборе торрента пиров
+    // ещё не было, вкладка «Пиры» открыта — автообновление должно
+    // перезапрашивать peers, а не показывать пустой снимок от выбора.
+    QCoreApplication::setOrganizationName("tgui-test");
+    QCoreApplication::setApplicationName("tgui-test");
+    QSettings settings;
+    const QVariant oldProfile = settings.value("daemons/current");
+    settings.remove("daemons/current"); // иначе конструктор уйдёт на профиль из настроек
+    const QVariant oldAutoRefresh = settings.value("ui/autoRefresh");
+    settings.setValue("ui/autoRefresh", false);
+    MockRpcServer server;
+    ASSERT_NE(server.start(), 0);
+    server.setDefault({200,
+        R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","torrents":[]}})",
+        {}});
+    MainWindow window;
+    tgui::RpcClient::Options options;
+    options.url = server.url();
+    window.setAutoConnect(options);
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow(); }));
+    Torrent torrent;
+    torrent.id = 902;
+    torrent.name = QStringLiteral("peers-refresh");
+    torrent.status = static_cast<int>(TorrentStatus::Download);
+    window.applyTorrentsUpdate({torrent});
+
+    auto peersRequests = [&] {
+        int count = 0;
+        for (const auto& request : server.requests()) {
+            if (request.rpcMethod == QStringLiteral("torrent-get") &&
+                request.arguments.value("fields").toArray().contains(
+                    QJsonValue(QStringLiteral("peers"))))
+                ++count;
+        }
+        return count;
+    };
+    auto* tabs = window.findChild<QTabWidget*>(QStringLiteral("infoPanel"));
+    ASSERT_NE(tabs, nullptr);
+    tabs->setCurrentIndex(2); // Peers
+    ASSERT_TRUE(waitForSettings([&] { return peersRequests() > 0; }));
+    const int before = peersRequests();
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRefresh", Qt::DirectConnection));
+    EXPECT_TRUE(waitForSettings([&] { return peersRequests() > before; }));
     if (oldAutoRefresh.isValid())
         settings.setValue("ui/autoRefresh", oldAutoRefresh);
     else
@@ -1020,6 +1075,93 @@ TEST(ToolbarVariantB, LayoutAvailabilityAndSavedStyle)
     EXPECT_EQ(restored.findChild<QToolBar*>("mainToolBar")->toolButtonStyle(),Qt::ToolButtonIconOnly);
     if(previous.isValid())settings.setValue("ui/toolbarButtonStyle",previous);else settings.remove("ui/toolbarButtonStyle");
     if(oldProfile.isValid())settings.setValue("daemons/current",oldProfile);
+}
+
+TEST(W04Context, AltSpeedF8SetLabelsF7AndContextMenuItems)
+{
+    QCoreApplication::setOrganizationName("tgui-test");
+    QCoreApplication::setApplicationName("tgui-test");
+    QSettings settings;
+    const QVariant oldProfile = settings.value("daemons/current");
+    settings.remove("daemons/current");
+    MockRpcServer server; ASSERT_NE(server.start(), 0);
+    server.setDefault({200,R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","alt-speed-enabled":false,"download-dir":"/downloads"}})",{}});
+    MainWindow window;
+    RpcClient::Options options; options.url = server.url();
+    window.setAutoConnect(options);
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow(); }));
+    Torrent torrent; torrent.id = 700; torrent.name = QStringLiteral("labels-cols");
+    torrent.status = 4; torrent.sizeWhenDone = 100.; torrent.leftUntilDone = 50.;
+    window.applyTorrentsUpdate({torrent});
+
+    // Хоткеи — как в образце: alt-speed = F8, Set labels = F7.
+    QAction* altSpeed = nullptr; QAction* setLabels = nullptr;
+    for (auto* action : window.findChildren<QAction*>()) {
+        if (action->shortcut() == QKeySequence(Qt::Key_F8)) altSpeed = action;
+        if (action->shortcut() == QKeySequence(Qt::Key_F7)) setLabels = action;
+    }
+    ASSERT_NE(altSpeed, nullptr);
+    EXPECT_EQ(altSpeed->text(), QStringLiteral("Use alternate bandwidth settings"));
+    ASSERT_NE(setLabels, nullptr);
+    EXPECT_EQ(setLabels->text(), QStringLiteral("Set labels…"));
+
+    // Хоткеи главного меню — как в образце (ShortCut из main.lfm).
+    QHash<QString, QKeySequence> byShortcut;
+    for (auto* action : window.findChildren<QAction*>())
+        if (!action->shortcut().isEmpty())
+            byShortcut.insert(action->text(), action->shortcut());
+    const QHash<QString, QKeySequence> expected = {
+        {QStringLiteral("Start all torrents"), QKeySequence(Qt::CTRL | Qt::Key_F3)},
+        {QStringLiteral("Pause all torrents"), QKeySequence(Qt::CTRL | Qt::Key_F4)},
+        {QStringLiteral("High priority"), QKeySequence(Qt::CTRL | Qt::Key_H)},
+        {QStringLiteral("Normal priority"), QKeySequence(Qt::CTRL | Qt::Key_N)},
+        {QStringLiteral("Low priority"), QKeySequence(Qt::CTRL | Qt::Key_L)},
+        {QStringLiteral("Move top"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_1)},
+        {QStringLiteral("Move up"), QKeySequence(Qt::CTRL | Qt::Key_1)},
+        {QStringLiteral("Move down"), QKeySequence(Qt::CTRL | Qt::Key_2)},
+        {QStringLiteral("Move bottom"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_2)},
+        {QStringLiteral("Reannounce (get more peers)"), QKeySequence(Qt::CTRL | Qt::Key_R)},
+        {QStringLiteral("Remove torrent and Data"), QKeySequence(Qt::SHIFT | Qt::Key_Delete)},
+        {QStringLiteral("Rename"), QKeySequence(Qt::Key_F2)},
+    };
+    for (auto it = expected.constBegin(); it != expected.constEnd(); ++it) {
+        EXPECT_EQ(byShortcut.value(it.key()), it.value()) << it.key().toStdString();
+    }
+
+    // Контекстное меню: «Set labels» и «Setup columns» (как в образце);
+    // «Set labels» доступно при выделении строки.
+    QWidget* view = window.findChild<QWidget*>(QStringLiteral("torrentView"));
+    if (!view) {
+        for (auto* widget : window.findChildren<QWidget*>())
+            if (widget->contextMenuPolicy() == Qt::CustomContextMenu) { view = widget; break; }
+    }
+    ASSERT_NE(view, nullptr);
+    auto* itemView = qobject_cast<QAbstractItemView*>(view);
+    ASSERT_NE(itemView, nullptr);
+    ASSERT_TRUE(itemView->model() && itemView->model()->rowCount() > 0);
+    auto* selModel = itemView->selectionModel();
+    ASSERT_NE(selModel, nullptr);
+    selModel->select(itemView->model()->index(0, 0),
+                     QItemSelectionModel::ClearAndSelect);
+    bool hasLabels = false, hasColumns = false, labelsEnabled = false;
+    QTimer::singleShot(0, [&] {
+        auto* menu = qobject_cast<QMenu*>(QApplication::activePopupWidget());
+        if (!menu) return;
+        for (auto* action : menu->actions()) {
+            if (action->text() == QStringLiteral("Set labels…")) {
+                hasLabels = true; labelsEnabled = action->isEnabled();
+            }
+            if (action->text() == QStringLiteral("Setup columns…")) hasColumns = true;
+        }
+        menu->close();
+    });
+    EXPECT_TRUE(QMetaObject::invokeMethod(view, "customContextMenuRequested",
+                                         Qt::DirectConnection, Q_ARG(QPoint, QPoint(0, 0))));
+    EXPECT_TRUE(hasLabels);
+    EXPECT_TRUE(labelsEnabled); // строка выделена — доступно
+    EXPECT_TRUE(hasColumns);
+
+    if (oldProfile.isValid()) settings.setValue("daemons/current", oldProfile);
 }
 
 #include "test_panels.moc"

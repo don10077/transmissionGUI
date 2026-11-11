@@ -162,8 +162,10 @@ private:
     void updateStatusBarTotals();
     void updateFilterPanel(const QVector<tgui::Torrent>& torrents);
     void updateSelectionActions();
-    // Обновить вкладку «Файлы» выбранного торрента (проценты меняются
-    // во время проверки и загрузки — одного запроса при выборе мало).
+    // Обновить видимую вкладку данных выбранного торрента («Файлы»/«Пиры»):
+    // проценты файлов и набор пиров меняются во время проверки и загрузки —
+    // одного запроса при выборе мало (в старом transgui детали
+    // перезапрашивались каждый цикл обновления).
     void refreshFilesDetails();
     void applyViewVisibility();
     void restoreTorrentSelection(const QVector<int>& ids, int currentId);
@@ -202,6 +204,7 @@ private:
     FilterPanel* m_filterPanel = nullptr;
     QTreeView* m_view = nullptr;
     QTreeView* m_filesView = nullptr;
+    QTableView* m_peersView = nullptr;
     FileTreeModel* m_fileTree = nullptr;
     QToolBar* m_toolBar = nullptr;
     // Кнопка подключения-дропдаун (аналог OLD tbConnect, tbsDropDown).

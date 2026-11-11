@@ -941,10 +941,6 @@ Reason: %2</source>
       <translation>Проверить…</translation>
     </message>
     <message>
-      <source>Update trackers</source>
-      <translation>Обновить трекеры</translation>
-    </message>
-    <message>
       <source>Copy path</source>
       <translation>Копировать путь</translation>
     </message>
@@ -1246,8 +1242,8 @@ Are you sure to start verification of %1 torrents?</source>
     </message>
     <message>
       <location filename="../app/src/mainwindow.cpp" line="382" />
-      <source>Toggle the daemon's alternative speed limit (F7)</source>
-      <translation>Переключить альтернативный лимит скорости демона (F7)</translation>
+      <source>Toggle the daemon's alternative speed limit (F8)</source>
+      <translation>Переключить альтернативный лимит скорости демона (F8)</translation>
     </message>
     <message>
       <location filename="../app/src/mainwindow.cpp" line="392" />

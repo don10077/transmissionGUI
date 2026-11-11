@@ -9,6 +9,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QSet>
+#include <QTableView>
 #include <QTreeView>
 #include <QVBoxLayout>
 
@@ -49,11 +50,11 @@ void ColumnLayout::moveItem(int position, int delta)
     order.swapItemsAt(position, to);
 }
 
-ColumnLayout ColumnLayout::fromSettings(int count)
+ColumnLayout ColumnLayout::fromSettings(int count, const QString& ns)
 {
     ColumnLayout d = defaults(count);
     QSettings s;
-    const QStringList orderStr = s.value("columns/order").toStringList();
+    const QStringList orderStr = s.value(ns + QStringLiteral("/order")).toStringList();
     if (orderStr.size() == count) {
         QList<int> o;
         QSet<int> seen;
@@ -71,7 +72,7 @@ ColumnLayout ColumnLayout::fromSettings(int count)
         if (ok)
             d.order = o;
     }
-    const QStringList visStr = s.value("columns/visible").toStringList();
+    const QStringList visStr = s.value(ns + QStringLiteral("/visible")).toStringList();
     if (visStr.size() == count) {
         QList<bool> vis;
         for (const QString& token : visStr)
@@ -80,7 +81,7 @@ ColumnLayout ColumnLayout::fromSettings(int count)
     }
     d.widths.clear();
     for (int i = 0; i < count; ++i) {
-        const int w = s.value(QStringLiteral("columns/width_%1").arg(i)).toInt();
+        const int w = s.value(ns + QStringLiteral("/width_%1").arg(i)).toInt();
         if (w > 0)
             d.widths[i] = w;
     }
@@ -88,20 +89,20 @@ ColumnLayout ColumnLayout::fromSettings(int count)
     return d;
 }
 
-void ColumnLayout::saveToSettings() const
+void ColumnLayout::saveToSettings(const QString& ns) const
 {
     QSettings s;
     QStringList orderStr;
     for (int c : order)
         orderStr << QString::number(c);
-    s.setValue("columns/order", orderStr);
+    s.setValue(ns + QStringLiteral("/order"), orderStr);
     QStringList visStr;
     for (bool v : visible)
         visStr << (v ? "1" : "0");
-    s.setValue("columns/visible", visStr);
-    s.remove("columns/widths");
+    s.setValue(ns + QStringLiteral("/visible"), visStr);
+    s.remove(ns + QStringLiteral("/widths"));
     for (auto it = widths.constBegin(); it != widths.constEnd(); ++it)
-        s.setValue(QStringLiteral("columns/width_%1").arg(it.key()), it.value());
+        s.setValue(ns + QStringLiteral("/width_%1").arg(it.key()), it.value());
     s.sync();
 }
 
@@ -125,6 +126,48 @@ void ColumnLayout::applyToView(QTreeView* view) const
         if (widths.contains(i))
             view->setColumnWidth(i, widths.value(i));
     }
+}
+
+void ColumnLayout::applyToView(QTableView* view) const
+{
+    if (!view)
+        return;
+    auto* header = view->horizontalHeader();
+    if (!header)
+        return;
+    header->setSectionResizeMode(QHeaderView::Interactive);
+    const int n = order.size();
+    for (int visual = 0; visual < n; ++visual) {
+        const int logical = order.at(visual);
+        const int cur = header->visualIndex(logical);
+        if (cur != visual)
+            header->moveSection(cur, visual);
+    }
+    for (int i = 0; i < n; ++i) {
+        view->setColumnHidden(i, !visible.at(i));
+        if (widths.contains(i))
+            view->setColumnWidth(i, widths.value(i));
+    }
+}
+
+ColumnLayout ColumnLayout::fromView(QTableView* view, int count)
+{
+    if (!view || !view->horizontalHeader())
+        return defaults(count);
+    auto* header = view->horizontalHeader();
+    ColumnLayout c;
+    c.visible.assign(count, false);
+    const int n = header->count();
+    for (int visual = 0; visual < n; ++visual) {
+        const int logical = header->logicalIndex(visual);
+        c.order << logical;
+        if (logical >= 0 && logical < count) {
+            c.visible[logical] = !view->isColumnHidden(logical);
+            c.widths[logical] = view->columnWidth(logical);
+        }
+    }
+    c.ensureAtLeastOneVisible();
+    return c;
 }
 ColSetupDialog::ColSetupDialog(const ColumnLayout& layout, const QStringList& columnTitles,
                                QWidget* parent)

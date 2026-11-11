@@ -130,6 +130,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
             m_geoip.load(geoipPath.toStdString());
         }
         m_peerModel.setGeoIp(&m_geoip);
+        // W11: Resolve Host — состояние из настроек (при вкл. lookup стартует с загрузкой пиров).
+        m_peerModel.setResolveHost(QSettings().value("peers/resolveHost", false).toBool());
         const bool showFlags = QSettings().value("peers/showFlag", false).toBool();
         if (showFlags)
             ensureFlagImages(false);
@@ -299,6 +301,11 @@ void MainWindow::createUi()
     // Контекстное меню вкладки «Пиры» (референс — pmPeers).
     peersView->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(peersView, &QWidget::customContextMenuRequested, this, &MainWindow::onPeersContextMenu);
+    // W11: восстановить сохранённую раскладку колонок пиров (иначе — дефолт выше).
+    if (QSettings().contains(QStringLiteral("peers/columns/order")))
+        ColumnLayout::fromSettings(PeerListModel::ColumnCount, QStringLiteral("peers/columns"))
+            .applyToView(peersView);
+    m_peersView = peersView; // для периодического обновления вкладки (см. refreshFilesDetails)
 
     auto* trackersView = makeTable(&m_trackerModel);
     trackersView->setObjectName(QStringLiteral("trackersView"));
@@ -413,7 +420,7 @@ void MainWindow::createActions()
     m_actDisconnect->setToolTip(tr("Disconnect from Transmission"));
     connect(m_actDisconnect, &QAction::triggered, this, &MainWindow::onDisconnect);
 
-    // Сочетания — как в transgui/main.lfm (Insert, Ctrl+Insert, F3/F4, F7, F9,
+    // Сочетания — как в transgui/main.lfm (Insert, Ctrl+Insert, F3/F4, F7, F8, F9,
     // Ctrl+F9, F11/F12, Shift+F11/Shift+F12).
     m_actAdd = new QAction(tr("Add torrent…"), this);
     m_actAdd->setShortcut(QKeySequence(Qt::Key_Insert));
@@ -442,11 +449,13 @@ void MainWindow::createActions()
     connect(m_actStop, &QAction::triggered, this, &MainWindow::onStopSelected);
 
     m_actStartAll = new QAction(tr("Start all torrents"), this);
+    m_actStartAll->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F3));
     m_actStartAll->setIcon(tgui::theme::icon(Icon::StartAll));
     m_actStartAll->setToolTip(tr("Start all torrents"));
     connect(m_actStartAll, &QAction::triggered, this, &MainWindow::onStartAll);
 
     m_actStopAll = new QAction(tr("Pause all torrents"), this);
+    m_actStopAll->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F4));
     m_actStopAll->setIcon(tgui::theme::icon(Icon::StopAll));
     m_actStopAll->setToolTip(tr("Pause all torrents"));
     connect(m_actStopAll, &QAction::triggered, this, &MainWindow::onStopAll);
@@ -491,11 +500,11 @@ void MainWindow::createActions()
     });
 
     m_actAltSpeed = new QAction(tr("Use alternate bandwidth settings"), this);
-    m_actAltSpeed->setShortcut(QKeySequence(Qt::Key_F7));
+    m_actAltSpeed->setShortcut(QKeySequence(Qt::Key_F8));
     m_actAltSpeed->setCheckable(true);
     m_actAltSpeed->setChecked(QSettings().value("ui/altSpeed", false).toBool());
     m_actAltSpeed->setIcon(tgui::theme::icon(Icon::AltSpeed));
-    m_actAltSpeed->setToolTip(tr("Toggle the daemon's alternative speed limit (F7)"));
+    m_actAltSpeed->setToolTip(tr("Toggle the daemon's alternative speed limit (F8)"));
     connect(m_actAltSpeed, &QAction::toggled, this, [this](bool on) {
         QSettings().setValue("ui/altSpeed", on);
         if (m_rpc && m_connected)
@@ -897,11 +906,16 @@ void MainWindow::refreshFilesDetails()
     // поэтому видимую вкладку «Файлы» обновляем вместе со списком торрентов.
     // Иначе остаются проценты, полученные в момент выбора торрента: при
     // начатой проверке они так и висят на нуле.
-    if (!m_rpc || m_currentId < 0 || !m_filesView || !m_tabs || m_tabs->isHidden())
+    // «Пиры» — то же самое: во время скачивания набор подключённых пиров
+    // постоянно меняется, а при выборе торрента пиров ещё могло не быть —
+    // без периодического запроса вкладка остаётся пустой до переподключения
+    // (старый transgui перезапрашивал детали каждый цикл обновления).
+    if (!m_rpc || m_currentId < 0 || !m_tabs || m_tabs->isHidden())
         return;
-    if (m_tabs->currentWidget() != m_filesView)
-        return;
-    m_rpc->getTorrentDetails(m_currentId);
+    if (m_filesView && m_tabs->currentWidget() == m_filesView)
+        m_rpc->getTorrentDetails(m_currentId);
+    if (m_peersView && m_tabs->currentWidget() == m_peersView)
+        m_rpc->getPeers(m_currentId);
 }
 
 void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
@@ -1390,6 +1404,14 @@ void MainWindow::onContextMenu(const QPoint& pos)
     QObject::connect(actProperties, &QAction::triggered, this, &MainWindow::onShowProperties);
     menu->addSeparator();
 
+    // «Set labels» и «Setup columns» — как в образце (есть и в контекстном меню).
+    auto* actSetLabels = menu->addAction(tr("Set labels…"));
+    actSetLabels->setEnabled(hasSel);
+    QObject::connect(actSetLabels, &QAction::triggered, this, &MainWindow::onSetLabels);
+    auto* actSetupColumns = menu->addAction(tr("Setup columns…"));
+    QObject::connect(actSetupColumns, &QAction::triggered, this, &MainWindow::onColumns);
+    menu->addSeparator();
+
     auto* actRefresh = menu->addAction(tgui::theme::icon(Icon::Refresh), tr("Refresh"));
     actRefresh->setEnabled(m_connected);
     QObject::connect(actRefresh, &QAction::triggered, this, &MainWindow::onRefresh);
@@ -1582,35 +1604,46 @@ void MainWindow::createMenus()
     mTorrent->addAction(m_actStopAll);
     mTorrent->addAction(m_actRemove);
     auto* actRemoveData = mTorrent->addAction(tr("Remove torrent and Data"));
+    actRemoveData->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_Delete));
     connect(actRemoveData, &QAction::triggered, this, &MainWindow::onRemoveWithDataSelected);
     mTorrent->addSeparator();
 
     auto* mPriority = mTorrent->addMenu(tr("Priority"));
     auto* priHigh = mPriority->addAction(tr("High priority"));
+    priHigh->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
     auto* priNormal = mPriority->addAction(tr("Normal priority"));
+    priNormal->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_N));
     auto* priLow = mPriority->addAction(tr("Low priority"));
+    priLow->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
     connect(priHigh, &QAction::triggered, this, &MainWindow::onPriorityHigh);
     connect(priNormal, &QAction::triggered, this, &MainWindow::onPriorityNormal);
     connect(priLow, &QAction::triggered, this, &MainWindow::onPriorityLow);
 
     auto* mQueue = mTorrent->addMenu(tr("Queue"));
     auto* qTop = mQueue->addAction(tr("Move top"));
+    qTop->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_1));
     auto* qUp = mQueue->addAction(tr("Move up"));
+    qUp->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_1));
     auto* qDown = mQueue->addAction(tr("Move down"));
+    qDown->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_2));
     auto* qBottom = mQueue->addAction(tr("Move bottom"));
+    qBottom->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_2));
     connect(qTop, &QAction::triggered, this, &MainWindow::onQueueTop);
     connect(qUp, &QAction::triggered, this, &MainWindow::onQueueUp);
     connect(qDown, &QAction::triggered, this, &MainWindow::onQueueDown);
     connect(qBottom, &QAction::triggered, this, &MainWindow::onQueueBottom);
 
     auto* actReannounce = mTorrent->addAction(tr("Reannounce (get more peers)"));
+    actReannounce->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
     auto* actVerify = mTorrent->addAction(tr("Verify"));
     connect(actReannounce, &QAction::triggered, this, &MainWindow::onReannounceSelected);
     connect(actVerify, &QAction::triggered, this, &MainWindow::onVerifySelected);
     mTorrent->addAction(m_actMove);  // "Set data location..."
     auto* actLabels = mTorrent->addAction(tr("Set labels…"));
+    actLabels->setShortcut(QKeySequence(Qt::Key_F7));
     connect(actLabels, &QAction::triggered, this, &MainWindow::onSetLabels);
     auto* actRename = mTorrent->addAction(tr("Rename"));
+    actRename->setShortcut(QKeySequence(Qt::Key_F2));
     connect(actRename, &QAction::triggered, this, &MainWindow::onRenameSelected);
     mTorrent->addAction(m_actProperties);
     mTorrent->addSeparator();
@@ -2566,8 +2599,9 @@ void MainWindow::onPeersContextMenu(const QPoint& pos)
     auto* aHost = menu->addAction(tr("Resolve Host"));
     aHost->setCheckable(true);
     aHost->setChecked(s.value("peers/resolveHost", false).toBool());
-    QObject::connect(aHost, &QAction::triggered, this, [](bool on) {
+    QObject::connect(aHost, &QAction::triggered, this, [this](bool on) {
         QSettings().setValue("peers/resolveHost", on);
+        m_peerModel.setResolveHost(on); // асинхронный reverse DNS + обновление колонки
     });
 
     // Resolve Country (toggle видимости колонки; при вкл. без БД — скачать)
@@ -2606,9 +2640,14 @@ void MainWindow::onPeersContextMenu(const QPoint& pos)
         QStringList titles;
         for (int i = 0; i < count; ++i)
             titles << view->model()->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
-        ColumnLayout cur = ColumnLayout::defaults(count);
+        const ColumnLayout cur = ColumnLayout::fromView(view, count);
         ColSetupDialog dlg(cur, titles, this);
-        dlg.exec();
+        if (dlg.exec() != QDialog::Accepted)
+            return;
+        const ColumnLayout nl = dlg.layout();
+        nl.applyToView(view);
+        nl.saveToSettings(QStringLiteral("peers/columns"));
+        statusBar()->showMessage(tr("Column layout updated."), 3000);
     });
 
     menu->exec(view->mapToGlobal(pos));

@@ -354,3 +354,54 @@ TEST(FileTree, AggregatesFoldersAndPreservesItemsOnRefresh)
     EXPECT_FALSE(leaf.isValid());
     EXPECT_EQ(model.rowCount(), 0);
 }
+
+// W11: Resolve Host — reverse DNS: кеш + показ hostname / IP при ошибке.
+TEST(DetailPeerModel, ResolveHostShowsCachedHostname)
+{
+    PeerListModel m;
+    QVector<Peer> peers;
+    Peer p;
+    p.address = "1.2.3.4";
+    p.port = 5678;
+    peers.push_back(p);
+    m.setPeers(peers);
+    m.setResolveHost(true);
+    // Без кеша — IP:порт.
+    EXPECT_EQ(m.data(m.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(),
+              "1.2.3.4:5678");
+    // Кеш hostname — показываем hostname:порт.
+    m.setResolvedHost("1.2.3.4", "host.example.net");
+    EXPECT_EQ(m.data(m.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(),
+              "host.example.net:5678");
+}
+
+TEST(DetailPeerModel, ResolveHostOffKeepsIp)
+{
+    PeerListModel m;
+    QVector<Peer> peers;
+    Peer p;
+    p.address = "1.2.3.4";
+    p.port = 5678;
+    peers.push_back(p);
+    m.setPeers(peers);
+    m.setResolvedHost("1.2.3.4", "host.example.net");
+    // Resolve Host выключен по умолчанию — показываем IP.
+    EXPECT_EQ(m.data(m.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(),
+              "1.2.3.4:5678");
+}
+
+TEST(DetailPeerModel, ResolveHostFailedLookupKeepsIp)
+{
+    PeerListModel m;
+    QVector<Peer> peers;
+    Peer p;
+    p.address = "1.2.3.4";
+    p.port = 0;
+    peers.push_back(p);
+    m.setPeers(peers);
+    m.setResolveHost(true);
+    // Ошибка reverse DNS (пустой host) — остаётся IP.
+    m.setResolvedHost("1.2.3.4", QString());
+    EXPECT_EQ(m.data(m.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(),
+              "1.2.3.4");
+}

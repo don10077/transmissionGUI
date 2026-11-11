@@ -5,6 +5,7 @@
 #include <QMap>
 #include <QStringList>
 
+class QTableView;
 class QTreeView;
 class QListWidget;
 class QPushButton;
@@ -20,9 +21,12 @@ struct ColumnLayout {
     static ColumnLayout defaults(int count); // видны первые 9 (Name..ETA), дефолтные ширины
     void ensureAtLeastOneVisible();          // хотя бы одна колонка видима
     void moveItem(int position, int delta);  // -1 вверх / +1 вниз
-    static ColumnLayout fromSettings(int count);
-    void saveToSettings() const;
-    void applyToView(QTreeView* view) const; // порядок (moveSection) + видимость + ширины
+    static ColumnLayout fromSettings(int count,
+                                     const QString& ns = QStringLiteral("columns"));
+    void saveToSettings(const QString& ns = QStringLiteral("columns")) const;
+    void applyToView(QTreeView* view) const;
+    void applyToView(QTableView* view) const; // W11: пиры
+    static ColumnLayout fromView(QTableView* view, int count); // W11: текущая раскладка пиров
 };
 
 // Диалог настройки колонок: порядок (Up/Down) + видимость (checkbox).
