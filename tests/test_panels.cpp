@@ -1077,33 +1077,54 @@ TEST(ToolbarVariantB, LayoutAvailabilityAndSavedStyle)
     if(oldProfile.isValid())settings.setValue("daemons/current",oldProfile);
 }
 
-TEST(W04Context, AltSpeedF8SetLabelsF7AndContextMenuItems)
+TEST(W04Context, AltSpeedF8ChooseLabelF7AndContextMenuItems)
 {
     QCoreApplication::setOrganizationName("tgui-test");
     QCoreApplication::setApplicationName("tgui-test");
     QSettings settings;
     const QVariant oldProfile = settings.value("daemons/current");
+    const QVariant oldLabels = settings.value("downloads/labels");
+    const QVariant oldGrouping = settings.value("ui/labelGrouping");
     settings.remove("daemons/current");
+    settings.setValue("downloads/labels", QStringList{"Video", "Music"});
+    settings.setValue("ui/labelGrouping", true);
     MockRpcServer server; ASSERT_NE(server.start(), 0);
-    server.setDefault({200,R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","alt-speed-enabled":false,"download-dir":"/downloads"}})",{}});
+    server.setDefault({200,R"({"result":"success","arguments":{"rpc-version":16,"version":"4.0","alt-speed-enabled":false,"download-dir":"/downloads"}})",{}});
     MainWindow window;
     RpcClient::Options options; options.url = server.url();
     window.setAutoConnect(options);
     ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow(); }));
     Torrent torrent; torrent.id = 700; torrent.name = QStringLiteral("labels-cols");
     torrent.status = 4; torrent.sizeWhenDone = 100.; torrent.leftUntilDone = 50.;
+    torrent.labels = QStringList{"Video"};
     window.applyTorrentsUpdate({torrent});
 
-    // Хоткеи — как в образце: alt-speed = F8, Set labels = F7.
     QAction* altSpeed = nullptr; QAction* setLabels = nullptr;
+    QAction* labelGrouping = nullptr;
     for (auto* action : window.findChildren<QAction*>()) {
         if (action->shortcut() == QKeySequence(Qt::Key_F8)) altSpeed = action;
         if (action->shortcut() == QKeySequence(Qt::Key_F7)) setLabels = action;
+        if (action->text() == QStringLiteral("Label grouping")) labelGrouping = action;
     }
     ASSERT_NE(altSpeed, nullptr);
     EXPECT_EQ(altSpeed->text(), QStringLiteral("Use alternate bandwidth settings"));
     ASSERT_NE(setLabels, nullptr);
-    EXPECT_EQ(setLabels->text(), QStringLiteral("Set labels…"));
+    EXPECT_EQ(setLabels->text(), QStringLiteral("Choose label…"));
+    ASSERT_NE(labelGrouping, nullptr);
+    EXPECT_TRUE(labelGrouping->isVisible());
+    auto* filterTree = window.findChild<QTreeWidget*>("filterTree");
+    ASSERT_NE(filterTree, nullptr);
+    const auto sections = filterTree->findItems("Labels", Qt::MatchExactly);
+    ASSERT_EQ(sections.size(), 1);
+    auto* labelsSection = sections.first();
+    ASSERT_EQ(labelsSection->childCount(), 2);
+    EXPECT_EQ(labelsSection->child(0)->text(0), QStringLiteral("Music (0)"));
+    EXPECT_EQ(labelsSection->child(1)->text(0), QStringLiteral("Video (1)"));
+    EXPECT_FALSE(labelsSection->isHidden());
+    labelGrouping->setChecked(false);
+    EXPECT_TRUE(labelsSection->isHidden());
+    labelGrouping->setChecked(true);
+    EXPECT_FALSE(labelsSection->isHidden());
 
     // Хоткеи главного меню — как в образце (ShortCut из main.lfm).
     QHash<QString, QKeySequence> byShortcut;
@@ -1128,8 +1149,7 @@ TEST(W04Context, AltSpeedF8SetLabelsF7AndContextMenuItems)
         EXPECT_EQ(byShortcut.value(it.key()), it.value()) << it.key().toStdString();
     }
 
-    // Контекстное меню: «Set labels» и «Setup columns» (как в образце);
-    // «Set labels» доступно при выделении строки.
+    // Выбор метки доступен при выделении строки.
     QWidget* view = window.findChild<QWidget*>(QStringLiteral("torrentView"));
     if (!view) {
         for (auto* widget : window.findChildren<QWidget*>())
@@ -1148,7 +1168,7 @@ TEST(W04Context, AltSpeedF8SetLabelsF7AndContextMenuItems)
         auto* menu = qobject_cast<QMenu*>(QApplication::activePopupWidget());
         if (!menu) return;
         for (auto* action : menu->actions()) {
-            if (action->text() == QStringLiteral("Set labels…")) {
+            if (action->text() == QStringLiteral("Choose label…")) {
                 hasLabels = true; labelsEnabled = action->isEnabled();
             }
             if (action->text() == QStringLiteral("Setup columns…")) hasColumns = true;
@@ -1161,7 +1181,29 @@ TEST(W04Context, AltSpeedF8SetLabelsF7AndContextMenuItems)
     EXPECT_TRUE(labelsEnabled); // строка выделена — доступно
     EXPECT_TRUE(hasColumns);
 
+    filterTree->setCurrentItem(labelsSection->child(1));
+    QTimer::singleShot(0, [] {
+        auto* dialog = QApplication::activeModalWidget();
+        if (!dialog)
+            return;
+        auto* editor = dialog->findChild<QPlainTextEdit*>("labelNames");
+        auto* buttons = dialog->findChild<QDialogButtonBox*>();
+        if (editor && buttons) {
+            editor->clear();
+            buttons->button(QDialogButtonBox::Ok)->click();
+        }
+    });
+    EXPECT_TRUE(QMetaObject::invokeMethod(&window, "onOptions", Qt::DirectConnection));
+    EXPECT_FALSE(setLabels->isVisible());
+    EXPECT_FALSE(labelGrouping->isVisible());
+    EXPECT_TRUE(labelsSection->isHidden());
+    EXPECT_EQ(filterTree->currentItem(), filterTree->topLevelItem(0));
+
     if (oldProfile.isValid()) settings.setValue("daemons/current", oldProfile);
+    if (oldLabels.isValid()) settings.setValue("downloads/labels", oldLabels);
+    else settings.remove("downloads/labels");
+    if (oldGrouping.isValid()) settings.setValue("ui/labelGrouping", oldGrouping);
+    else settings.remove("ui/labelGrouping");
 }
 
 #include "test_panels.moc"

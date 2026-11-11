@@ -1,5 +1,7 @@
 #include "filterpanel.h"
 
+#include <algorithm>
+
 #include <QAbstractItemView>
 #include <QFontMetrics>
 #include <QPainter>
@@ -259,6 +261,8 @@ void FilterPanel::setFolderGroupingEnabled(bool enabled)
 
 void FilterPanel::setLabelGroupingEnabled(bool enabled)
 {
+    if (!enabled && !m_selLabel.isEmpty())
+        selectAllTorrents();
     if (m_labelsSection)
         m_labelsSection->setHidden(!enabled);
 }
@@ -329,6 +333,10 @@ void FilterPanel::setCounts(int all, int downloading, int completed, int active,
         section->setExpanded(!items.isEmpty());
     };
     fillSection(m_foldersSection, folders, kRoleFolder);
+    if (!m_selLabel.isEmpty() &&
+        std::none_of(labels.cbegin(), labels.cend(),
+                     [this](const auto& label) { return label.first == m_selLabel; }))
+        selectAllTorrents();
     fillSection(m_labelsSection, labels, kRoleLabel);
     fillSection(m_trackersSection, trackers, kRoleTracker);
     m_tree->doItemsLayout();

@@ -47,6 +47,7 @@ private:
     QDialogButtonBox* m_buttons;
     QLabel* m_summary;
     QComboBox* m_destination;
+    QComboBox* m_label = nullptr;
     QLineEdit* m_saveAs;
     QLineEdit* m_template;
     QSpinBox* m_peerLimit;

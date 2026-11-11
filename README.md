@@ -60,13 +60,11 @@
 |---|---|
 | Transmission **2.x / 3.x / 4.x** | ✅ основной целевой диапазон |
 | Legacy JSON-RPC демона (`session-get`, `torrent-get`, …) | ✅ используется клиентом |
-| **Новый протокол Transmission ≥ 4.1** — стандартный **JSON-RPC 2.0** (`session_get`, `torrent_get`, …) | 🗓 запланирован (этап 8) |
+| **Transmission ≥ 4.1** — **JSON-RPC 2.0** (`session_get`, `torrent_get`, …) | ✅ выбирается автоматически |
 
-> В Transmission 4.1+ RPC-интерфейс переведён на стандартный JSON-RPC 2.0
-> (snake_case-имена, тело запроса `jsonrpc/params/id`). Старый протокол там
-> пока работает через compat-слой, но объявлен deprecated и будет удалён,
-> поэтому в планах — нативная поддержка нового протокола с автоопределением
-> по демону. Спецификация: `docs/rpc-spec.md` в исходниках демона.
+Клиент выбирает JSON-RPC 2.0 по заголовку `X-Transmission-Rpc-Version` от
+демона. При подключении к Transmission 4.0.x используется legacy RPC.
+[Спецификация Transmission](https://github.com/transmission/transmission/blob/4.1.0/docs/rpc-spec.md)
 
 ## Стек
 
@@ -95,7 +93,8 @@ build.cmd debug --no-pause
 
 По умолчанию используется MSYS2 из `D:\Install\MSYS2`. Для другой установки
 задайте переменную `MSYS2_ROOT`. Нужны пакеты MinGW64: CMake, Ninja, GCC,
-Qt 6 и GoogleTest. Скрипт собирает приложение, но не запускает его или тесты.
+Qt 6 (включая LinguistTools), zlib и GoogleTest. Скрипт собирает приложение
+и по умолчанию запускает автономные тесты.
 
 Нужны: MSYS2 `mingw64` (g++ 16.x), Qt 6 (Core/Network/Widgets), CMake ≥ 3.28.
 Пресеты берутся из `CMakeUserPresets.json` (при отсутствии — скопируйте
@@ -121,6 +120,27 @@ cmake --preset win-debug --build-and-run test   # unit-тесты
   tgui_daemon_check.exe http://127.0.0.1:9091 --user USER --pass PASS
   ```
 
+## Пакеты
+
+Для portable ZIP под Windows после сборки Release выполните
+`powershell -File tools/package-windows.ps1`. Распакуйте
+`build/packages/transmissiongui-windows-x64.zip` и запустите
+`transmissiongui.exe` из распакованной папки.
+
+Для Ubuntu нужны GCC, CMake ≥ 3.28, Ninja, Qt 6 Base и Tools, GoogleTest и zlib.
+На macOS эти зависимости можно установить через Homebrew. При конфигурации
+передайте `-DCMAKE_PREFIX_PATH="$(brew --prefix qt)"`.
+
+```sh
+cmake --preset release
+cmake --build --preset release
+QT_QPA_PLATFORM=offscreen ctest --preset release
+cpack --config build/release/CPackConfig.cmake -B build/packages
+```
+
+CPack готовит DEB на Ubuntu и DMG на macOS. Сборку macOS проверяет отдельная
+задача GitHub Actions после запуска workflow.
+
 ## Быстрый запуск к демону
 
 `transmissiongui-daemon.cmd` (ярлык на рабочем столе
@@ -140,7 +160,7 @@ transmissiongui.exe --url http://хост:порт [--user имя] [--pass па�
 
 ## Тесты
 
-65 тестов: утилиты форматирования, bencode, парсинг ответов демона,
+Тесты охватывают утилиты форматирования, bencode, парсинг ответов демона,
 JSON-RPC транспорт, высокоуровневый RPC-клиент, GUI-модели и панели
 (грид с 26 колонками, вкладки Файлы/Пиры/Трекеры, «General», «Статистика»,
 раскладка окна). Используется моковый HTTP-сервер RPC-демона — проверяются

@@ -1,4 +1,5 @@
 #include "fileselectdialog.h"
+#include "torrentlabels.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -120,6 +121,11 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
     m_peerLimit->setRange(1, 65535);
     m_peerLimit->setValue(details.peerLimit);
     form->addRow(tr("Peer limit:"), m_peerLimit);
+    const auto labels = torrentlabels::configured();
+    if (rpcVersion >= 16 && !labels.isEmpty()) {
+        m_label = torrentlabels::createPicker(destination, labels);
+        form->addRow(tr("Label"), m_label);
+    }
 
     QString initialPath = details.downloadDir;
     double bestSize = 0.0;
@@ -394,6 +400,8 @@ tgui::RpcClient::AddTorrent FileSelectDialog::options() const
     options.peerLimit = m_peerLimit->value();
     options.start = startTorrent();
     options.sequential = sequentialDownload();
+    if (m_label)
+        options.labels = m_label->currentData().toStringList();
     return options;
 }
 

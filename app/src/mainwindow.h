@@ -171,6 +171,7 @@ private:
     void updateStatusBarTotals();
     void updateFilterPanel(const QVector<tgui::Torrent>& torrents);
     void updateSelectionActions();
+    void updateLabelUi();
     // Обновить видимую вкладку данных выбранного торрента («Файлы»/«Пиры»):
     // проценты файлов и набор пиров меняются во время проверки и загрузки —
     // одного запроса при выборе мало (в старом transgui детали
@@ -258,6 +259,8 @@ private:
     QAction* m_actStatusBar = nullptr;
     QAction* m_actFolderGrouping = nullptr;
     QAction* m_actLabelGrouping = nullptr;
+    QAction* m_actChooseLabel = nullptr;
+    QStringList m_labels;
     QAction* m_actTrackerGrouping = nullptr;
 
     QSystemTrayIcon* m_tray = nullptr;

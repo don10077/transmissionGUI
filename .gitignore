@@ -23,6 +23,8 @@ test_out.txt
 *.log
 *.bin
 *.ps1
+!tools/package-windows.ps1
 *.bak
 *.txt
+*.ps1
 WORKFLOW.archive.md

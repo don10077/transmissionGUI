@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=transmissionGUI
+Comment=Manage torrents on a Transmission server
+Exec=transmissiongui
+Terminal=false
+Categories=Network;FileTransfer;

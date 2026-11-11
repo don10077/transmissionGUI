@@ -101,6 +101,9 @@ public:
     bool filterAcceptsRow(int row, const QModelIndex& parent) const override;
 
 private:
+    template<typename T>
+    void setFilterValue(T& current, const T& value);
+
     int m_group = TorrentModel::GroupAll;
     QString m_folder;
     QString m_label;

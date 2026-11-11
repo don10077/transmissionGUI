@@ -5,6 +5,7 @@ add_library(tgui_core STATIC
     src/bencode.cpp
     src/models.cpp
     src/jsonrpc.cpp
+    src/rpcdialect.cpp
     src/rpcclient.cpp
     src/geoip.cpp
     # Явное перечисление Q_OBJECT-заголовков — надёжный путь для AUTOMOC

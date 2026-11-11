@@ -8,6 +8,7 @@
 #include <QColor>
 #include <QComboBox>
 #include <QDateTime>
+#include <QDialogButtonBox>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QDesktopServices>
@@ -16,6 +17,7 @@
 #include <QFileInfo>
 #include <QUrl>
 #include <QFrame>
+#include <QFormLayout>
 #include <QHash>
 #include <QHBoxLayout>
 #include <QMenuBar>
@@ -27,6 +29,7 @@
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QItemSelectionModel>
+#include <QJsonArray>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -80,6 +83,7 @@
 #include "propsform.h"
 #include "statsform.h"
 #include "theme.h"
+#include "torrentlabels.h"
 #include "tgui/util.h"
 
 namespace {
@@ -110,7 +114,9 @@ bool gunzipData(const QByteArray& input, QByteArray& output)
 }
 } // namespace
 
-MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
+MainWindow::MainWindow(QWidget* parent)
+    : QMainWindow(parent)
+    , m_labels(torrentlabels::configured())
 {
     setWindowTitle(QStringLiteral("transmissionGUI"));
     setWindowIcon(QIcon(tgui::theme::appIconPixmap(64)));
@@ -120,6 +126,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     createUi();
     createActions();
     createMenus();
+    updateFilterPanel(m_model.torrents());
     createTray();
 
     // W11b: загрузить GeoIP-базу из appdata (если есть), привязать к модели пиров.
@@ -194,10 +201,8 @@ void MainWindow::createUi()
     m_filterPanel = new FilterPanel(this);
     connect(m_filterPanel, &FilterPanel::filterChanged, this, &MainWindow::onFilterChanged);
     const bool folderGrouping = QSettings().value("ui/folderGrouping", true).toBool();
-    const bool labelGrouping = QSettings().value("ui/labelGrouping", true).toBool();
     const bool trackerGrouping = QSettings().value("ui/trackerGrouping", true).toBool();
     m_filterPanel->setFolderGroupingEnabled(folderGrouping);
-    m_filterPanel->setLabelGroupingEnabled(labelGrouping);
     m_filterPanel->setTrackerGroupingEnabled(trackerGrouping);
     m_filterPanel->setEnabledUi(false);
     m_filterPanel->setMinimumWidth(200);
@@ -722,6 +727,16 @@ void MainWindow::updateSelectionActions()
     m_actProperties->setEnabled(hasSel);
     m_actMove->setEnabled(m_connected && selectedTorrentIds().size() == 1);
     if (m_actQueue) m_actQueue->setEnabled(hasSel);
+    m_actChooseLabel->setEnabled(hasSel && m_rpc && m_rpc->supports(16));
+}
+
+/** Синхронизирует пункты меню и правую панель со списком меток. */
+void MainWindow::updateLabelUi()
+{
+    const bool configured = !m_labels.isEmpty();
+    m_actChooseLabel->setVisible(configured);
+    m_actLabelGrouping->setVisible(configured);
+    m_filterPanel->setLabelGroupingEnabled(configured && m_actLabelGrouping->isChecked());
 }
 
 void MainWindow::onConnect()
@@ -810,6 +825,7 @@ void MainWindow::onDisconnect()
     m_addingTorrent = false;
     m_rpc.reset();
     m_model.setTorrents({});
+    updateFilterPanel(m_model.torrents());
     m_fileModel.setFiles({});
     m_peerModel.setPeers({});
     m_trackerModel.setTrackers({});
@@ -1090,6 +1106,8 @@ void MainWindow::updateFilterPanel(const QVector<tgui::Torrent>& torrents)
     int downloading = 0, completed = 0, active = 0, stopped = 0, error = 0, waiting = 0;
     QHash<QString, int> folders;
     QHash<QString, int> labels;
+    for (const auto& label : m_labels)
+        labels.insert(label, 0);
     QHash<QString, int> trackers;
     for (const auto& t : torrents) {
         const auto matchesGroup = &TorrentModel::matchesGroup;
@@ -1109,8 +1127,8 @@ void MainWindow::updateFilterPanel(const QVector<tgui::Torrent>& torrents)
             folders.insert(*t.downloadDir, folders.value(*t.downloadDir) + 1);
         if (t.labels.has_value()) {
             for (const QString& label : *t.labels) {
-                if (!label.isEmpty())
-                    labels.insert(label, labels.value(label) + 1);
+                if (auto it = labels.find(label); it != labels.end())
+                    ++it.value();
             }
         }
         if (!t.trackerStats.isEmpty() && !t.trackerStats.first().announce.isEmpty()) {
@@ -1252,9 +1270,10 @@ void MainWindow::onShowProperties()
     const int id = ids.first();
     for (const auto& t : m_model.torrents()) {
         if (t.id == id) {
-            PropsDialog dlg(t, this, m_rpc->rpcVersion());
-            if (dlg.exec() == QDialog::Accepted && !dlg.changes().isEmpty())
-                m_rpc->setTorrent(id, dlg.changes());
+            const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+            PropsDialog dlg(t, this, rpc->rpcVersion());
+            if (dlg.exec() == QDialog::Accepted && rpc && !dlg.changes().isEmpty())
+                rpc->setTorrent(id, dlg.changes());
             return;
         }
     }
@@ -1410,10 +1429,8 @@ void MainWindow::onContextMenu(const QPoint& pos)
     QObject::connect(actProperties, &QAction::triggered, this, &MainWindow::onShowProperties);
     menu->addSeparator();
 
-    // «Set labels» и «Setup columns» — как в образце (есть и в контекстном меню).
-    auto* actSetLabels = menu->addAction(tr("Set labels…"));
-    actSetLabels->setEnabled(hasSel);
-    QObject::connect(actSetLabels, &QAction::triggered, this, &MainWindow::onSetLabels);
+    if (!m_labels.isEmpty())
+        menu->addAction(m_actChooseLabel);
     auto* actSetupColumns = menu->addAction(tr("Setup columns…"));
     QObject::connect(actSetupColumns, &QAction::triggered, this, &MainWindow::onColumns);
     menu->addSeparator();
@@ -1505,11 +1522,14 @@ void MainWindow::addNextTorrent()
                     return;
                 }
                 rpc->configureAddedTorrent(*details, dialog->options(), dialog->saveAs(),
-                    dialog->unwanted(), [this](const tgui::JsonRpcResult& result) {
-                        if (result.ok)
+                    dialog->unwanted(), [this, rpc](const tgui::JsonRpcResult& result) {
+                        if (result.ok) {
                             statusBar()->showMessage(tr("Torrent added"), 5000);
-                        else
+                            if (rpc)
+                                rpc->getTorrents();
+                        } else {
                             onReadError(tr("Add torrent"), result.error);
+                        }
                         finishAdd();
                     });
             });
@@ -1645,9 +1665,9 @@ void MainWindow::createMenus()
     connect(actReannounce, &QAction::triggered, this, &MainWindow::onReannounceSelected);
     connect(actVerify, &QAction::triggered, this, &MainWindow::onVerifySelected);
     mTorrent->addAction(m_actMove);  // "Set data location..."
-    auto* actLabels = mTorrent->addAction(tr("Set labels…"));
-    actLabels->setShortcut(QKeySequence(Qt::Key_F7));
-    connect(actLabels, &QAction::triggered, this, &MainWindow::onSetLabels);
+    m_actChooseLabel = mTorrent->addAction(tr("Choose label…"));
+    m_actChooseLabel->setShortcut(QKeySequence(Qt::Key_F7));
+    connect(m_actChooseLabel, &QAction::triggered, this, &MainWindow::onSetLabels);
     auto* actRename = mTorrent->addAction(tr("Rename"));
     actRename->setShortcut(QKeySequence(Qt::Key_F2));
     connect(actRename, &QAction::triggered, this, &MainWindow::onRenameSelected);
@@ -1686,10 +1706,8 @@ void MainWindow::createMenus()
     m_actLabelGrouping->setCheckable(true);
     m_actLabelGrouping->setChecked(QSettings().value("ui/labelGrouping", true).toBool());
     connect(m_actLabelGrouping, &QAction::toggled, this, [this](bool on) {
-        m_filterPanel->setLabelGroupingEnabled(on);
         QSettings().setValue("ui/labelGrouping", on);
-        if (!on && !m_filterPanel->selectedLabel().isEmpty())
-            m_filterPanel->selectAllTorrents();
+        updateLabelUi();
     });
 
     m_actTrackerGrouping = mView->addAction(tr("Tracker grouping"));
@@ -1795,6 +1813,7 @@ void MainWindow::applyViewVisibility()
 {
     if (m_actFilterPanel && m_filterPanel)
         m_filterPanel->setVisible(m_actFilterPanel->isChecked());
+    updateLabelUi();
     if (m_actInfoPanel && m_tabs)
         m_tabs->setVisible(m_actInfoPanel->isChecked());
     if (m_actToolbar && m_toolBar)
@@ -1808,31 +1827,40 @@ void MainWindow::applyViewVisibility()
 void MainWindow::onSetLabels()
 {
     const auto ids = selectedTorrentIds();
-    if (ids.isEmpty() || !m_rpc || !m_connected)
+    if (ids.isEmpty() || m_labels.isEmpty() || !m_rpc || !m_connected || !m_rpc->supports(16))
         return;
-    // Стартовый текст — метки первого выбранного торрента.
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
     QStringList current;
-    for (const auto& t : m_model.torrents()) {
-        if (t.id == ids.first()) {
-            if (t.labels)
-                current = *t.labels;
-            break;
+    if (ids.size() == 1) {
+        for (const auto& t : m_model.torrents()) {
+            if (t.id == ids.first()) {
+                current = t.labels.value_or(QStringList{});
+                break;
+            }
         }
     }
-    bool ok = false;
-    const QString text = QInputDialog::getText(
-        this, tr("Set labels"), tr("Labels (comma-separated):"),
-        QLineEdit::Normal, current.join(QStringLiteral(", ")), &ok);
-    if (!ok)
-        return;
-    QStringList labels;
-    for (const QString& piece : text.split(',', Qt::SkipEmptyParts)) {
-        const QString s = piece.trimmed();
-        if (!s.isEmpty())
-            labels << s;
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Choose label…"));
+    auto* form = new QFormLayout(&dialog);
+    auto* picker = torrentlabels::createPicker(&dialog, m_labels, current);
+    if (ids.size() > 1) {
+        picker->insertItem(0, tr("Keep current labels"));
+        picker->setCurrentIndex(0);
     }
+    form->addRow(tr("Label"), picker);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted || !rpc || !picker->currentData().isValid())
+        return;
+    const auto labels = picker->currentData().toStringList();
+    if (ids.size() == 1 && labels == current)
+        return;
+    QJsonArray torrentIds;
     for (const int id : ids)
-        m_rpc->setLabels(id, labels);
+        torrentIds.append(id);
+    rpc->setTorrent(ids.first(), {{"ids", torrentIds}, {"labels", QJsonArray::fromStringList(labels)}});
 }
 
 void MainWindow::onExportSettings()
@@ -2382,6 +2410,10 @@ void MainWindow::onOptions()
     OptionsDialog dlg(this, m_connected && m_rpc ? m_rpc->rpcVersion() : 0);
     if (dlg.exec() != QDialog::Accepted)
         return;
+
+    m_labels = torrentlabels::configured();
+    updateLabelUi();
+    updateFilterPanel(m_model.torrents());
 
     // Интервал обновления — применяем сразу (запущенный таймер подхватит новый интервал).
     m_refreshTimer.setInterval(QSettings().value("ui/refreshInterval", kRefreshIntervalMs / 1000).toInt() * 1000);

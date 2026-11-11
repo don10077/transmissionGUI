@@ -1,0 +1,110 @@
+name: Build and test
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        id: msys2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-tools
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-gtest
+      - name: Build and run tests
+        shell: msys2 {0}
+        run: |
+          cmake --preset release
+          cmake --build --preset release --parallel
+          QT_QPA_PLATFORM=offscreen ctest --preset release
+      - name: Package portable ZIP
+        shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: ./tools/package-windows.ps1 -BuildDir build/release -QtBin "$env:MSYS2_LOCATION/mingw64/bin"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transmissiongui-windows-x64
+          path: build/packages/*.zip
+          if-no-files-found: error
+
+  windows-portable:
+    runs-on: windows-latest
+    needs: windows
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: transmissiongui-windows-x64
+      - name: Smoke-test portable ZIP on a separate runner
+        shell: pwsh
+        run: |
+          Expand-Archive transmissiongui-windows-x64.zip portable
+          $env:Path = "$env:SystemRoot/System32;$env:SystemRoot"
+          $env:QT_PLUGIN_PATH = ''
+          $env:QT_QPA_PLATFORM_PLUGIN_PATH = ''
+          $env:QT_QPA_PLATFORM = 'windows'
+          $app = Start-Process -FilePath (Resolve-Path portable/transmissiongui.exe) -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
+          if (!$app.WaitForExit(15000)) { $app.Kill(); throw 'Portable app did not exit' }
+          if ($app.ExitCode -ne 0) { throw "Portable app failed: $($app.ExitCode)" }
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build qt6-base-dev qt6-tools-dev qt6-l10n-tools libgtest-dev zlib1g-dev libxkbcommon-dev dpkg-dev xvfb xauth desktop-file-utils
+      - name: Build and run tests
+        run: |
+          cmake --preset release
+          cmake --build --preset release --parallel
+          QT_QPA_PLATFORM=offscreen ctest --preset release
+      - name: Package and smoke-test DEB
+        run: |
+          cpack --config build/release/CPackConfig.cmake -B build/packages
+          dpkg-deb -x build/packages/*.deb build/portable
+          desktop-file-validate build/portable/usr/share/applications/transmissiongui.desktop
+          xvfb-run -a build/portable/usr/bin/transmissiongui --smoke-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transmissiongui-linux
+          path: build/packages/*.deb
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: brew install qt ninja googletest
+      - name: Build and run tests
+        run: |
+          cmake --preset release -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
+          cmake --build --preset release --parallel
+          QT_QPA_PLATFORM=offscreen ctest --preset release
+      - name: Package and smoke-test DMG
+        run: |
+          cpack --config build/release/CPackConfig.cmake -B build/packages
+          mkdir -p build/portable
+          hdiutil attach build/packages/*.dmg -readonly -nobrowse -mountpoint "$PWD/build/portable"
+          trap 'hdiutil detach "$PWD/build/portable"' EXIT
+          QT_QPA_PLATFORM=offscreen build/portable/transmissiongui.app/Contents/MacOS/transmissiongui --smoke-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transmissiongui-macos
+          path: build/packages/*.dmg
+          if-no-files-found: error

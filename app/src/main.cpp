@@ -5,8 +5,11 @@
 #include <QFont>
 #include <QIcon>
 #include <QSettings>
+#include <QTemporaryDir>
+#include <QTimer>
 #include <QTranslator>
 #include <cmath>
+#include <optional>
 
 // Запуск:
 //   transmissiongui.exe [--url http://хост:порт] [--user имя] [--pass пароль]
@@ -17,19 +20,30 @@ int main(int argc, char* argv[])
     app.setOrganizationName("transmissionGUI");
     app.setApplicationName("transmissionGUI");
     app.setApplicationVersion("0.1.0");
+    const bool smokeTest = app.arguments().contains(QStringLiteral("--smoke-test"));
+    std::optional<QTemporaryDir> smokeSettings;
+    if (smokeTest) {
+        smokeSettings.emplace();
+        if (!smokeSettings->isValid())
+            return 1;
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, smokeSettings->path());
+        QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, smokeSettings->path());
+        QSettings().setValue("ui/trayIcon", false);
+    }
 
     tgui::theme::apply(app);
     app.setWindowIcon(QIcon(tgui::theme::appIconPixmap(64)));
 
     // i18n (W06): русский по умолчанию, язык — QSettings("ui/language");
-    // .qm ищется рядом с exe (translations/tgui_<lang>.qm); если нет — fallback на английский.
+    // Сначала внешний .qm рядом с exe, затем встроенный перевод.
     // Переводчик живёт до выхода из main (installTranslator держит указатель на него).
     QTranslator translator;
     {
         const QString lang = QSettings().value("ui/language", QStringLiteral("ru")).toString();
-        const QString qmPath = QCoreApplication::applicationDirPath()
-                               + QStringLiteral("/translations/tgui_") + lang + QStringLiteral(".qm");
-        if (translator.load(qmPath))
+        const QString qmPath = QStringLiteral("/translations/tgui_") + lang + QStringLiteral(".qm");
+        if (translator.load(QCoreApplication::applicationDirPath() + qmPath) ||
+            translator.load(QStringLiteral(":") + qmPath))
             app.installTranslator(&translator);
     }
 
@@ -69,7 +83,10 @@ int main(int argc, char* argv[])
     }
 
     MainWindow window;
-    window.setAutoConnect(autoOpts);
+    if (!smokeTest)
+        window.setAutoConnect(autoOpts);
     window.show();
+    if (smokeTest)
+        QTimer::singleShot(250, &app, &QCoreApplication::quit);
     return app.exec();
 }

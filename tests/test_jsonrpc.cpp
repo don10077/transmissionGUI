@@ -1,4 +1,5 @@
 #include <QByteArray>
+#include <QJsonArray>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QUrl>
@@ -86,6 +87,69 @@ TEST_F(JsonRpcTest, SessionId409WithoutHeader)
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(r.httpCode, 409);
     EXPECT_EQ(server.requestCount(), 1);
+}
+
+TEST_F(JsonRpcTest, ModernHandshakeAfterRedirectAndTableResponse)
+{
+    server.enqueue({301, {}, {{"Location", "/transmission/web/"}}});
+    server.enqueue({409, {}, {{"X-Transmission-Session-Id", "modern-session"},
+                              {"X-Transmission-Rpc-Version", "6.1.0"}}});
+    server.enqueue({200, R"({"jsonrpc":"2.0","id":1,"result":{"rpc_version":19,"download_dir":"/data"}})", {}});
+    server.enqueue({200, R"({"jsonrpc":"2.0","id":2,"result":{"torrents":[
+        ["id","download_dir","name","tracker_stats","files"],
+        [7,"/data","download_dir",[{"last_announce_time":42}],[{"name":"bytes_completed","bytes_completed":100}]]
+    ]}})", {}});
+
+    tgui::JsonRpcClient client(server.url());
+    const auto session = client.callSync("session-get", {});
+    ASSERT_TRUE(session.ok) << session.error;
+    EXPECT_EQ(session.arguments.value("rpc-version").toInt(), 19);
+    EXPECT_EQ(session.arguments.value("download-dir").toString(), "/data");
+
+    const auto list = client.callSync("torrent-get",
+        {{"fields", QJsonArray{"id", "downloadDir", "name", "trackerStats", "files"}},
+         {"format", "table"}});
+    ASSERT_TRUE(list.ok) << list.error;
+    const auto rows = list.arguments.value("torrents").toArray();
+    ASSERT_EQ(rows.size(), 2);
+    EXPECT_EQ(rows.first().toArray(), (QJsonArray{"id", "downloadDir", "name", "trackerStats", "files"}));
+    const auto row = rows.at(1).toArray();
+    EXPECT_EQ(row.at(2).toString(), "download_dir");
+    EXPECT_EQ(row.at(3).toArray().first().toObject().value("lastAnnounceTime").toInt(), 42);
+    const auto file = row.at(4).toArray().first().toObject();
+    EXPECT_EQ(file.value("name").toString(), "bytes_completed");
+    EXPECT_EQ(file.value("bytesCompleted").toInt(), 100);
+
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 4);
+    EXPECT_EQ(requests.at(0).rpcMethod, "session-get");
+    EXPECT_EQ(requests.at(1).path, "/transmission/rpc");
+    EXPECT_EQ(requests.at(2).rpcMethod, "session_get");
+    EXPECT_EQ(requests.at(2).headers.value("x-transmission-session-id"), "modern-session");
+    EXPECT_EQ(requests.at(3).json.value("jsonrpc").toString(), "2.0");
+    EXPECT_EQ(requests.at(3).rpcMethod, "torrent_get");
+    EXPECT_EQ(requests.at(3).json.value("params").toObject().value("fields").toArray(),
+              (QJsonArray{"id", "download_dir", "name", "tracker_stats", "files"}));
+}
+
+TEST_F(JsonRpcTest, ModernFallbackAndStructuredError)
+{
+    server.enqueue({200, R"({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid Request"}})", {}});
+    server.enqueue({200, R"({"jsonrpc":"2.0","id":1,"result":{"rpc_version_semver":"6.0.0"}})", {}});
+    server.enqueue({200, R"({"jsonrpc":"2.0","id":2,"error":{"code":7,"message":"Backend error",
+        "data":{"error_string":"Port check failed","result":{"port_is_open":false}}}})", {}});
+    server.enqueue({200, R"({"jsonrpc":"2.0","id":999,"result":{}})", {}});
+
+    tgui::JsonRpcClient client(server.url());
+    ASSERT_TRUE(client.callSync("session-get", {}).ok);
+    const auto failure = client.callSync("port-test", {});
+    EXPECT_FALSE(failure.ok);
+    EXPECT_EQ(failure.errorCode, 7);
+    EXPECT_EQ(failure.status, "Backend error");
+    EXPECT_EQ(failure.error, "Port check failed");
+    EXPECT_TRUE(failure.arguments.contains("port-is-open"));
+    EXPECT_FALSE(client.callSync("torrent-stop", {{"ids", QJsonArray{3}}}).ok);
+    EXPECT_EQ(server.requestCount(), 4);
 }
 
 TEST_F(JsonRpcTest, BasicAuthHeaderSent)

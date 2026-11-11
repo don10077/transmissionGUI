@@ -7,6 +7,7 @@
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QSettings>
 #include <QSpinBox>
@@ -15,6 +16,7 @@
 
 #include "pathmap.h"
 #include "sequentialpolicy.h"
+#include "torrentlabels.h"
 
 namespace {
 constexpr char kKeyLanguage[] = "ui/language";
@@ -157,11 +159,25 @@ OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion)
     connect(m_autoSequential, &QCheckBox::toggled, m_sequentialExtensions, &QWidget::setEnabled);
     tabs->addTab(sequentialPage, tr("Sequential download"));
 
+    auto* labelsPage = new QWidget(tabs);
+    auto* labelsLayout = new QVBoxLayout(labelsPage);
+    m_labels = new QPlainTextEdit(torrentlabels::configured().join(QLatin1Char('\n')), labelsPage);
+    m_labels->setObjectName(QStringLiteral("labelNames"));
+    auto* labelHint = new QLabel(tr("Enter one label per line."), labelsPage);
+    labelHint->setBuddy(m_labels);
+    labelsLayout->addWidget(labelHint);
+    labelsLayout->addWidget(m_labels);
+    tabs->addTab(labelsPage, tr("Labels"));
+
     auto* buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    connect(buttons, &QDialogButtonBox::accepted, this, [this] {
-        apply();
-        accept();
+    connect(buttons, &QDialogButtonBox::accepted, this, [this, tabs, labelsPage] {
+        if (apply()) {
+            accept();
+        } else {
+            tabs->setCurrentWidget(labelsPage);
+            m_labels->setFocus();
+        }
     });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
@@ -214,8 +230,19 @@ void OptionsDialog::setPathMappingsText(const QString& text)
     m_paths->setPlainText(text);
 }
 
-void OptionsDialog::apply()
+bool OptionsDialog::apply()
 {
+    QStringList labels;
+    for (const auto& line : m_labels->toPlainText().split(QLatin1Char('\n'))) {
+        const auto label = line.trimmed();
+        if (label.contains(QLatin1Char(','))) {
+            QMessageBox::warning(this, tr("Labels"), tr("Label names cannot contain commas."));
+            return false;
+        }
+        if (!label.isEmpty() && !labels.contains(label))
+            labels.append(label);
+    }
+
     QSettings s;
     const QString newLang = currentLanguage();
     const int newScale = scale();
@@ -232,5 +259,7 @@ void OptionsDialog::apply()
     s.setValue("downloads/autoSequential", m_autoSequential->isChecked());
     s.setValue("downloads/sequentialExtensions", m_sequentialExtensions->toPlainText());
     s.setValue(kKeyPaths, tgui::pathMappingsFromText(pathMappingsText()));
+    s.setValue(torrentlabels::settingsKey, labels);
     s.sync();
+    return true;
 }

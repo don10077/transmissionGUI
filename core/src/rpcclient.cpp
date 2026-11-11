@@ -137,7 +137,7 @@ void RpcClient::getTorrents(const QStringList& extraFields)
     QStringList fields = {
         "id", "name", "status", "errorString", "announceResponse", "recheckProgress",
         "sizeWhenDone", "leftUntilDone", "rateDownload", "rateUpload", "trackerStats",
-        "metadataPercentComplete", "sequential_download", "downloadDir",
+        "metadataPercentComplete", "sequential_download", "downloadDir", "labels",
         // Расширенные поля для списка и диалога «Свойства».
         "addedDate", "doneDate", "downloadedEver", "uploadedEver", "corruptEver",
         "isPrivate", "isStalled", "queuePosition", "uploadRatio",
@@ -440,7 +440,16 @@ void RpcClient::setTorrent(int id, const QJsonObject& params)
     QJsonObject args = params;
     if (!args.contains("ids"))
         torrentIds(args, id);
-    requestReport("torrent-set", args);
+    if (!params.contains("labels")) {
+        requestReport("torrent-set", args);
+        return;
+    }
+    requestReport("torrent-set", args, [this](const JsonRpcResult& result) {
+        if (result.ok)
+            getTorrents();
+        emit requestCompleted("torrent-set", result.ok,
+                              result.ok ? QString() : describeError(result), result.arguments);
+    });
 }
 
 void RpcClient::setLabels(int id, const QStringList& labels)
@@ -452,10 +461,7 @@ void RpcClient::setLabels(int id, const QStringList& labels)
                               QJsonObject{});
         return;
     }
-    QJsonObject args;
-    torrentIds(args, id);
-    args.insert("labels", toJsonArray(labels));
-    requestReport("torrent-set", args);
+    setTorrent(id, {{"labels", toJsonArray(labels)}});
 }
 
 void RpcClient::setPriority(int id, int priority)
@@ -780,6 +786,8 @@ void RpcClient::configureAddedTorrent(const TorrentDetails& details, const AddTo
         settings.insert("peer-limit", options.peerLimit);
     if (supports(18))
         settings.insert("sequential_download", options.sequential);
+    if (supports(16) && !options.labels.isEmpty())
+        settings.insert("labels", toJsonArray(options.labels));
     if (!unwanted.isEmpty()) {
         QJsonArray skipped;
         for (const int index : unwanted)

@@ -483,49 +483,45 @@ TorrentFilterProxy::TorrentFilterProxy(QObject* parent) : QSortFilterProxyModel(
     setDynamicSortFilter(true);
 }
 
+/** Обновляет фильтр строк через API установленной версии Qt. */
+template<typename T>
+void TorrentFilterProxy::setFilterValue(T& current, const T& value)
+{
+    if (current == value)
+        return;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    beginFilterChange();
+    current = value;
+    endFilterChange(Direction::Rows);
+#else
+    current = value;
+    invalidateRowsFilter();
+#endif
+}
+
 void TorrentFilterProxy::setStatusGroup(int group)
 {
-    if (m_group == group)
-        return;
-    beginFilterChange();
-    m_group = group;
-    endFilterChange();
+    setFilterValue(m_group, group);
 }
 
 void TorrentFilterProxy::setFolderFilter(const QString& folder)
 {
-    if (m_folder == folder)
-        return;
-    beginFilterChange();
-    m_folder = folder;
-    endFilterChange();
+    setFilterValue(m_folder, folder);
 }
 
 void TorrentFilterProxy::setTrackerFilter(const QString& announce)
 {
-    if (m_tracker == announce)
-        return;
-    beginFilterChange();
-    m_tracker = announce;
-    endFilterChange();
+    setFilterValue(m_tracker, announce);
 }
 
 void TorrentFilterProxy::setLabelFilter(const QString& label)
 {
-    if (m_label == label)
-        return;
-    beginFilterChange();
-    m_label = label;
-    endFilterChange();
+    setFilterValue(m_label, label);
 }
 
 void TorrentFilterProxy::setSearchText(const QString& text)
 {
-    if (m_search == text)
-        return;
-    beginFilterChange();
-    m_search = text;
-    endFilterChange();
+    setFilterValue(m_search, text);
 }
 
 const tgui::Torrent& TorrentFilterProxy::torrentAt(int row) const

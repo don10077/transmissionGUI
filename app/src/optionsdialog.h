@@ -27,8 +27,8 @@ public:
     QString pathMappingsText() const;
     void setPathMappingsText(const QString& text);
 
-    // Записывает все значения в QSettings и считает, нужен ли перезапуск.
-    void apply();
+    // Проверяет параметры, записывает их в QSettings и считает, нужен ли перезапуск.
+    bool apply();
     // Язык/масштаб изменились → требуется перезапуск (применяется при следующем запуске).
     bool restartRequired() const { return m_restartRequired; }
 
@@ -37,6 +37,7 @@ private:
     QSpinBox* m_scale = nullptr;
     QSpinBox* m_refresh = nullptr;
     QPlainTextEdit* m_paths = nullptr;
+    QPlainTextEdit* m_labels = nullptr;
     QCheckBox* m_closeToTray = nullptr;
     QCheckBox* m_minimizeToTray = nullptr;
     QCheckBox* m_trayIcon = nullptr;

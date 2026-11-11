@@ -1,4 +1,5 @@
 #include "propsdialog.h"
+#include "torrentlabels.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -53,6 +54,17 @@ PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion
     }
     form->addRow(QString(), sequential);
     QList<std::function<void(QJsonObject&)>> readers;
+    const auto labels = torrentlabels::configured();
+    if (rpcVersion >= 16 && !labels.isEmpty()) {
+        const auto current = t.labels.value_or(QStringList{});
+        auto* picker = torrentlabels::createPicker(general, labels, current);
+        form->addRow(tr("Label"), picker);
+        readers.append([picker, current](QJsonObject& result) {
+            const auto selected = picker->currentData().toStringList();
+            if (selected != current)
+                result["labels"] = QJsonArray::fromStringList(selected);
+        });
+    }
     auto limit = [&](const QString& title, const char* enabled, const char* amount) {
         auto* row = new QWidget(general);
         auto* layout = new QHBoxLayout(row);

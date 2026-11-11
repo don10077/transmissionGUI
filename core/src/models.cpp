@@ -385,10 +385,13 @@ bool getStatsBlock(const QJsonObject& json, const char* key, StatsBlock& out)
 
 bool parseSessionInfo(const QJsonObject& j, SessionInfo& out)
 {
-    if (!j.contains("rpc-version") && !j.contains("version"))
+    if (!j.contains("rpc-version") && !j.contains("rpc-version-semver") && !j.contains("version"))
         return false;
 
     out.rpcVersion = j.value("rpc-version").toInt();
+    if (out.rpcVersion == 0 &&
+        j.value("rpc-version-semver").toString().section(QLatin1Char('.'), 0, 0).toInt() >= 6)
+        out.rpcVersion = 18;
     out.version = j.value("version").toString();
     out.downloadDir = j.value("download-dir").toString();
 

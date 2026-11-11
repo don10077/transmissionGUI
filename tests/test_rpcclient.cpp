@@ -159,7 +159,7 @@ TEST_F(RpcClientTest, GetTorrentsRpc18FieldsAndTable)
                          loop.quit();
                      });
     timer.start(5000);
-    client->getTorrents({"labels", "downloadDir", "uploadRatio", "totalSize"});
+    client->getTorrents();
     loop.exec();
 
     ASSERT_TRUE(got);
@@ -1122,6 +1122,7 @@ TEST_F(RpcClientTest, ConfiguresNewTorrentBeforeStarting)
     options.peerLimit = 40;
     options.sequential = true;
     options.start = true;
+    options.labels = {"Video"};
 
     QEventLoop loop;
     bool ok = false;
@@ -1143,6 +1144,7 @@ TEST_F(RpcClientTest, ConfiguresNewTorrentBeforeStarting)
     EXPECT_EQ(requests.at(first + 1).rpcMethod, "torrent-set");
     EXPECT_EQ(requests.at(first + 1).arguments.value("peer-limit").toInt(), 40);
     EXPECT_TRUE(requests.at(first + 1).arguments.value("sequential_download").toBool());
+    EXPECT_EQ(requests.at(first + 1).arguments.value("labels").toArray(), QJsonArray{"Video"});
     EXPECT_EQ(requests.at(first + 1).arguments.value("files-unwanted").toArray(), QJsonArray{1});
     EXPECT_EQ(requests.at(first + 2).rpcMethod, "torrent-rename-path");
     EXPECT_EQ(requests.at(first + 2).arguments.value("name").toString(), "Movie.mkv");
@@ -1245,6 +1247,7 @@ TEST(RpcLive, Trackers)
 
     RpcClient::Options o;
     o.url = QUrl(url);
+    o.rpcPath = qEnvironmentVariable("TGUI_E2E_PATH");
     o.username = user;
     o.password = pass;
     auto client = std::make_unique<RpcClient>(o);
@@ -1271,6 +1274,7 @@ TEST(RpcLive, Trackers)
              [&connected](const SessionInfo&) { connected = true; return true; },
              [c] { c->connectToDaemon(); });
     ASSERT_TRUE(connected);
+    RecordProperty("rpcVersion", c->rpcVersion());
 
     int id = -1;
     waitSlot(&RpcClient::torrentsReceived,

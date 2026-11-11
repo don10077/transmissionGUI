@@ -3,6 +3,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include <QJsonObject>
 #include <QNetworkAccessManager>
@@ -16,12 +17,13 @@ constexpr const char* kDefaultRpcPath = "/transmission/rpc";
 
 // Результат JSON-RPC вызова к Transmission.
 struct JsonRpcResult {
-    bool ok = false; // HTTP 200 + валидный JSON + result == "success"
+    bool ok = false;
     int httpCode = 0; // 0 — соединения не было (сеть/TLS/таймаут)
-    QString status;   // "result" из ответа ("success" / "failure")
+    QString status;   // legacy result или сообщение ошибки JSON-RPC 2.0
     QString error;    // человекочитаемая ошибка (транспортная или RPC), пусто при ok
     QJsonObject body; // разобранный ответ
-    QJsonObject arguments; // body["arguments"], когда ok
+    QJsonObject arguments; // результат в именах полей, используемых моделями
+    std::optional<int> errorCode;
 };
 
 // Низкоуровневый JSON-RPC транспорт демона Transmission:
@@ -61,7 +63,15 @@ public:
     QString sessionId() const { return m_sessionId; }
 
 private:
-    void doRequest(const QJsonObject& payload, int attempt, Callback cb);
+    struct Request {
+        QString method;
+        QJsonObject arguments;
+        qint64 id;
+        bool modern;
+        bool sessionRetried = false;
+        bool redirected = false;
+    };
+    void doRequest(Request rpc, Callback cb);
 
     std::unique_ptr<QNetworkAccessManager> m_nam;
     QUrl m_url;
@@ -71,6 +81,8 @@ private:
     QString m_sessionId; // x-transmission-session-id
     std::chrono::milliseconds m_timeout = std::chrono::seconds(30);
     bool m_ignoreSslErrors = false;
+    bool m_modern = false;
+    qint64 m_nextId = 0;
 };
 
 } // namespace tgui

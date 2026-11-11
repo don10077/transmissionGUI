@@ -3,9 +3,12 @@
 #include <gtest/gtest.h>
 
 #include <QCoreApplication>
+#include <QPlainTextEdit>
 #include <QSettings>
 
+#include "fileselectdialog.h"
 #include "optionsdialog.h"
+#include "torrentlabels.h"
 
 namespace {
 void resetUiKeys()
@@ -74,4 +77,41 @@ TEST(OptionsDialog, TrayDefaultsPersist)
     EXPECT_FALSE(s.value("ui/minimizeToTray").toBool());
     EXPECT_TRUE(s.value("ui/trayIcon").toBool());
     EXPECT_FALSE(s.value("ui/trayNotify").toBool());
+}
+
+TEST(OptionsDialog, ConfiguredLabelsAreAvailableWhenAddingTorrent)
+{
+    isolateTestSettings();
+    QSettings settings;
+    const QVariant previous = settings.value(torrentlabels::settingsKey);
+    settings.remove(torrentlabels::settingsKey);
+    const tgui::TorrentDetails details;
+    FileSelectDialog withoutLabels(details, false, 16);
+    EXPECT_EQ(withoutLabels.findChild<QComboBox*>("torrentLabel"), nullptr);
+
+    OptionsDialog options;
+    auto* editor = options.findChild<QPlainTextEdit*>("labelNames");
+    ASSERT_NE(editor, nullptr);
+    editor->setPlainText(" Video \n\nMusic\nVideo");
+    options.apply();
+    EXPECT_EQ(torrentlabels::configured(), (QStringList{"Video", "Music"}));
+    EXPECT_FALSE(options.restartRequired());
+    OptionsDialog reopened;
+    auto* savedEditor = reopened.findChild<QPlainTextEdit*>("labelNames");
+    ASSERT_NE(savedEditor, nullptr);
+    EXPECT_EQ(savedEditor->toPlainText(), QStringLiteral("Video\nMusic"));
+
+    FileSelectDialog add(details, false, 16);
+    auto* picker = add.findChild<QComboBox*>("torrentLabel");
+    ASSERT_NE(picker, nullptr);
+    EXPECT_TRUE(add.options().labels.isEmpty());
+    picker->setCurrentIndex(2);
+    EXPECT_EQ(add.options().labels, QStringList{"Music"});
+
+    FileSelectDialog unsupported(details, false, 15);
+    EXPECT_EQ(unsupported.findChild<QComboBox*>("torrentLabel"), nullptr);
+    if (previous.isValid())
+        settings.setValue(torrentlabels::settingsKey, previous);
+    else
+        settings.remove(torrentlabels::settingsKey);
 }

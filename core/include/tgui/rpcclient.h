@@ -38,6 +38,7 @@ public:
         int peerLimit = 0;    // 0 — не устанавливать
         bool start = false;   // true → paused=false сразу
         bool sequential = false; // пошлется только при rpc-version >= 18
+        QStringList labels;    // метки выбранные при добавлении, RPC >= 16
     };
 
     using DetailsCallback = std::function<void(const std::optional<TorrentDetails>&)>;

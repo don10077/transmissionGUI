@@ -396,6 +396,7 @@
   </context>
   <context>
     <name>FileSelectDialog</name>
+    <message><source>Label</source><translation>Метка</translation></message>
     <message>
       <source>File name</source>
       <translation>Имя файла</translation>
@@ -1583,21 +1584,9 @@ Download this database now?</source>
       <source>Disconnect from Transmission</source>
       <translation>Отключиться от Transmission</translation>
     </message>
-    <message>
-      <location filename="../app/src/mainwindow.cpp" line="1273" />
-      <source>Set labels…</source>
-      <translation>Установить метки…</translation>
-    </message>
-    <message>
-      <location filename="../app/src/mainwindow.cpp" line="1437" />
-      <source>Set labels</source>
-      <translation>Метки</translation>
-    </message>
-    <message>
-      <location filename="../app/src/mainwindow.cpp" line="1437" />
-      <source>Labels (comma-separated):</source>
-      <translation>Метки (через запятую):</translation>
-    </message>
+    <message><source>Choose label…</source><translation>Выбрать метку…</translation></message>
+    <message><source>Label</source><translation>Метка</translation></message>
+    <message><source>Keep current labels</source><translation>Сохранить текущие метки</translation></message>
     <message>
       <location filename="../app/src/mainwindow.cpp" line="1279" />
       <source>Export settings…</source>
@@ -1751,6 +1740,9 @@ Restart the application to apply the changes.</source>
   </context>
   <context>
     <name>OptionsDialog</name>
+    <message><source>Labels</source><translation>Метки</translation></message>
+    <message><source>Enter one label per line.</source><translation>Введите по одной метке на строку.</translation></message>
+    <message><source>Label names cannot contain commas.</source><translation>В названиях меток нельзя использовать запятые.</translation></message>
     <message><source>Automatically enable sequential download for these extensions</source><translation>Автоматически включать последовательное скачивание для этих расширений</translation></message>
     <message><source>Only for torrents containing one file. You can change the checkbox in the Add torrent dialog.</source><translation>Только для торрентов с одним файлом. Галочку можно изменить вручную в окне добавления.</translation></message>
     <message><source>Extensions (separated by spaces, commas or new lines):</source><translation>Расширения (через пробел, запятую или с новой строки):</translation></message>
@@ -1889,6 +1881,7 @@ Used when opening files/torrents with double-click.</source>
   </context>
   <context>
     <name>PropsDialog</name>
+    <message><source>Label</source><translation>Метка</translation></message>
     <message><source>Name</source><translation>Название</translation></message>
     <message><source>Peer limit</source><translation>Лимит пиров</translation></message>
     <message><source>Limit</source><translation>Ограничить</translation></message>
@@ -2568,5 +2561,9 @@ Used when opening files/torrents with double-click.</source>
       <source>The downloaded torrent file has a different info hash.</source>
       <translation>Хеш скачанного файла торрента отличается.</translation>
     </message>
+  </context>
+  <context>
+    <name>TorrentLabels</name>
+    <message><source>No label</source><translation>Без метки</translation></message>
   </context>
 </TS>

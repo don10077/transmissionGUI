@@ -43,6 +43,7 @@ TEST(E2ETabs, SelectionLoadsDetails)
     MainWindow w;
     tgui::RpcClient::Options o;
     o.url = QUrl(url);
+    o.rpcPath = qEnvironmentVariable("TGUI_E2E_PATH");
     o.username = user;
     o.password = pass;
     w.setAutoConnect(o);
