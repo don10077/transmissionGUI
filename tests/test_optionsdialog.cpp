@@ -4,6 +4,7 @@
 
 #include <QCoreApplication>
 #include <QPlainTextEdit>
+#include <QPushButton>
 #include <QSettings>
 
 #include "fileselectdialog.h"
@@ -84,7 +85,7 @@ TEST(OptionsDialog, ConfiguredLabelsAreAvailableWhenAddingTorrent)
     isolateTestSettings();
     QSettings settings;
     const QVariant previous = settings.value(torrentlabels::settingsKey);
-    settings.remove(torrentlabels::settingsKey);
+    settings.setValue(torrentlabels::settingsKey, QStringList{});
     const tgui::TorrentDetails details;
     FileSelectDialog withoutLabels(details, false, 16);
     EXPECT_EQ(withoutLabels.findChild<QComboBox*>("torrentLabel"), nullptr);
@@ -110,6 +111,37 @@ TEST(OptionsDialog, ConfiguredLabelsAreAvailableWhenAddingTorrent)
 
     FileSelectDialog unsupported(details, false, 15);
     EXPECT_EQ(unsupported.findChild<QComboBox*>("torrentLabel"), nullptr);
+    if (previous.isValid())
+        settings.setValue(torrentlabels::settingsKey, previous);
+    else
+        settings.remove(torrentlabels::settingsKey);
+}
+
+TEST(OptionsDialog, DefaultLabelsCanBeRemovedAndRestored)
+{
+    isolateTestSettings();
+    QSettings settings;
+    const auto previous = settings.value(torrentlabels::settingsKey);
+    settings.remove(torrentlabels::settingsKey);
+    EXPECT_EQ(torrentlabels::configured(),
+              (QStringList{"Video", "Serials", "Pictures", "Soft", "Music", "Books", "Games"}));
+    OptionsDialog options;
+    auto* editor = options.findChild<QPlainTextEdit*>("labelNames");
+    auto* restore = options.findChild<QPushButton*>("restoreDefaultLabels");
+    ASSERT_NE(editor, nullptr);
+    ASSERT_NE(restore, nullptr);
+    EXPECT_FALSE(restore->isEnabled());
+
+    editor->setPlainText(QStringLiteral("Custom\nMusic"));
+    ASSERT_TRUE(restore->isEnabled());
+    restore->click();
+    EXPECT_FALSE(restore->isEnabled());
+    ASSERT_TRUE(options.apply());
+    EXPECT_EQ(torrentlabels::configured(),
+              (QStringList{"Custom", "Music", "Video", "Serials", "Pictures", "Soft", "Books", "Games"}));
+    editor->clear();
+    ASSERT_TRUE(options.apply());
+    EXPECT_TRUE(torrentlabels::configured().isEmpty());
     if (previous.isValid())
         settings.setValue(torrentlabels::settingsKey, previous);
     else

@@ -9,10 +9,17 @@ namespace torrentlabels {
 
 inline constexpr char settingsKey[] = "downloads/labels";
 
+/** Стандартные названия меток для нового каталога. */
+inline const QStringList& presets()
+{
+    static const QStringList names = {"Video", "Serials", "Pictures", "Soft", "Music", "Books", "Games"};
+    return names;
+}
+
 /** Возвращает список меток, заданных в настройках приложения. */
 inline QStringList configured()
 {
-    return QSettings().value(settingsKey).toStringList();
+    return QSettings().value(settingsKey, presets()).toStringList();
 }
 
 /** Создаёт выбор метки, сохраняя исходное значение при открытии свойств. */

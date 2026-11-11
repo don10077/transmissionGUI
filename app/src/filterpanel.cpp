@@ -24,6 +24,30 @@ constexpr int kRoleCount = Qt::UserRole + 5;
 constexpr int kRoleSection = Qt::UserRole + 6;
 constexpr int kRoleLabel = Qt::UserRole + 7;
 
+/** Возвращает тематический значок предустановленной метки. */
+QIcon labelIcon(const QString& label)
+{
+    using namespace tgui::theme;
+    struct CategoryIcon {
+        const char* name;
+        const char* themeName;
+        Icon fallback;
+    };
+    static const CategoryIcon categories[] = {
+        {"Video", "video-x-generic", Icon::Start},
+        {"Serials", "video-display", Icon::TabFiles},
+        {"Pictures", "image-x-generic", Icon::TabGeneral},
+        {"Soft", "applications-system", Icon::AppOptions},
+        {"Music", "audio-x-generic", Icon::AltSpeed},
+        {"Books", "x-office-document", Icon::Properties},
+        {"Games", "applications-games", Icon::FilterActive},
+    };
+    for (const auto& category : categories)
+        if (label == QLatin1String(category.name))
+            return QIcon::fromTheme(QLatin1String(category.themeName), icon(category.fallback));
+    return icon(Icon::Properties);
+}
+
 tgui::theme::Icon statusIcon(int group)
 {
     switch (group) {
@@ -101,7 +125,7 @@ public:
         else if (tracker.isValid())
             ic = tgui::theme::icon(Icon::Tracker);
         else if (labelValue.isValid())
-            ic = tgui::theme::icon(Icon::Properties);
+            ic = labelIcon(labelValue.toString());
         else
             ic = tgui::theme::icon(statusIcon(index.data(kRoleGroup).toInt()));
 

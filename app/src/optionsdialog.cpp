@@ -1,22 +1,30 @@
 #include "optionsdialog.h"
 
+#include <algorithm>
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
+#include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QPointer>
+#include <QPushButton>
 #include <QSettings>
 #include <QSpinBox>
 #include <QTabWidget>
+#include <QTextBlock>
 #include <QVBoxLayout>
 
 #include "pathmap.h"
 #include "sequentialpolicy.h"
 #include "torrentlabels.h"
+#include "tgui/rpcclient.h"
 
 namespace {
 constexpr char kKeyLanguage[] = "ui/language";
@@ -27,9 +35,21 @@ constexpr char kKeyMinimizeToTray[] = "ui/minimizeToTray";
 constexpr char kKeyTrayIcon[] = "ui/trayIcon";
 constexpr char kKeyTrayNotify[] = "ui/trayNotify";
 constexpr char kKeyPaths[] = "paths/mappings";
+
+/** Возвращает названия меток из редактора в порядке ввода. */
+QStringList readLabels(const QPlainTextEdit& editor)
+{
+    QStringList labels;
+    for (const auto& line : editor.toPlainText().split(QLatin1Char('\n'))) {
+        const auto label = line.trimmed();
+        if (!label.isEmpty() && !labels.contains(label))
+            labels.append(label);
+    }
+    return labels;
+}
 }  // namespace
 
-OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion)
+OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion, tgui::RpcClient* rpc)
     : QDialog(parent)
 {
     // Как transgui/options.lfm: «Application options» + вкладки
@@ -167,6 +187,44 @@ OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion)
     labelHint->setBuddy(m_labels);
     labelsLayout->addWidget(labelHint);
     labelsLayout->addWidget(m_labels);
+    auto* labelActions = new QHBoxLayout;
+    auto* restore = new QPushButton(tr("Restore default labels"), labelsPage);
+    restore->setObjectName(QStringLiteral("restoreDefaultLabels"));
+    auto* rename = new QPushButton(tr("Rename selected label…"), labelsPage);
+    rename->setObjectName(QStringLiteral("renameLabel"));
+    labelActions->addWidget(restore);
+    labelActions->addWidget(rename);
+    labelActions->addStretch(1);
+    labelsLayout->addLayout(labelActions);
+
+    const auto updateLabelActions = [this, restore, rename, client = QPointer(rpc)] {
+        const auto labels = readLabels(*m_labels);
+        const auto& defaults = torrentlabels::presets();
+        restore->setEnabled(std::any_of(defaults.cbegin(), defaults.cend(),
+                                       [&labels](const QString& name) { return !labels.contains(name); }));
+        rename->setEnabled(client && client->supports(16) &&
+                           torrentlabels::configured().contains(m_labels->textCursor().block().text().trimmed()));
+    };
+    connect(m_labels, &QPlainTextEdit::textChanged, this, updateLabelActions);
+    connect(m_labels, &QPlainTextEdit::cursorPositionChanged, this, updateLabelActions);
+    connect(restore, &QPushButton::clicked, this, [this] {
+        auto labels = readLabels(*m_labels);
+        for (const auto& name : torrentlabels::presets())
+            if (!labels.contains(name))
+                labels.append(name);
+        m_labels->setPlainText(labels.join(QLatin1Char('\n')));
+    });
+    if (rpc) {
+        connect(rename, &QPushButton::clicked, this, [this, rpc] { renameLabel(*rpc); });
+        connect(rpc, &QObject::destroyed, this, [this, rename] {
+            if (m_renamingLabel) {
+                m_renamingLabel = false;
+                setEnabled(true);
+            }
+            rename->setEnabled(false);
+        });
+    }
+    updateLabelActions();
     tabs->addTab(labelsPage, tr("Labels"));
 
     auto* buttons = new QDialogButtonBox(
@@ -179,7 +237,7 @@ OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion)
             m_labels->setFocus();
         }
     });
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::rejected, this, &OptionsDialog::reject);
 
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(12, 12, 12, 12);
@@ -232,15 +290,12 @@ void OptionsDialog::setPathMappingsText(const QString& text)
 
 bool OptionsDialog::apply()
 {
-    QStringList labels;
-    for (const auto& line : m_labels->toPlainText().split(QLatin1Char('\n'))) {
-        const auto label = line.trimmed();
+    const auto labels = readLabels(*m_labels);
+    for (const auto& label : labels) {
         if (label.contains(QLatin1Char(','))) {
             QMessageBox::warning(this, tr("Labels"), tr("Label names cannot contain commas."));
             return false;
         }
-        if (!label.isEmpty() && !labels.contains(label))
-            labels.append(label);
     }
 
     QSettings s;
@@ -262,4 +317,56 @@ bool OptionsDialog::apply()
     s.setValue(torrentlabels::settingsKey, labels);
     s.sync();
     return true;
+}
+
+/** Оставляет окно открытым до получения результата переименования. */
+void OptionsDialog::reject()
+{
+    if (!m_renamingLabel)
+        QDialog::reject();
+}
+
+/** Сохраняет новое имя в каталоге после обновления назначений на текущем сервере. */
+void OptionsDialog::renameLabel(tgui::RpcClient& rpc)
+{
+    const auto from = m_labels->textCursor().block().text().trimmed();
+    auto configured = torrentlabels::configured();
+    const auto index = configured.indexOf(from);
+    if (index < 0)
+        return;
+
+    const QPointer client(&rpc);
+    bool accepted = false;
+    const auto to = QInputDialog::getText(this, tr("Rename label"),
+        tr("New name (saved immediately and applied on the connected server):"),
+        QLineEdit::Normal, from, &accepted).trimmed();
+    if (!accepted || !client || to == from)
+        return;
+    if (to.isEmpty() || to.contains(QLatin1Char(',')) || configured.contains(to) ||
+        readLabels(*m_labels).contains(to)) {
+        QMessageBox::warning(this, tr("Rename label"),
+                             tr("Enter a unique, nonempty name without commas."));
+        return;
+    }
+    configured[index] = to;
+    m_renamingLabel = true;
+    setEnabled(false);
+    rpc.renameLabel(from, to, [dialog = QPointer(this), from, to, configured](const tgui::JsonRpcResult& result) {
+        if (result.ok)
+            QSettings().setValue(torrentlabels::settingsKey, configured);
+        if (!dialog)
+            return;
+        dialog->m_renamingLabel = false;
+        dialog->setEnabled(true);
+        if (!result.ok) {
+            QMessageBox::warning(dialog, tr("Rename label"),
+                tr("The rename did not finish. You can retry with the same name.\n%1").arg(result.error));
+            return;
+        }
+        auto lines = dialog->m_labels->toPlainText().split(QLatin1Char('\n'));
+        for (auto& line : lines)
+            if (line.trimmed() == from)
+                line = to;
+        dialog->m_labels->setPlainText(lines.join(QLatin1Char('\n')));
+    });
 }

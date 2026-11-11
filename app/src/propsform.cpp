@@ -478,7 +478,7 @@ void PropsForm::rebuild()
     }
     tgrid->addWidget(magnet, 4, 1);
     makeCell(tgrid, 4, 2, tr("Labels"),
-             t.labels.has_value() ? t.labels->join(QStringLiteral(", ")) : dash());
+             t.labels && !t.labels->isEmpty() ? t.labels->join(QStringLiteral(", ")) : dash());
 
     Q_UNUSED(torrentCard);
     contentLayout->addStretch(1);

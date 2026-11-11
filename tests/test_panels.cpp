@@ -102,6 +102,7 @@ TEST(PropsForm, RendersTorrent)
     EXPECT_FALSE(labelContaining(&f, "movie-2160p").isEmpty());
     EXPECT_FALSE(labelContaining(&f, "1.00 GB").isEmpty());
     EXPECT_FALSE(labelContaining(&f, "/Shares/Video").isEmpty());
+    EXPECT_TRUE(hasExactLabel(&f, QStringLiteral("hd, video")));
     // Раздел «Downloaded:» + одна шкала (карта кусков) + процент справа —
     // как в старом transgui (panProgress: метка, pbDownloaded, «100.0%»).
     EXPECT_FALSE(labelContaining(&f, "Downloaded:").isEmpty());
@@ -1097,7 +1098,10 @@ TEST(W04Context, AltSpeedF8ChooseLabelF7AndContextMenuItems)
     Torrent torrent; torrent.id = 700; torrent.name = QStringLiteral("labels-cols");
     torrent.status = 4; torrent.sizeWhenDone = 100.; torrent.leftUntilDone = 50.;
     torrent.labels = QStringList{"Video"};
-    window.applyTorrentsUpdate({torrent});
+    Torrent unlabeled;
+    unlabeled.id = 701;
+    unlabeled.name = QStringLiteral("unlabeled");
+    window.applyTorrentsUpdate({torrent, unlabeled});
 
     QAction* altSpeed = nullptr; QAction* setLabels = nullptr;
     QAction* labelGrouping = nullptr;
@@ -1125,6 +1129,8 @@ TEST(W04Context, AltSpeedF8ChooseLabelF7AndContextMenuItems)
     EXPECT_TRUE(labelsSection->isHidden());
     labelGrouping->setChecked(true);
     EXPECT_FALSE(labelsSection->isHidden());
+    filterTree->setCurrentItem(labelsSection->child(1));
+    ASSERT_EQ(window.torrentView()->model()->rowCount(), 1);
 
     // Хоткеи главного меню — как в образце (ShortCut из main.lfm).
     QHash<QString, QKeySequence> byShortcut;
@@ -1168,7 +1174,7 @@ TEST(W04Context, AltSpeedF8ChooseLabelF7AndContextMenuItems)
         auto* menu = qobject_cast<QMenu*>(QApplication::activePopupWidget());
         if (!menu) return;
         for (auto* action : menu->actions()) {
-            if (action->text() == QStringLiteral("Choose label…")) {
+            if (action->text() == QStringLiteral("Label: Video")) {
                 hasLabels = true; labelsEnabled = action->isEnabled();
             }
             if (action->text() == QStringLiteral("Setup columns…")) hasColumns = true;

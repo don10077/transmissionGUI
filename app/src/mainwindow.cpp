@@ -1345,7 +1345,8 @@ void MainWindow::onContextMenu(const QPoint& pos)
     auto* menu = new QMenu(this);
     menu->setAttribute(Qt::WA_DeleteOnClose);
 
-    const bool hasSel = m_connected && !selectedTorrentIds().isEmpty();
+    const auto selectedIds = selectedTorrentIds();
+    const bool hasSel = m_connected && !selectedIds.isEmpty();
     using tgui::theme::Icon;
     auto stdIcon = [this](QStyle::StandardPixmap sp) { return style()->standardIcon(sp); };
 
@@ -1429,8 +1430,20 @@ void MainWindow::onContextMenu(const QPoint& pos)
     QObject::connect(actProperties, &QAction::triggered, this, &MainWindow::onShowProperties);
     menu->addSeparator();
 
-    if (!m_labels.isEmpty())
-        menu->addAction(m_actChooseLabel);
+    if (!m_labels.isEmpty()) {
+        QString title = m_actChooseLabel->text();
+        if (selectedIds.size() == 1) {
+            const auto& torrents = m_model.torrents();
+            const auto torrent = std::find_if(torrents.cbegin(), torrents.cend(),
+                [id = selectedIds.first()](const auto& entry) { return entry.id == id; });
+            if (torrent != torrents.cend() && torrent->labels && !torrent->labels->isEmpty()) {
+                auto names = torrent->labels->join(QStringLiteral(", "));
+                title = tr("Label: %1").arg(names.replace('&', "&&"));
+            }
+        }
+        auto* labelAction = menu->addAction(title, this, &MainWindow::onSetLabels);
+        labelAction->setEnabled(m_actChooseLabel->isEnabled());
+    }
     auto* actSetupColumns = menu->addAction(tr("Setup columns…"));
     QObject::connect(actSetupColumns, &QAction::triggered, this, &MainWindow::onColumns);
     menu->addSeparator();
@@ -2407,13 +2420,16 @@ void MainWindow::onPortTest()
 void MainWindow::onOptions()
 {
     // W07: диалог параметров (интерфейс: язык/масштаб/интервал; трей).
-    OptionsDialog dlg(this, m_connected && m_rpc ? m_rpc->rpcVersion() : 0);
-    if (dlg.exec() != QDialog::Accepted)
-        return;
+    auto* rpc = m_connected ? m_rpc.get() : nullptr;
+    OptionsDialog dlg(this, rpc ? rpc->rpcVersion() : 0, rpc);
+    const auto result = dlg.exec();
 
     m_labels = torrentlabels::configured();
     updateLabelUi();
     updateFilterPanel(m_model.torrents());
+
+    if (result != QDialog::Accepted)
+        return;
 
     // Интервал обновления — применяем сразу (запущенный таймер подхватит новый интервал).
     m_refreshTimer.setInterval(QSettings().value("ui/refreshInterval", kRefreshIntervalMs / 1000).toInt() * 1000);

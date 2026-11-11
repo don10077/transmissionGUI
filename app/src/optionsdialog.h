@@ -6,6 +6,7 @@ class QComboBox;
 class QSpinBox;
 class QCheckBox;
 class QPlainTextEdit;
+namespace tgui { class RpcClient; }
 
 // W07: диалог «Параметры» (образец transgui/options.pas) — интерфейс и трей.
 // Значения читаются/пишутся в QSettings (раздел ui/*):
@@ -14,7 +15,8 @@ class QPlainTextEdit;
 class OptionsDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit OptionsDialog(QWidget* parent = nullptr, int rpcVersion = 0);
+    explicit OptionsDialog(QWidget* parent = nullptr, int rpcVersion = 0,
+                           tgui::RpcClient* rpc = nullptr);
 
     // Доступ к значениям (для UI и тестов).
     QString currentLanguage() const;
@@ -33,6 +35,8 @@ public:
     bool restartRequired() const { return m_restartRequired; }
 
 private:
+    void reject() override;
+    void renameLabel(tgui::RpcClient& rpc);
     QComboBox* m_language = nullptr;
     QSpinBox* m_scale = nullptr;
     QSpinBox* m_refresh = nullptr;
@@ -45,4 +49,5 @@ private:
     QCheckBox* m_autoSequential = nullptr;
     QPlainTextEdit* m_sequentialExtensions = nullptr;
     bool m_restartRequired = false;
+    bool m_renamingLabel = false;
 };

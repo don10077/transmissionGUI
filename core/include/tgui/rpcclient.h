@@ -89,6 +89,8 @@ public:
     void setLocation(int id, const QString& path, bool moveData);
     void setTorrent(int id, const QJsonObject& params); // общий torrent-set
     void setLabels(int id, const QStringList& labels);  // требует rpc >= 16
+    /** Заменяет имя метки у торрентов текущего демона, сохраняя их остальные метки. */
+    void renameLabel(const QString& from, const QString& to, RequestCallback callback);
     void setPriority(int id, int priority);             // -1 / 0 / 1 (весь торрент)
     void setFilesWanted(int id, const QVector<int>& wanted, const QVector<int>& unwanted, RequestCallback callback = {});
     // Per-file приоритет (legacy): files-wanted + priority-{low|normal|high}.
@@ -135,7 +137,7 @@ private:
     void request(const QString& method, const QJsonObject& arguments);
     void requestReport(const QString& method, const QJsonObject& arguments,
                        RequestCallback callback = {});
-    void applyAddSettings(QList<QPair<QString, QJsonObject>> requests, RequestCallback callback);
+    void applyRequests(QList<QPair<QString, QJsonObject>> requests, RequestCallback callback);
     void torrentIds(QJsonObject& args, int id) const;
     static QString describeError(const JsonRpcResult& r);
 

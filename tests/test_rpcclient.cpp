@@ -143,7 +143,7 @@ TEST_F(RpcClientTest, GetTorrentsRpc18FieldsAndTable)
     server.enqueue(MockRpcServer::Response{
         200,
         "{\"result\": \"success\", \"arguments\": {\"torrents\": "
-        "[[\"id\",\"name\",\"status\",\"sequential_download\"], [7,\"movie\",4,true]]}}",
+        "[[\"id\",\"name\",\"status\",\"sequential_download\",\"labels\"], [7,\"movie\",4,true,[\"Video\"]]]}}",
         {}});
 
     QEventLoop loop;
@@ -167,6 +167,7 @@ TEST_F(RpcClientTest, GetTorrentsRpc18FieldsAndTable)
     EXPECT_EQ(torrents.first().id, 7);
     EXPECT_EQ(*torrents.first().name, "movie");
     EXPECT_TRUE(*torrents.first().sequentialDownload);
+    EXPECT_EQ(torrents.first().labels, std::optional<QStringList>{QStringList{"Video"}});
 
     const auto req = server.requests().last();
     EXPECT_EQ(req.rpcMethod, "torrent-get");
@@ -904,6 +905,39 @@ TEST_F(RpcClientTest, TrackerVersionGate)
     EXPECT_FALSE(ok);
     EXPECT_NE(error.indexOf("10"), -1);
     EXPECT_EQ(server.requestCount(), before); // запрос в сеть не уходил
+}
+
+TEST_F(RpcClientTest, RenameLabelPreservesOtherAssignments)
+{
+    connectWith(16);
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[
+        {"id":7,"labels":["Video","Shared","Movies"]},
+        {"id":8,"labels":["Music"]},
+        {"id":9,"labels":["Video"]}
+    ]}})", {}});
+    server.enqueue(MockRpcServer::Response{});
+    server.enqueue(MockRpcServer::Response{});
+    server.setDefault({200, R"({"result":"success","arguments":{"torrents":[]}})", {}});
+
+    QEventLoop loop;
+    QTimer::singleShot(5000, &loop, &QEventLoop::quit);
+    bool ok = false;
+    const auto first = server.requestCount();
+    client->renameLabel("Video", "Movies", [&](const JsonRpcResult& result) {
+        ok = result.ok;
+        loop.quit();
+    });
+    loop.exec();
+    ASSERT_TRUE(ok);
+    const auto requests = server.requests();
+    ASSERT_GE(requests.size(), first + 3);
+    EXPECT_EQ(requests.at(first).arguments.value("fields").toArray(), (QJsonArray{"id", "labels"}));
+    EXPECT_EQ(requests.at(first + 1).rpcMethod, "torrent-set");
+    EXPECT_EQ(requests.at(first + 1).arguments.value("ids").toArray(), QJsonArray{7});
+    EXPECT_EQ(requests.at(first + 1).arguments.value("labels").toArray(), (QJsonArray{"Movies", "Shared"}));
+    EXPECT_EQ(requests.at(first + 2).rpcMethod, "torrent-set");
+    EXPECT_EQ(requests.at(first + 2).arguments.value("ids").toArray(), QJsonArray{9});
+    EXPECT_EQ(requests.at(first + 2).arguments.value("labels").toArray(), QJsonArray{"Movies"});
 }
 
 TEST_F(RpcClientTest, SetLabelsVersionGate)

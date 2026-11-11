@@ -1585,6 +1585,7 @@ Download this database now?</source>
       <translation>Отключиться от Transmission</translation>
     </message>
     <message><source>Choose label…</source><translation>Выбрать метку…</translation></message>
+    <message><source>Label: %1</source><translation>Метка: %1</translation></message>
     <message><source>Label</source><translation>Метка</translation></message>
     <message><source>Keep current labels</source><translation>Сохранить текущие метки</translation></message>
     <message>
@@ -1742,6 +1743,14 @@ Restart the application to apply the changes.</source>
     <name>OptionsDialog</name>
     <message><source>Labels</source><translation>Метки</translation></message>
     <message><source>Enter one label per line.</source><translation>Введите по одной метке на строку.</translation></message>
+    <message><source>Restore default labels</source><translation>Восстановить предустановленные метки</translation></message>
+    <message><source>Rename selected label…</source><translation>Переименовать выбранную метку…</translation></message>
+    <message><source>Rename label</source><translation>Переименование метки</translation></message>
+    <message><source>New name (saved immediately and applied on the connected server):</source><translation>Новое имя (сохраняется сразу и применяется на подключённом сервере):</translation></message>
+    <message><source>Enter a unique, nonempty name without commas.</source><translation>Введите свободное непустое имя без запятых.</translation></message>
+    <message><source>The rename did not finish. You can retry with the same name.
+%1</source><translation>Переименование не завершено. Можно повторить операцию с тем же именем.
+%1</translation></message>
     <message><source>Label names cannot contain commas.</source><translation>В названиях меток нельзя использовать запятые.</translation></message>
     <message><source>Automatically enable sequential download for these extensions</source><translation>Автоматически включать последовательное скачивание для этих расширений</translation></message>
     <message><source>Only for torrents containing one file. You can change the checkbox in the Add torrent dialog.</source><translation>Только для торрентов с одним файлом. Галочку можно изменить вручную в окне добавления.</translation></message>

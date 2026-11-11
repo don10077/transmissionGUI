@@ -464,6 +464,48 @@ void RpcClient::setLabels(int id, const QStringList& labels)
     setTorrent(id, {{"labels", toJsonArray(labels)}});
 }
 
+void RpcClient::renameLabel(const QString& from, const QString& to, RequestCallback callback)
+{
+    if (!supports(16)) {
+        JsonRpcResult result;
+        result.error = QStringLiteral("labels require Transmission RPC version 16 or newer");
+        callback(result);
+        return;
+    }
+    requestReport("torrent-get", {{"fields", QJsonArray{"id", "labels"}}},
+        [this, from, to, callback = std::move(callback)](const JsonRpcResult& result) {
+            const auto torrents = result.arguments.value("torrents");
+            if (!result.ok || !torrents.isArray()) {
+                auto failure = result;
+                failure.ok = false;
+                failure.error = describeError(result.ok ? JsonRpcResult{} : result);
+                callback(failure);
+                return;
+            }
+            QList<QPair<QString, QJsonObject>> requests;
+            for (const auto& entry : torrents.toArray()) {
+                const auto torrent = entry.toObject();
+                const int id = torrent.value("id").toInt(-1);
+                const auto labels = torrent.value("labels").toArray();
+                if (id < 0 || !labels.contains(from))
+                    continue;
+                QStringList renamed;
+                for (const auto& label : labels) {
+                    const auto name = label.toString();
+                    const auto replacement = name == from ? to : name;
+                    if (!renamed.contains(replacement))
+                        renamed.append(replacement);
+                }
+                requests.append({"torrent-set", {{"ids", QJsonArray{id}},
+                                                 {"labels", toJsonArray(renamed)}}});
+            }
+            applyRequests(std::move(requests), [this, callback](const JsonRpcResult& update) {
+                getTorrents();
+                callback(update);
+            });
+        });
+}
+
 void RpcClient::setPriority(int id, int priority)
 {
     // Ключ 'bandwidthPriority' (camelCase) — как в образце (SetTorrentPriority)
@@ -803,10 +845,11 @@ void RpcClient::configureAddedTorrent(const TorrentDetails& details, const AddTo
                                                   {"path", details.name}, {"name", name}}});
     if (options.start)
         requests.append({"torrent-start", {{"ids", ids}}});
-    applyAddSettings(std::move(requests), std::move(callback));
+    applyRequests(std::move(requests), std::move(callback));
 }
 
-void RpcClient::applyAddSettings(QList<QPair<QString, QJsonObject>> requests, RequestCallback callback)
+/** Последовательно выполняет RPC-запросы до первой ошибки. */
+void RpcClient::applyRequests(QList<QPair<QString, QJsonObject>> requests, RequestCallback callback)
 {
     if (requests.isEmpty()) {
         JsonRpcResult result;
@@ -818,7 +861,7 @@ void RpcClient::applyAddSettings(QList<QPair<QString, QJsonObject>> requests, Re
     requestReport(method, args, [this, requests = std::move(requests),
                                  callback = std::move(callback)](JsonRpcResult r) mutable {
         if (r.ok) {
-            applyAddSettings(std::move(requests), std::move(callback));
+            applyRequests(std::move(requests), std::move(callback));
             return;
         }
         callback(std::move(r));
