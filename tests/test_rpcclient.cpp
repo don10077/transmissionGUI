@@ -1028,6 +1028,59 @@ TEST_F(RpcClientTest, PeersReceived)
     EXPECT_EQ(req.arguments.value("fields").toArray().first().toString(), "peers");
 }
 
+TEST_F(RpcClientTest, DuplicateUpdateAddsOnlyMissingTrackers)
+{
+    connectWith(18);
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[
+        {"id":7,"trackers":[{"announce":"https://existing.example/announce"}]}
+    ]}})", {}});
+    server.enqueue({});
+
+    const QString magnet = "magnet:?tr=https%3A%2F%2Fexisting.example%2Fannounce"
+                           "&tr=https%3A%2F%2Fnew.example%2Fannounce%3Fkey%3Da%252Bb"
+                           "&tr=https%3A%2F%2Fnew.example%2Fannounce%3Fkey%3Da%252Bb";
+    QEventLoop loop;
+    bool updated = false;
+    QString error;
+    QTimer::singleShot(3000, &loop, &QEventLoop::quit);
+    client->updateDuplicateTrackers(7, magnet, {}, [&](const QString& failure, bool changed) {
+        error = failure;
+        updated = changed;
+        loop.quit();
+    });
+    loop.exec();
+    ASSERT_TRUE(error.isEmpty()) << error.toStdString();
+    ASSERT_TRUE(updated);
+    const auto request = server.requests().last();
+    EXPECT_EQ(request.rpcMethod, "torrent-set");
+    EXPECT_EQ(request.arguments.value("ids").toArray(), QJsonArray{7});
+    EXPECT_EQ(request.arguments.value("trackerAdd").toArray(),
+              QJsonArray{"https://new.example/announce?key=a%2Bb"});
+    EXPECT_EQ(request.arguments.size(), 2);
+}
+
+TEST_F(RpcClientTest, DuplicateFileWithSameTrackerSkipsMutation)
+{
+    connectWith(18);
+    const QByteArray metainfo = "d8:announce30:https://known.example/announce4:infodee";
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[
+        {"id":7,"trackers":[{"announce":"https://known.example/announce"}]}
+    ]}})", {}});
+    QEventLoop loop;
+    bool called = false;
+    QTimer::singleShot(3000, &loop, &QEventLoop::quit);
+    client->updateDuplicateTrackers(7, {}, metainfo, [&](const QString& error, bool changed) {
+        EXPECT_TRUE(error.isEmpty()) << error.toStdString();
+        EXPECT_FALSE(changed);
+        called = true;
+        loop.quit();
+    });
+    if (!called)
+        loop.exec();
+    EXPECT_TRUE(called);
+    EXPECT_EQ(server.requests().last().rpcMethod, "torrent-get");
+}
+
 TEST_F(RpcClientTest, ConfiguresNewTorrentBeforeStarting)
 {
     connectWith(18);

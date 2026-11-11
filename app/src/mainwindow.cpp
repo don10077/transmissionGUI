@@ -2,7 +2,6 @@
 
 #include <QAction>
 #include <QActionGroup>
-#include <QAbstractButton>
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QCloseEvent>
@@ -1191,24 +1190,18 @@ void MainWindow::onRemoveSelected()
     if (ids.isEmpty())
         return;
 
-    auto* box = new QMessageBox(this);
-    box->setWindowTitle(tr("Remove torrents"));
-    box->setIcon(QMessageBox::Question);
-    box->setText(ids.size() == 1
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    QMessageBox box(QMessageBox::Question, tr("Remove torrents"),
+                 ids.size() == 1
                      ? tr("Remove the torrent from the daemon's list?")
-                     : tr("Remove %1 torrents from the daemon's list?").arg(ids.size()));
-    box->setInformativeText(tr("You can also remove the downloaded data on disk."));
-    box->setStandardButtons(QMessageBox::Cancel);
-    QAbstractButton* btnRemove = box->addButton(tr("Remove"), QMessageBox::AcceptRole);
-    QAbstractButton* btnRemoveData =
-        box->addButton(tr("Remove with data"), QMessageBox::DestructiveRole);
-    box->exec();
-    const auto clicked = box->clickedButton();
-    box->deleteLater();
-    if (clicked == btnRemove || clicked == btnRemoveData) {
-        const bool deleteData = (clicked == btnRemoveData);
+                     : tr("Remove %1 torrents from the daemon's list?").arg(ids.size()),
+                 QMessageBox::Cancel, this);
+    const auto* remove = box.addButton(tr("Remove"), QMessageBox::AcceptRole);
+    box.setDefaultButton(QMessageBox::Cancel);
+    box.exec();
+    if (rpc && box.clickedButton() == remove) {
         for (int id : ids)
-            m_rpc->removeTorrent(id, deleteData);
+            rpc->removeTorrent(id);
     }
 }
 
@@ -1443,13 +1436,18 @@ void MainWindow::addNextTorrent()
     params.start = false;
 
     // Как в оригинале, берём список файлов у демона, пока торрент на паузе.
-    m_rpc->addTorrent(params, [this, start, params](const tgui::JsonRpcResult& addedResult) {
+    m_rpc->addTorrent(params, [this, start, params](const tgui::JsonRpcResult& addedResult,
+                                                    const QByteArray& metainfo) {
+        const auto duplicate = addedResult.arguments.value("torrent-duplicate");
+        if ((addedResult.ok && duplicate.isObject()) ||
+            addedResult.status == "duplicate torrent" || addedResult.error == "duplicate torrent") {
+            offerDuplicateUpdate(params, duplicate.toObject(), metainfo);
+            return;
+        }
         const auto added = addedResult.arguments.value("torrent-added").toObject();
         const int id = added.value("id").toInt(-1);
         if (!addedResult.ok || id < 0) {
-            const QString message = !addedResult.ok ? addedResult.error :
-                addedResult.arguments.contains("torrent-duplicate") ? tr("Torrent already exists.") :
-                tr("Unable to add torrent.");
+            const QString message = !addedResult.ok ? addedResult.error : tr("Unable to add torrent.");
             onReadError(tr("Add torrent"), message);
             finishAdd();
             return;
@@ -1490,6 +1488,69 @@ void MainWindow::addNextTorrent()
             dialog->open();
         });
     });
+}
+
+/** Offer to merge the incoming tracker URLs into an already registered torrent. */
+void MainWindow::offerDuplicateUpdate(const tgui::RpcClient::AddTorrent& source,
+                                      const QJsonObject& duplicate, const QByteArray& metainfo)
+{
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    const QString name = duplicate.value("name").toString();
+    const QString message = name.isEmpty() ? tr("Torrent already exists.") :
+        tr("The torrent “%1” already exists.").arg(name);
+    auto* box = new QMessageBox(QMessageBox::Question, tr("Update torrent"), message,
+                                QMessageBox::Cancel, this);
+    box->setTextFormat(Qt::PlainText);
+    box->setInformativeText(tr("Add missing trackers to the existing torrent?"));
+    auto* update = box->addButton(tr("Update trackers"), QMessageBox::AcceptRole);
+    box->setDefaultButton(QMessageBox::Cancel);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    connect(rpc.data(), &QObject::destroyed, box, &QDialog::reject);
+    connect(box, &QDialog::finished, this, [this, rpc, box, update, duplicate, source, metainfo] {
+        if (!rpc)
+            return;
+        if (box->clickedButton() != update) {
+            finishAdd();
+            return;
+        }
+        const int id = duplicate.value("id").toInt(-1);
+        const auto merge = [this, rpc, id](const QString& magnet, const QByteArray& bytes,
+                                          const QString& expectedHash = {}) {
+            rpc->updateDuplicateTrackers(id, magnet, bytes, [this, rpc, id](const QString& error,
+                                                                            bool updated) {
+                if (!error.isEmpty())
+                    onReadError(tr("Update torrent"), error);
+                else
+                    statusBar()->showMessage(updated ? tr("Torrent trackers updated.") :
+                                                         tr("No new trackers to add."), 5000);
+                if (updated && m_currentId >= 0 && (id < 0 || id == m_currentId))
+                    rpc->getTrackers(m_currentId);
+                finishAdd();
+            }, expectedHash);
+        };
+        const QUrl url(source.url);
+        if (source.source == tgui::RpcClient::AddTorrent::Source::Url &&
+            (url.scheme() == "http" || url.scheme() == "https")) {
+            QNetworkRequest request(url);
+            request.setTransferTimeout(rpc->options().timeoutMs);
+            auto* reply = m_nam.get(request);
+            const auto expectedHash = duplicate.value("hashString").toString();
+            connect(reply, &QNetworkReply::finished, this, [this, rpc, reply, merge, expectedHash] {
+                reply->deleteLater();
+                if (!rpc)
+                    return;
+                if (reply->error() == QNetworkReply::NoError) {
+                    merge({}, reply->readAll(), expectedHash);
+                } else {
+                    onReadError(tr("Update torrent"), reply->errorString());
+                    finishAdd();
+                }
+            });
+        } else {
+            merge(url.scheme() == "magnet" ? source.url : QString(), metainfo);
+        }
+    });
+    box->open();
 }
 
 // Главное меню — структура по референсу (Torrent / View / Tools / Help,

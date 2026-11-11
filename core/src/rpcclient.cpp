@@ -3,7 +3,9 @@
 
 #include <algorithm>
 
+#include <QCryptographicHash>
 #include <QFile>
+#include <QUrlQuery>
 
 namespace tgui {
 
@@ -566,7 +568,7 @@ void RpcClient::replaceTracker(int id, int trackerId, const QString& newUrl)
     requestReport("torrent-set", args);
 }
 
-void RpcClient::addTorrent(const AddTorrent& params, RequestCallback callback)
+void RpcClient::addTorrent(const AddTorrent& params, AddCallback callback)
 {
     // paused + peer-limit + sequential_download (>= 18).
     QJsonObject args;
@@ -592,16 +594,16 @@ void RpcClient::addTorrent(const AddTorrent& params, RequestCallback callback)
             break;
     }
     // Общий путь для файлов и Base64: исправленная копия существует только в памяти.
+    QByteArray raw;
     if (args.contains("metainfo")) {
-        const QByteArray raw = QByteArray::fromBase64(args.value("metainfo").toString().toLatin1());
+        raw = QByteArray::fromBase64(args.value("metainfo").toString().toLatin1());
         const std::string bytes(raw.constData(), static_cast<size_t>(raw.size()));
         bencode::Value value;
         if (!bencode::decode(bytes, value)) {
             bencode::RepairResult repaired;
             if (bencode::repair(bytes, repaired)) {
-                const QByteArray fixed(repaired.fixedBytes.data(),
-                                       static_cast<qsizetype>(repaired.fixedBytes.size()));
-                args.insert("metainfo", QString::fromLatin1(fixed.toBase64()));
+                raw = QByteArray::fromStdString(repaired.fixedBytes);
+                args.insert("metainfo", QString::fromLatin1(raw.toBase64()));
             }
             // Неизвестную порчу оценивает демон: его ошибка возвращается обычным путём.
         }
@@ -613,7 +615,148 @@ void RpcClient::addTorrent(const AddTorrent& params, RequestCallback callback)
         args.insert("peer-limit", params.peerLimit);
     if (params.sequential && supports(18))
         args.insert("sequential_download", true);
-    requestReport("torrent-add", args, std::move(callback));
+    if (!callback) {
+        requestReport("torrent-add", args);
+        return;
+    }
+    requestReport("torrent-add", args,
+        [callback = std::move(callback), raw = std::move(raw)](const JsonRpcResult& result) {
+            callback(result, raw);
+        });
+}
+
+namespace {
+
+/** Read the v1 info hash from a hexadecimal or Base32 magnet identifier. */
+QString magnetInfoHash(const QUrlQuery& query)
+{
+    for (const auto& identifier : query.allQueryItemValues("xt", QUrl::FullyDecoded)) {
+        if (!identifier.startsWith("urn:btih:", Qt::CaseInsensitive))
+            continue;
+        const QByteArray encoded = identifier.mid(9).toLatin1().toUpper();
+        if (encoded.size() == 40) {
+            const auto decoded = QByteArray::fromHex(encoded);
+            if (decoded.size() == 20)
+                return QString::fromLatin1(decoded.toHex());
+        } else if (encoded.size() == 32) {
+            const QByteArray alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+            QByteArray decoded;
+            unsigned int bits = 0;
+            int count = 0;
+            for (const char ch : encoded) {
+                const auto digit = alphabet.indexOf(ch);
+                if (digit < 0)
+                    break;
+                bits = (bits << 5) | static_cast<unsigned int>(digit);
+                count += 5;
+                if (count >= 8) {
+                    count -= 8;
+                    decoded.append(static_cast<char>((bits >> count) & 0xff));
+                }
+            }
+            if (decoded.size() == 20)
+                return QString::fromLatin1(decoded.toHex());
+        }
+    }
+    return {};
+}
+
+} // namespace
+
+void RpcClient::updateDuplicateTrackers(int id, const QString& magnet, const QByteArray& metainfo,
+                                        TrackerUpdateCallback callback, const QString& expectedHash)
+{
+    if (!supports(10)) {
+        callback(tr("This daemon does not support updating trackers."), false);
+        return;
+    }
+    QStringList trackers;
+    QString hash;
+    if (!magnet.isEmpty()) {
+        const QUrlQuery query{QUrl(magnet)};
+        trackers = query.allQueryItemValues("tr", QUrl::FullyDecoded);
+        if (id < 0)
+            hash = magnetInfoHash(query);
+    } else {
+        bencode::Value root;
+        const auto bytes = metainfo.toStdString();
+        if (!bencode::decode(bytes, root)) {
+            bencode::RepairResult repaired;
+            if (!bencode::repair(bytes, repaired) || !bencode::decode(repaired.fixedBytes, root)) {
+                callback(tr("Unable to read trackers from the torrent file."), false);
+                return;
+            }
+        }
+        const auto append = [&trackers](const bencode::Value& entry) {
+            if (entry.type() == bencode::Value::Type::String)
+                trackers.append(QString::fromStdString(entry.toString()).trimmed());
+        };
+        if (const auto* tiers = root.find("announce-list")) {
+            for (const auto& tier : tiers->asList())
+                for (const auto& entry : tier.asList())
+                    append(entry);
+        }
+        if (trackers.isEmpty()) {
+            if (const auto* announce = root.find("announce"))
+                append(*announce);
+        }
+        if (id < 0 || !expectedHash.isEmpty()) {
+            if (const auto* info = root.find("info")) {
+                const auto encoded = QByteArray::fromStdString(bencode::encode(*info));
+                hash = QString::fromLatin1(QCryptographicHash::hash(encoded, QCryptographicHash::Sha1).toHex());
+                if (!expectedHash.isEmpty()) {
+                    const auto v2 = QString::fromLatin1(
+                        QCryptographicHash::hash(encoded, QCryptographicHash::Sha256).toHex());
+                    if (expectedHash.compare(hash, Qt::CaseInsensitive) != 0 &&
+                        expectedHash.compare(v2, Qt::CaseInsensitive) != 0 &&
+                        expectedHash.compare(v2.left(40), Qt::CaseInsensitive) != 0)
+                        hash.clear();
+                }
+            }
+            if (!expectedHash.isEmpty() && hash.isEmpty()) {
+                callback(tr("The downloaded torrent file has a different info hash."), false);
+                return;
+            }
+        }
+    }
+    trackers.removeAll(QString());
+    trackers.removeDuplicates();
+    if (trackers.isEmpty()) {
+        callback({}, false);
+        return;
+    }
+    if (id < 0 && hash.isEmpty()) {
+        callback(tr("Unable to identify the existing torrent."), false);
+        return;
+    }
+
+    const QJsonArray ids{id >= 0 ? QJsonValue(id) : QJsonValue(hash)};
+    requestReport("torrent-get", {{"ids", ids}, {"fields", QJsonArray{"id", "trackers"}}},
+        [this, trackers = std::move(trackers), callback = std::move(callback)](
+            const JsonRpcResult& result) mutable {
+            if (!result.ok) {
+                callback(describeError(result), false);
+                return;
+            }
+            const auto torrents = result.arguments.value("torrents").toArray();
+            const auto existing = torrents.isEmpty() ? QJsonObject{} : torrents.first().toObject();
+            const int existingId = existing.value("id").toInt(-1);
+            if (existingId < 0 || !existing.value("trackers").isArray()) {
+                callback(tr("Unable to read the existing torrent's trackers."), false);
+                return;
+            }
+            for (const auto& tracker : existing.value("trackers").toArray())
+                trackers.removeAll(tracker.toObject().value("announce").toString());
+            if (trackers.isEmpty()) {
+                callback({}, false);
+                return;
+            }
+            requestReport("torrent-set", {{"ids", QJsonArray{existingId}},
+                                          {"trackerAdd", toJsonArray(trackers)}},
+                [callback = std::move(callback)](const JsonRpcResult& update) {
+                    callback(update.ok ? QString() : describeError(update), update.ok);
+                });
+        });
 }
 
 void RpcClient::configureAddedTorrent(const TorrentDetails& details, const AddTorrent& options,

@@ -42,6 +42,8 @@ public:
 
     using DetailsCallback = std::function<void(const std::optional<TorrentDetails>&)>;
     using RequestCallback = JsonRpcClient::Callback;
+    using AddCallback = std::function<void(const JsonRpcResult&, const QByteArray&)>;
+    using TrackerUpdateCallback = std::function<void(const QString& error, bool updated)>;
 
     explicit RpcClient(const Options& options, QObject* parent = nullptr);
 
@@ -94,7 +96,9 @@ public:
     void addTracker(int id, const QString& url);
     void removeTracker(int id, int trackerId);
     void replaceTracker(int id, int trackerId, const QString& newUrl);
-    void addTorrent(const AddTorrent& params, RequestCallback callback = {});
+    void addTorrent(const AddTorrent& params, AddCallback callback = {});
+    void updateDuplicateTrackers(int id, const QString& magnet, const QByteArray& metainfo,
+                                 TrackerUpdateCallback callback, const QString& expectedHash = {});
     void configureAddedTorrent(const TorrentDetails& details, const AddTorrent& options,
                                const QString& name, const QVector<int>& unwanted,
                                RequestCallback callback);

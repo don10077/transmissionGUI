@@ -170,6 +170,8 @@ private:
     int proxyRowForId(int id) const;
     void startAdd(const tgui::RpcClient::AddTorrent& params);
     void addNextTorrent();
+    void offerDuplicateUpdate(const tgui::RpcClient::AddTorrent& source,
+                              const QJsonObject& duplicate, const QByteArray& metainfo);
     void finishAdd();
     QVector<int> selectedTorrentIds() const;
     static void loadSettings(tgui::RpcClient::Options& opts);

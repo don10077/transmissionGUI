@@ -842,11 +842,6 @@ Reason: %2</source>
       <translation>Удалить %1 торрентов из списка демона?</translation>
     </message>
     <message>
-      <location filename="../app/src/mainwindow.cpp" line="962" />
-      <source>You can also remove the downloaded data on disk.</source>
-      <translation>Можно также удалить скачанные данные на диске.</translation>
-    </message>
-    <message>
       <location filename="../app/src/mainwindow.cpp" line="966" />
       <location filename="../app/src/mainwindow.cpp" line="1659" />
       <source>Remove with data</source>
@@ -1640,6 +1635,30 @@ Restart the application to apply the changes.</source>
     <message>
       <source>Unable to add torrent.</source>
       <translation>Не удалось добавить торрент.</translation>
+    </message>
+    <message>
+      <source>Update torrent</source>
+      <translation>Обновить торрент</translation>
+    </message>
+    <message>
+      <source>The torrent “%1” already exists.</source>
+      <translation>Торрент «%1» уже добавлен.</translation>
+    </message>
+    <message>
+      <source>Add missing trackers to the existing torrent?</source>
+      <translation>Добавить недостающие трекеры к существующему торренту?</translation>
+    </message>
+    <message>
+      <source>Update trackers</source>
+      <translation>Обновить трекеры</translation>
+    </message>
+    <message>
+      <source>Torrent trackers updated.</source>
+      <translation>Трекеры торрента обновлены.</translation>
+    </message>
+    <message>
+      <source>No new trackers to add.</source>
+      <translation>Новых трекеров нет.</translation>
     </message>
   </context>
   <context>
@@ -2487,4 +2506,27 @@ Used when opening files/torrents with double-click.</source>
     <message><source>Mixed</source><translation>Разный</translation></message>
     <message><source>Skip</source><translation>Пропустить</translation></message>
 </context>
+  <context>
+    <name>tgui::RpcClient</name>
+    <message>
+      <source>This daemon does not support updating trackers.</source>
+      <translation>Эта версия демона не поддерживает обновление трекеров.</translation>
+    </message>
+    <message>
+      <source>Unable to read trackers from the torrent file.</source>
+      <translation>Не удалось прочитать трекеры из файла торрента.</translation>
+    </message>
+    <message>
+      <source>Unable to identify the existing torrent.</source>
+      <translation>Не удалось определить существующий торрент.</translation>
+    </message>
+    <message>
+      <source>Unable to read the existing torrent's trackers.</source>
+      <translation>Не удалось получить трекеры существующего торрента.</translation>
+    </message>
+    <message>
+      <source>The downloaded torrent file has a different info hash.</source>
+      <translation>Хеш скачанного файла торрента отличается.</translation>
+    </message>
+  </context>
 </TS>

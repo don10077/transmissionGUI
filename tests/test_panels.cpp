@@ -934,9 +934,23 @@ TEST(AutoSequential, MetadataFileCountManualOverrideAndCapabilities)
     EXPECT_FALSE(unsupported.findChild<QCheckBox*>("autoSequential")->isEnabled());
 
     settings.setValue("downloads/sequentialExtensions", ".mp4, *.FLAC; mkv");
+    file.name = "audio.FLAC";
+    EXPECT_TRUE(tgui::automaticSequential({file}, 18));
     file.name = "Folder/audio.FLAC";
     EXPECT_TRUE(tgui::automaticSequential({file}, 18));
-    EXPECT_FALSE(tgui::automaticSequential({file, details.files.first()}, 18));
+    tgui::TorrentDetails folder = details;
+    folder.name = "Folder";
+    folder.files = {file};
+    FileSelectDialog addFolder(folder, false, 18);
+    EXPECT_TRUE(addFolder.options().sequential);
+    folder.files.append(details.files.first());
+    FileSelectDialog addMultiple(folder, false, 18);
+    EXPECT_FALSE(addMultiple.options().sequential);
+    auto* folderCheckbox = addMultiple.findChild<QCheckBox*>("sequentialDownload");
+    ASSERT_NE(folderCheckbox, nullptr);
+    EXPECT_TRUE(folderCheckbox->isEnabled());
+    folderCheckbox->click();
+    EXPECT_TRUE(addMultiple.options().sequential);
     EXPECT_FALSE(tgui::automaticSequential({}, 18));
     details.files.first().name = "document.pdf";
     FileSelectDialog manual(details, false, 18);
