@@ -128,6 +128,7 @@ cmake --preset win-debug --build-and-run test   # unit-тесты
 `transmissiongui.exe` из распакованной папки.
 
 Для Ubuntu нужны GCC, CMake ≥ 3.28, Ninja, Qt 6 Base и Tools, GoogleTest и zlib.
+Для создания DEB установите также `dpkg-dev` и `file`.
 На macOS эти зависимости можно установить через Homebrew. При конфигурации
 передайте `-DCMAKE_PREFIX_PATH="$(brew --prefix qt)"`.
 

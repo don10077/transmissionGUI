@@ -156,7 +156,7 @@ ColumnLayout ColumnLayout::fromView(QTableView* view, int count)
         return defaults(count);
     auto* header = view->horizontalHeader();
     ColumnLayout c;
-    c.visible.assign(count, false);
+    c.visible = QList<bool>(count, false);
     const int n = header->count();
     for (int visual = 0; visual < n; ++visual) {
         const int logical = header->logicalIndex(visual);
@@ -235,7 +235,7 @@ ColumnLayout ColSetupDialog::layout() const
     ColumnLayout d = m_initial; // сохраняем ширины
     const int n = m_list->count();
     d.order.clear();
-    d.visible.assign(n, false);
+    d.visible = QList<bool>(n, false);
     for (int i = 0; i < n; ++i) {
         const int col = m_list->item(i)->data(Qt::UserRole).toInt();
         d.order << col;

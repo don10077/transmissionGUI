@@ -22,9 +22,8 @@ test_out.txt
 *.torrent
 *.log
 *.bin
-*.ps1
-!tools/package-windows.ps1
 *.bak
 *.txt
 *.ps1
+!tools/package-windows.ps1
 WORKFLOW.archive.md

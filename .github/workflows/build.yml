@@ -9,7 +9,7 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - uses: msys2/setup-msys2@v2
         id: msys2
         with:
@@ -35,7 +35,7 @@ jobs:
         env:
           MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: ./tools/package-windows.ps1 -BuildDir build/release -QtBin "$env:MSYS2_LOCATION/mingw64/bin"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: transmissiongui-windows-x64
           path: build/packages/*.zip
@@ -45,7 +45,7 @@ jobs:
     runs-on: windows-latest
     needs: windows
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: transmissiongui-windows-x64
       - name: Smoke-test portable ZIP on a separate runner
@@ -63,11 +63,11 @@ jobs:
   linux:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build qt6-base-dev qt6-tools-dev qt6-l10n-tools libgtest-dev zlib1g-dev libxkbcommon-dev dpkg-dev xvfb xauth desktop-file-utils
+          sudo apt-get install -y ninja-build qt6-base-dev qt6-tools-dev qt6-l10n-tools libgtest-dev zlib1g-dev libxkbcommon-dev dpkg-dev file xvfb xauth desktop-file-utils
       - name: Build and run tests
         run: |
           cmake --preset release
@@ -79,7 +79,7 @@ jobs:
           dpkg-deb -x build/packages/*.deb build/portable
           desktop-file-validate build/portable/usr/share/applications/transmissiongui.desktop
           xvfb-run -a build/portable/usr/bin/transmissiongui --smoke-test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: transmissiongui-linux
           path: build/packages/*.deb
@@ -88,7 +88,7 @@ jobs:
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Install dependencies
         run: brew install qt ninja googletest
       - name: Build and run tests
@@ -102,8 +102,8 @@ jobs:
           mkdir -p build/portable
           hdiutil attach build/packages/*.dmg -readonly -nobrowse -mountpoint "$PWD/build/portable"
           trap 'hdiutil detach "$PWD/build/portable"' EXIT
-          QT_QPA_PLATFORM=offscreen build/portable/transmissiongui.app/Contents/MacOS/transmissiongui --smoke-test
-      - uses: actions/upload-artifact@v4
+          QT_QPA_PLATFORM=cocoa build/portable/transmissiongui.app/Contents/MacOS/transmissiongui --smoke-test
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: transmissiongui-macos
           path: build/packages/*.dmg
