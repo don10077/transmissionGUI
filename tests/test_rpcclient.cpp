@@ -264,7 +264,7 @@ TEST_F(RpcClientTest, AddTorrentSequentialGate)
     const auto req = server.requests().last();
     EXPECT_EQ(req.rpcMethod, "torrent-add");
     EXPECT_EQ(req.arguments.value("filename").toString(), "C:\\torrents\\movie.torrent");
-    EXPECT_EQ(req.arguments.value("path").toString(), "D:\\downloads");
+    EXPECT_EQ(req.arguments.value("download-dir").toString(), "D:\\downloads");
     EXPECT_TRUE(req.arguments.value("paused").toBool());
     EXPECT_EQ(req.arguments.value("peer-limit").toInt(), 50);
     EXPECT_TRUE(req.arguments.value("sequential_download").toBool());
@@ -1028,6 +1028,101 @@ TEST_F(RpcClientTest, PeersReceived)
     EXPECT_EQ(req.arguments.value("fields").toArray().first().toString(), "peers");
 }
 
+TEST_F(RpcClientTest, ConfiguresNewTorrentBeforeStarting)
+{
+    connectWith(18);
+    for (int i = 0; i < 4; ++i)
+        server.enqueue({200, R"({"result":"success","arguments":{}})", {}});
+
+    TorrentDetails details;
+    details.id = 7;
+    details.name = "Original.mkv";
+    details.downloadDir = "/old";
+    details.peerLimit = 20;
+    RpcClient::AddTorrent options;
+    options.downloadDir = "/new";
+    options.peerLimit = 40;
+    options.sequential = true;
+    options.start = true;
+
+    QEventLoop loop;
+    bool ok = false;
+    QTimer::singleShot(3000, &loop, &QEventLoop::quit);
+    client->configureAddedTorrent(details, options, "Movie.mkv", {1},
+        [&](const JsonRpcResult& result) {
+            ok = result.ok;
+            loop.quit();
+        });
+    loop.exec();
+    ASSERT_TRUE(ok);
+
+    const auto requests = server.requests();
+    ASSERT_GE(requests.size(), 4);
+    const auto first = requests.size() - 4;
+    EXPECT_EQ(requests.at(first).rpcMethod, "torrent-set-location");
+    EXPECT_EQ(requests.at(first).arguments.value("location").toString(), "/new");
+    EXPECT_FALSE(requests.at(first).arguments.value("move").toBool());
+    EXPECT_EQ(requests.at(first + 1).rpcMethod, "torrent-set");
+    EXPECT_EQ(requests.at(first + 1).arguments.value("peer-limit").toInt(), 40);
+    EXPECT_TRUE(requests.at(first + 1).arguments.value("sequential_download").toBool());
+    EXPECT_EQ(requests.at(first + 1).arguments.value("files-unwanted").toArray(), QJsonArray{1});
+    EXPECT_EQ(requests.at(first + 2).rpcMethod, "torrent-rename-path");
+    EXPECT_EQ(requests.at(first + 2).arguments.value("name").toString(), "Movie.mkv");
+    EXPECT_EQ(requests.at(first + 3).rpcMethod, "torrent-start");
+}
+
+TEST_F(RpcClientTest, TorrentDetailsVerificationProgress)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{
+        200,
+        R"({"result":"success","arguments":{"torrents":[
+            ["id","files","priorities","wanted","downloadDir","status","recheckProgress","pieceCount"],
+            [7,[
+                {"begin_piece":0,"bytesCompleted":1000,"end_piece":5,"length":1000,"name":"a.bin"},
+                {"begin_piece":5,"bytesCompleted":1000,"end_piece":10,"length":1000,"name":"b.bin"}
+            ],[0,0],[1,1],"/dl",2,0.5,10]
+        ]}})",
+        {}});
+
+    QEventLoop loop;
+    bool got = false;
+    TorrentDetails details;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::torrentDetailsReceived,
+                     [&got, &details, &loop](const TorrentDetails& d) {
+                         got = true;
+                         details = d;
+                         loop.quit();
+                     });
+    timer.start(5000);
+    client->getTorrentDetails(7);
+    loop.exec();
+
+    ASSERT_TRUE(got);
+    EXPECT_EQ(details.status, static_cast<int>(TorrentStatus::Check));
+    EXPECT_EQ(details.pieceCount, 10);
+    ASSERT_EQ(details.files.size(), 2);
+    // Проверено 5 из 10 кусков: первый файл проверен полностью, второй — нет.
+    EXPECT_DOUBLE_EQ(details.files.at(0).checkProgress, 1.0);
+    EXPECT_DOUBLE_EQ(details.files.at(1).checkProgress, 0.0);
+    // bytesCompleted при этом остаётся 100% (демон не сбрасывает have-биты).
+    EXPECT_DOUBLE_EQ(details.files.at(0).completion, 1.0);
+
+    const auto req = server.requests().last();
+    const QStringList fields = [&]() {
+        QStringList out;
+        for (const auto& v : req.arguments.value("fields").toArray())
+            out << v.toString();
+        return out;
+    }();
+    EXPECT_TRUE(fields.contains("recheckProgress"));
+    EXPECT_TRUE(fields.contains("pieceCount"));
+    EXPECT_TRUE(fields.contains("status"));
+}
+
 TEST_F(RpcClientTest, SessionStatsReceived)
 {
     connectWith(18);
@@ -1210,7 +1305,7 @@ TEST_F(RpcClientTest, AddTorrentRepairsMetadataInMemory)
             const auto sent = QByteArray::fromBase64(request.arguments.value("metainfo").toString().toLatin1());
             EXPECT_EQ(sent, content == corrupt ? good : content);
             EXPECT_FALSE(request.arguments.value("paused").toBool());
-            EXPECT_EQ(request.arguments.value("path").toString(), add.downloadDir);
+            EXPECT_EQ(request.arguments.value("download-dir").toString(), add.downloadDir);
             ASSERT_TRUE(file.seek(0));
             EXPECT_EQ(file.readAll(), content);
         }

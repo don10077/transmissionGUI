@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QQueue>
 #include <QTimer>
 #include <QEvent>
 #include <memory>
@@ -134,7 +135,6 @@ private slots:
     void onSetLabels();
     void onExportSettings();
     void onImportSettings();
-    void downloadAndAdd(const tgui::RpcClient::AddTorrent& params, const QString& dst);
 
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
@@ -168,8 +168,8 @@ private:
     void applyViewVisibility();
     void restoreTorrentSelection(const QVector<int>& ids, int currentId);
     int proxyRowForId(int id) const;
-    void startAdd(const tgui::RpcClient::AddTorrent& params, bool doSave,
-                  const QString& savePath);
+    void startAdd(const tgui::RpcClient::AddTorrent& params);
+    void addNextTorrent();
     void finishAdd();
     QVector<int> selectedTorrentIds() const;
     static void loadSettings(tgui::RpcClient::Options& opts);
@@ -183,9 +183,8 @@ private:
 
     // Состояние добавления торрента.
     QNetworkAccessManager m_nam;
-    tgui::RpcClient::AddTorrent m_pendingAdd;
-    int m_pendingAddId = -1;
-    bool m_pendingStart = false;
+    QQueue<tgui::RpcClient::AddTorrent> m_addQueue;
+    bool m_addingTorrent = false;
 
     TorrentModel m_model;
     TorrentFilterProxy m_proxy;

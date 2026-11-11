@@ -6,7 +6,6 @@ add_executable(transmissiongui WIN32
     src/torrentmodel.cpp
     src/addlinkdialog.cpp
     src/connectdialog.cpp
-    src/adddialog.cpp
     src/fileselectdialog.cpp
     src/groupedproxy.cpp
     src/delegates.cpp
@@ -28,7 +27,6 @@ add_executable(transmissiongui WIN32
     src/torrentmodel.h
     src/addlinkdialog.h
     src/connectdialog.h
-    src/adddialog.h
     src/fileselectdialog.h
     src/groupedproxy.h
     src/delegates.h

@@ -7,6 +7,7 @@
 #include <QTemporaryDir>
 
 #include "detailmodels.h"
+#include "torrentmodel.h"
 #include "tgui/util.h"
 
 using namespace tgui;
@@ -275,6 +276,61 @@ TEST(DetailModels, OffscreenTableViewRenders)
               "http://tracker.example/announce");
     view.hide();
 }
+TEST(FileTree, ShowsCheckProgressWhileVerifying)
+{
+    auto files = makeFiles();
+    // a.mp4 проверен, b.txt проверен наполовину; completion у обоих — как
+    // будто файлы уже скачаны (во время проверки демон отдаёт 100%).
+    files[0].completion = 1.0;
+    files[1].completion = 1.0;
+    files[0].checkProgress = 1.0;
+    files[1].checkProgress = 0.5;
+
+    FileListModel list;
+    list.setFiles(files);
+    EXPECT_EQ(list.data(list.index(0, FileListModel::ColProgress), Qt::DisplayRole).toString(),
+              "100.0%");
+    EXPECT_EQ(list.data(list.index(1, FileListModel::ColProgress), Qt::DisplayRole).toString(),
+              "50.0%");
+
+    FileTreeModel model;
+    model.setFiles(files);
+    const auto folder = model.index(0, 0);
+    EXPECT_EQ(folder.data().toString(), QStringLiteral("dir"));
+    // Взвешенный по размеру прогресс проверки: (1000*1 + 2048*0.5) / 3048.
+    EXPECT_NEAR(model.index(0, FileTreeModel::Progress).data().toDouble(),
+                (1000.0 + 2048.0 * 0.5) * 100.0 / 3048.0, 0.01);
+    // Колонка Done остаётся фактическим размером скачанного.
+    EXPECT_EQ(model.index(0, FileTreeModel::Done).data().toString(),
+              QString::fromStdString(formatSize(3048)));
+}
+
+TEST(FileTree, SingleFileVerificationMatchesTorrentWithoutPieceRanges)
+{
+    auto files = makeFiles().mid(0, 1);
+    files[0].completion = 1.0;
+    Torrent torrent;
+    torrent.id = 7;
+    torrent.status = static_cast<int>(TorrentStatus::Check);
+    torrent.recheckProgress = 0.4321;
+    TorrentModel torrents;
+    torrents.setTorrents({torrent});
+
+    applyCheckProgress(files, *torrent.status, torrent.recheckProgress, 0);
+    FileTreeModel model;
+    model.setFiles(files);
+    const auto folder = model.index(0, 0);
+    const auto torrentProgress = torrents.index(0, TorrentModel::ColDone)
+                                     .data(TorrentModel::ProgressRole).toDouble();
+    EXPECT_DOUBLE_EQ(model.index(0, FileTreeModel::Progress, folder).data().toDouble(),
+                     torrentProgress);
+    EXPECT_DOUBLE_EQ(model.index(0, FileTreeModel::Progress).data().toDouble(), torrentProgress);
+
+    applyCheckProgress(files, static_cast<int>(TorrentStatus::Stopped), std::nullopt, 0);
+    model.setFiles(files);
+    EXPECT_DOUBLE_EQ(model.index(0, FileTreeModel::Progress, folder).data().toDouble(), 100.0);
+}
+
 TEST(FileTree, AggregatesFoldersAndPreservesItemsOnRefresh)
 {
     FileTreeModel model;

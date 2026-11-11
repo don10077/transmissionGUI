@@ -150,6 +150,22 @@ QString countWithTotal(int current, int total)
     return QObject::tr("%1/%2").arg(current).arg(total);
 }
 
+// Идёт проверка торрента?
+bool isVerifying(const tgui::Torrent& t)
+{
+    return t.status.value_or(-1) == static_cast<int>(tgui::TorrentStatus::Check) &&
+           t.recheckProgress.has_value();
+}
+
+// Процент проверки: демон не сбрасывает have-биты при перепроверке уже
+// скачанного торрента, поэтому sizeWhenDone-leftUntilDone всё время
+// проверки дают 100%. Референс (FillTorrentsList, main.pas) в статусе
+// «Проверка» показывает recheckProgress.
+double verifyingPercent(const tgui::Torrent& t)
+{
+    return std::clamp(t.recheckProgress.value_or(0.0) * 100.0, 0.0, 100.0);
+}
+
 } // namespace
 
 QVariant TorrentModel::data(const QModelIndex& index, int role) const
@@ -167,6 +183,8 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
     // Числовые роли — для кастомного делегата (не зависят от текста ячейки).
     switch (role) {
         case ProgressRole:
+            if (isVerifying(t))
+                return verifyingPercent(t);
             if (t.sizeWhenDone && t.sizeWhenDone.value() > 0.0)
                 return tgui::percentComplete(t.sizeWhenDone.value(),
                                              t.leftUntilDone.value_or(0.0));
@@ -222,6 +240,8 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
                               ? QString::fromStdString(tgui::formatSize(t.sizeWhenDone.value()))
                               : QStringLiteral("—"));
         case ColDone: {
+            if (isVerifying(t))
+                return QString::number(verifyingPercent(t), 'f', 1) + "%";
             if (t.sizeWhenDone && t.sizeWhenDone.value() > 0.0)
                 return QString::number(
                            tgui::percentComplete(t.sizeWhenDone.value(),
@@ -375,6 +395,8 @@ QVariant TorrentModel::sortKey(const tgui::Torrent& t, int column)
         case ColSize:
             return t.totalSize.value_or(t.sizeWhenDone.value_or(0.0));
         case ColDone:
+            if (isVerifying(t))
+                return verifyingPercent(t);
             if (t.sizeWhenDone && t.sizeWhenDone.value() > 0.0)
                 return tgui::percentComplete(t.sizeWhenDone.value(),
                                              t.leftUntilDone.value_or(0.0));

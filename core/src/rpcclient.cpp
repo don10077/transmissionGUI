@@ -85,11 +85,17 @@ void RpcClient::request(const QString& method, const QJsonObject& arguments)
     });
 }
 
-void RpcClient::requestReport(const QString& method, const QJsonObject& arguments)
+void RpcClient::requestReport(const QString& method, const QJsonObject& arguments,
+                              RequestCallback callback)
 {
-    m_rpc.call(method, arguments, [this, method](const JsonRpcResult& r) {
+    m_rpc.call(method, arguments, [this, method, callback = std::move(callback)](const JsonRpcResult& r) {
         if (!r.ok && r.httpCode == 401) {
             emit authenticationFailed(describeError(r));
+            if (!callback)
+                return;
+        }
+        if (callback) {
+            callback(r);
             return;
         }
         emit requestCompleted(method, r.ok, r.ok ? QString() : describeError(r), r.arguments);
@@ -168,40 +174,61 @@ void RpcClient::getTorrents(const QStringList& extraFields)
     });
 }
 
-void RpcClient::getTorrentDetails(int id)
+void RpcClient::getTorrentDetails(int id, DetailsCallback callback)
 {
-    // torrent-get: файлы + приоритеты + wanted + downloadDir.
+    // torrent-get: файлы + приоритеты + wanted + downloadDir + состояние
+    // проверки (recheckProgress) для прогресса вкладки «Файлы».
     QJsonObject args;
     torrentIds(args, id);
-    args.insert("fields", toJsonArray({"id", "files", "priorities", "wanted", "downloadDir"}));
+    args.insert("fields", toJsonArray({"id", "files", "priorities", "wanted", "downloadDir",
+                                       "name", "maxConnectedPeers",
+                                       "status", "recheckProgress", "pieceCount"}));
     if (m_rpcVersion >= 16)
         args.insert("format", "table");
 
-    m_rpc.call("torrent-get", args, [this](const JsonRpcResult& r) {
+    m_rpc.call("torrent-get", args, [this, id, callback = std::move(callback)](const JsonRpcResult& r) {
         if (!r.ok) {
             emit readError("torrent-get", describeError(r));
+            if (callback)
+                callback(std::nullopt);
             return;
         }
         const QJsonArray arr = r.arguments.value("torrents").toArray();
         QJsonObject torrent;
         if (!arr.isEmpty() && arr.first().isArray()) {
-            if (arr.size() < 2) {
-                emit readError("torrent-get", QStringLiteral("Torrent not found."));
-                return;
-            }
             // format=table: [0] — имена полей, [1] — строка значений.
             const QJsonArray fields = arr.first().toArray();
-            const QJsonArray row = arr.at(1).toArray();
+            const QJsonArray row = arr.size() > 1 ? arr.at(1).toArray() : QJsonArray{};
             for (int i = 0; i < fields.size() && i < row.size(); ++i)
                 torrent.insert(fields.at(i).toString(), row.at(i));
         } else if (!arr.isEmpty() && arr.first().isObject()) {
             torrent = arr.first().toObject();
         }
+        if (torrent.value("id").toInt(-1) != id) {
+            emit readError("torrent-get", QStringLiteral("Torrent not found."));
+            if (callback)
+                callback(std::nullopt);
+            return;
+        }
         TorrentDetails details;
-        details.id = torrent.value("id").toInt();
+        details.id = id;
+        details.name = torrent.value("name").toString();
+        details.peerLimit = torrent.value("maxConnectedPeers").toInt();
         details.downloadDir = torrent.value("downloadDir").toString();
         details.files = parseFiles(torrent);
-        emit torrentDetailsReceived(details);
+        details.status = torrent.value("status").toInt(-1);
+        details.pieceCount = torrent.value("pieceCount").toInt();
+        if (torrent.value("recheckProgress").isDouble())
+            details.recheckProgress = torrent.value("recheckProgress").toDouble();
+        // При проверке демон не сбрасывает have-биты, поэтому bytesCompleted
+        // уже скачанного торрента всё время проверки равен 100%. Реальный
+        // прогресс — recheckProgress; раскладываем его по файлам.
+        applyCheckProgress(details.files, details.status, details.recheckProgress,
+                           details.pieceCount);
+        if (callback)
+            callback(details);
+        else
+            emit torrentDetailsReceived(details);
     });
 }
 
@@ -305,13 +332,13 @@ void RpcClient::stopAll()
     requestReport("torrent-stop", QJsonObject{});
 }
 
-void RpcClient::removeTorrent(int id, bool deleteLocalData)
+void RpcClient::removeTorrent(int id, bool deleteLocalData, RequestCallback callback)
 {
     QJsonObject args;
     torrentIds(args, id);
     if (deleteLocalData)
         args.insert("delete-local-data", true);
-    requestReport("torrent-remove", args);
+    requestReport("torrent-remove", args, std::move(callback));
 }
 
 void RpcClient::reannounce(int id)
@@ -539,7 +566,7 @@ void RpcClient::replaceTracker(int id, int trackerId, const QString& newUrl)
     requestReport("torrent-set", args);
 }
 
-void RpcClient::addTorrent(const AddTorrent& params)
+void RpcClient::addTorrent(const AddTorrent& params, RequestCallback callback)
 {
     // paused + peer-limit + sequential_download (>= 18).
     QJsonObject args;
@@ -580,13 +607,65 @@ void RpcClient::addTorrent(const AddTorrent& params)
         }
     }
     if (!params.downloadDir.isEmpty())
-        args.insert("path", params.downloadDir);
+        args.insert("download-dir", params.downloadDir);
     args.insert("paused", !params.start);
     if (params.peerLimit > 0)
         args.insert("peer-limit", params.peerLimit);
     if (params.sequential && supports(18))
         args.insert("sequential_download", true);
-    requestReport("torrent-add", args);
+    requestReport("torrent-add", args, std::move(callback));
+}
+
+void RpcClient::configureAddedTorrent(const TorrentDetails& details, const AddTorrent& options,
+                                      const QString& name, const QVector<int>& unwanted,
+                                      RequestCallback callback)
+{
+    QList<QPair<QString, QJsonObject>> requests;
+    const QJsonArray ids{details.id};
+    if (supports(6) && options.downloadDir != details.downloadDir)
+        requests.append({"torrent-set-location", {{"ids", ids},
+                                                   {"location", options.downloadDir}, {"move", false}}});
+
+    QJsonObject settings;
+    if (options.peerLimit > 0 && options.peerLimit != details.peerLimit)
+        settings.insert("peer-limit", options.peerLimit);
+    if (supports(18))
+        settings.insert("sequential_download", options.sequential);
+    if (!unwanted.isEmpty()) {
+        QJsonArray skipped;
+        for (const int index : unwanted)
+            skipped.append(index);
+        settings.insert("files-unwanted", skipped);
+    }
+    if (!settings.isEmpty()) {
+        settings.insert("ids", ids);
+        requests.append({"torrent-set", settings});
+    }
+    if (supports(15) && !name.isEmpty() && name != details.name)
+        requests.append({"torrent-rename-path", {{"ids", ids},
+                                                  {"path", details.name}, {"name", name}}});
+    if (options.start)
+        requests.append({"torrent-start", {{"ids", ids}}});
+    applyAddSettings(std::move(requests), std::move(callback));
+}
+
+void RpcClient::applyAddSettings(QList<QPair<QString, QJsonObject>> requests, RequestCallback callback)
+{
+    if (requests.isEmpty()) {
+        JsonRpcResult result;
+        result.ok = true;
+        callback(result);
+        return;
+    }
+    const auto [method, args] = requests.takeFirst();
+    requestReport(method, args, [this, requests = std::move(requests),
+                                 callback = std::move(callback)](JsonRpcResult r) mutable {
+        if (r.ok) {
+            applyAddSettings(std::move(requests), std::move(callback));
+            return;
+        }
+        callback(std::move(r));
+    });
 }
 
 void RpcClient::setSession(const QJsonObject& params)

@@ -33,6 +33,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QProgressDialog>
+#include <QPointer>
 #include <QMimeData>
 #include <QNetworkAccessManager>
 #include <QEventLoop>
@@ -64,7 +65,6 @@
 #include <algorithm>
 
 #include "addlinkdialog.h"
-#include "adddialog.h"
 #include "connectdialog.h"
 #include "delegates.h"
 #include "fileselectdialog.h"
@@ -725,6 +725,8 @@ void MainWindow::onConnect()
 
 void MainWindow::startConnect(const tgui::RpcClient::Options& opts)
 {
+    m_addQueue.clear();
+    m_addingTorrent = false;
     m_rpc = std::make_unique<tgui::RpcClient>(opts, this);
     connect(m_rpc.get(), &tgui::RpcClient::connected, this, &MainWindow::onConnected);
     connect(m_rpc.get(), &tgui::RpcClient::sessionInfoReceived, this,
@@ -790,6 +792,8 @@ void MainWindow::onDisconnect()
 {
     m_refreshTimer.stop();
     m_connected = false;
+    m_addQueue.clear();
+    m_addingTorrent = false;
     m_rpc.reset();
     m_model.setTorrents({});
     m_fileModel.setFiles({});
@@ -959,10 +963,24 @@ void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
     m_currentId = nextId;
     m_refreshing = false;
 
+    if (nextId != prevId)
+        m_fileModel.setFiles({});
+
     // Панель «General» подтягивается к актуальному состоянию выбранного.
     if (nextId >= 0) {
         for (const auto& t : torrents) {
             if (t.id == nextId) {
+                const auto& currentFiles = m_fileModel.files();
+                const int status = t.status.value_or(-1);
+                if (!currentFiles.isEmpty() &&
+                    (status == static_cast<int>(tgui::TorrentStatus::Check) ||
+                     std::any_of(currentFiles.cbegin(), currentFiles.cend(),
+                         [](const tgui::FileStat& file) { return file.checkProgress >= 0.0; }))) {
+                    auto files = currentFiles;
+                    tgui::applyCheckProgress(files, status, t.recheckProgress,
+                                             t.pieceCount.value_or(0));
+                    m_fileModel.setFiles(files);
+                }
                 m_general->setTorrent(t);
                 if (m_sessionInfo.rpcVersion > 0)
                     m_general->setSession(m_sessionInfo);
@@ -1106,31 +1124,6 @@ void MainWindow::onReadError(const QString& what, const QString& error)
 void MainWindow::onRequestCompleted(const QString& method, bool ok, const QString& error,
                                     const QJsonObject& arguments)
 {
-    if (method == QLatin1String("torrent-add")) {
-        if (!ok) {
-            QMessageBox::warning(this, tr("Add torrent"),
-                                 error.isEmpty() ? tr("Unknown error.") : error);
-            m_pendingAddId = -1;
-            return;
-        }
-        int id = -1;
-        const QJsonObject added = arguments.value("torrent-added").toObject();
-        if (added.contains("id"))
-            id = added.value("id").toInt();
-        if (id < 0)
-            id = arguments.value("id").toInt();
-        if (id < 0)
-            id = arguments.value("torrent-id").toInt();
-        if (id >= 0) {
-            m_pendingAddId = id;
-            m_pendingStart = m_pendingAdd.start;
-            if (m_pendingAdd.source == tgui::RpcClient::AddTorrent::Source::Url)
-                finishAdd(); // magnet/URL — списка файлов нет
-            else if (m_rpc)
-                m_rpc->getTorrentDetails(id); // файлы → диалог want/skip
-        }
-        return;
-    }
     Q_UNUSED(arguments);
     if (ok && method == QLatin1String("torrent-set-location") && m_rpc)
         m_rpc->getTorrents();
@@ -1416,42 +1409,87 @@ void MainWindow::onContextMenu(const QPoint& pos)
 
 void MainWindow::onAddTorrent()
 {
-    if (!m_rpc)
+    if (!m_rpc || !m_connected)
         return;
-    const auto& s = m_rpc->sessionInfo();
-    AddTorrentDialog dlg(QString(), s.downloadDir, m_rpc->rpcVersion(),
-                         s.startAddedTorrents, m_rpc.get(), this);
-    if (dlg.exec() != QDialog::Accepted)
+    const auto paths = QFileDialog::getOpenFileNames(this, tr("Select a .torrent file"), {},
+                                                     tr("Torrent files (*.torrent);;All files (*)"));
+    if (!m_rpc || !m_connected)
         return;
-    startAdd(dlg.params(), dlg.saveEnabled(), dlg.savePath());
+    const auto& session = m_rpc->sessionInfo();
+    for (const auto& path : paths) {
+        tgui::RpcClient::AddTorrent params;
+        params.file = path;
+        params.downloadDir = session.downloadDir;
+        params.start = session.startAddedTorrents;
+        startAdd(params);
+    }
 }
 
-void MainWindow::startAdd(const tgui::RpcClient::AddTorrent& paramsIn, bool doSave,
-                          const QString& savePath)
+void MainWindow::startAdd(const tgui::RpcClient::AddTorrent& params)
 {
-    if (!m_rpc)
+    m_addQueue.enqueue(params);
+    if (!m_addingTorrent)
+        addNextTorrent();
+}
+
+void MainWindow::addNextTorrent()
+{
+    if (!m_rpc || !m_connected || m_addQueue.isEmpty())
         return;
-    tgui::RpcClient::AddTorrent params = paramsIn;
 
-    m_pendingAdd = params;
-    m_pendingAddId = -1;
+    m_addingTorrent = true;
+    auto params = m_addQueue.dequeue();
+    const bool start = params.start;
+    params.start = false;
 
-    if (doSave && !savePath.isEmpty()) {
-        if (params.source == tgui::RpcClient::AddTorrent::Source::File) {
-            if (!QFile::copy(params.file, savePath)) {
-                QMessageBox::warning(this, tr("Saving"),
-                                     tr("Unable to save file: %1").arg(savePath));
-                return;
-            }
-        } else if (params.source == tgui::RpcClient::AddTorrent::Source::Url &&
-                   (params.url.startsWith(QLatin1String("http://")) ||
-                    params.url.startsWith(QLatin1String("https://")))) {
-            downloadAndAdd(params, savePath);
+    // Как в оригинале, берём список файлов у демона, пока торрент на паузе.
+    m_rpc->addTorrent(params, [this, start, params](const tgui::JsonRpcResult& addedResult) {
+        const auto added = addedResult.arguments.value("torrent-added").toObject();
+        const int id = added.value("id").toInt(-1);
+        if (!addedResult.ok || id < 0) {
+            const QString message = !addedResult.ok ? addedResult.error :
+                addedResult.arguments.contains("torrent-duplicate") ? tr("Torrent already exists.") :
+                tr("Unable to add torrent.");
+            onReadError(tr("Add torrent"), message);
+            finishAdd();
             return;
         }
-        // magnet — сохранять нечего.
-    }
-    m_rpc->addTorrent(params);
+        m_rpc->getTorrentDetails(id, [this, id, start, params](const auto& details) {
+            const auto remove = [this, id] {
+                m_rpc->removeTorrent(id, false, [this](const tgui::JsonRpcResult& result) {
+                    if (!result.ok)
+                        onReadError(tr("Remove torrent"), result.error);
+                    finishAdd();
+                });
+            };
+            if (!details) {
+                remove();
+                return;
+            }
+            const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+            auto* dialog = new FileSelectDialog(*details, start, rpc->rpcVersion(), rpc, this);
+            dialog->offerMetainfoCopy(params);
+            dialog->setAttribute(Qt::WA_DeleteOnClose);
+            connect(rpc.data(), &QObject::destroyed, dialog, &QDialog::reject);
+            connect(dialog, &QDialog::finished, this, [this, rpc, dialog, remove, details](int dialogResult) {
+                if (!rpc || rpc != m_rpc.get())
+                    return;
+                if (dialogResult != QDialog::Accepted) {
+                    remove();
+                    return;
+                }
+                rpc->configureAddedTorrent(*details, dialog->options(), dialog->saveAs(),
+                    dialog->unwanted(), [this](const tgui::JsonRpcResult& result) {
+                        if (result.ok)
+                            statusBar()->showMessage(tr("Torrent added"), 5000);
+                        else
+                            onReadError(tr("Add torrent"), result.error);
+                        finishAdd();
+                    });
+            });
+            dialog->open();
+        });
+    });
 }
 
 // Главное меню — структура по референсу (Torrent / View / Tools / Help,
@@ -1990,8 +2028,8 @@ void MainWindow::onAddFromLink()
     at.source = tgui::RpcClient::AddTorrent::Source::Url;
     at.url = link;
     at.start = dlg.startWhenAdded();
-    m_rpc->addTorrent(at);
-    m_rpc->getTorrents();
+    at.downloadDir = m_rpc->sessionInfo().downloadDir;
+    startAdd(at);
 }
 
 void MainWindow::onUpdateBlocklist()
@@ -2323,46 +2361,23 @@ void MainWindow::onToggleAltSpeed()
 {
 }
 
-void MainWindow::downloadAndAdd(const tgui::RpcClient::AddTorrent& params,
-                                const QString& dst)
-{
-    statusBar()->showMessage(tr("Downloading %1…").arg(params.url), 5000);
-    auto* reply = m_nam.get(QNetworkRequest(QUrl(params.url)));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, params, dst] {
-        const bool netOk = reply->error() == QNetworkReply::NoError;
-        const QByteArray payload = reply->readAll();
-        if (netOk) {
-            QFile f(dst);
-            if (!f.open(QIODevice::WriteOnly) || f.write(payload) < 0)
-                QMessageBox::warning(this, tr("Saving"),
-                                     tr("Unable to write file: %1").arg(dst));
-        } else {
-            QMessageBox::warning(this, tr("Downloading"), reply->errorString());
-        }
-        reply->deleteLater();
-        if (m_rpc)
-            m_rpc->addTorrent(params); // демон сам загрузит торрент
-    });
-}
-
 void MainWindow::onTorrentDetailsReceived(const tgui::TorrentDetails& details)
 {
-    if (!m_rpc)
-        return;
-    // Ответ на запрос деталей добавляемого торрента — приоритетный сценарий.
-    if (details.id == m_pendingAddId) {
-        if (!details.files.isEmpty()) {
-            FileSelectDialog dlg(details.files, this);
-            if (dlg.exec() == QDialog::Accepted)
-                m_rpc->setFilesWanted(details.id, dlg.wanted(), dlg.unwanted());
-        }
-        finishAdd();
-        return;
-    }
     // Вкладка «Файлы» для выбранного торрента.
     if (details.id != m_currentId)
         return;
-    m_fileModel.setFiles(details.files);
+    // Прогресс проверки берём из текущего снимка списка торрентов (а не из
+    // ответа деталей): так список и вкладка показывают одно и то же число.
+    QVector<tgui::FileStat> files = details.files;
+    for (const auto& t : m_model.torrents()) {
+        if (t.id != details.id)
+            continue;
+        tgui::applyCheckProgress(files, t.status.value_or(-1),
+                                 t.recheckProgress,
+                                 t.pieceCount.value_or(0));
+        break;
+    }
+    m_fileModel.setFiles(files);
 }
 
 void MainWindow::onPeersReceived(int id, const QVector<tgui::Peer>& peers)
@@ -2409,6 +2424,7 @@ void MainWindow::onSelectionChanged()
         return;
     }
     m_currentId = id;
+    m_fileModel.setFiles({});
     // «General» обновляем из модели сразу — до ответа RPC.
     if (id >= 0) {
         for (const auto& t : m_model.torrents()) {
@@ -2652,14 +2668,11 @@ void MainWindow::onRemoveTracker(int trackerId, const QString& announce)
 
 void MainWindow::finishAdd()
 {
-    if (m_rpc) {
-        if (m_pendingAddId >= 0 && m_pendingStart)
-            m_rpc->startTorrent(m_pendingAddId);
-        m_rpc->getTorrents();
-        statusBar()->showMessage(tr("Torrent added"), 5000);
-    }
-    m_pendingAddId = -1;
-    m_pendingStart = false;
+    m_addingTorrent = false;
+    if (!m_rpc || !m_connected)
+        return;
+    m_rpc->getTorrents();
+    addNextTorrent();
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* event)
@@ -2693,7 +2706,7 @@ void MainWindow::dropEvent(QDropEvent* event)
             p.url = sItem;
             p.downloadDir = s.downloadDir;
             p.start = s.startAddedTorrents;
-            startAdd(p, false, QString());
+            startAdd(p);
         } else {
             QString path = sItem;
             if (sItem.startsWith(QLatin1String("file:")))
@@ -2704,7 +2717,7 @@ void MainWindow::dropEvent(QDropEvent* event)
                 p.file = path;
                 p.downloadDir = s.downloadDir;
                 p.start = s.startAddedTorrents;
-                startAdd(p, false, QString());
+                startAdd(p);
             }
         }
     }

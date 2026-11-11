@@ -68,8 +68,13 @@ QVariant FileListModel::data(const QModelIndex& index, int role) const
             return f.name;
         case ColSize:
             return QString::fromStdString(tgui::formatSize(f.size));
-        case ColProgress:
-            return QString::number(f.completion * 100.0, 'f', 0) + "%";
+        case ColProgress: {
+            // Во время проверки показываем её прогресс, а не completion
+            // (у уже скачанного торрента bytesCompleted = 100%). Точность
+            // та же, что в списке торрентов (одна десятая процента).
+            const double progress = f.checkProgress >= 0.0 ? f.checkProgress : f.completion;
+            return QString::number(progress * 100.0, 'f', f.checkProgress >= 0.0 ? 1 : 0) + "%";
+        }
         case ColPriority:
             return priorityText(f.priority);
         case ColWanted:
@@ -348,6 +353,9 @@ void FileTreeModel::setFiles(const QVector<tgui::FileStat>& files)
     }
     struct Aggregate {
         double size = 0, done = 0;
+        // Проверка: сумма size*checkProgress и суммарный размер файлов,
+        // для которых прогресс проверки известен.
+        double checkDone = 0, checkSize = 0;
         QVariantList rows;
         int priority = 0;
         bool first = true, mixed = false, allSkipped = true;
@@ -362,6 +370,11 @@ void FileTreeModel::setFiles(const QVector<tgui::FileStat>& files)
             auto& total = totals[path];
             total.size += file.size;
             total.done += file.size * file.completion;
+            if (file.checkProgress >= 0.0) {
+                const double weight = qMax(1.0, file.size);
+                total.checkDone += weight * file.checkProgress;
+                total.checkSize += weight;
+            }
             total.rows.append(row);
             const int priority = file.wanted ? file.priority : -2;
             if (!total.first && total.priority != priority) total.mixed = true;
@@ -383,9 +396,17 @@ void FileTreeModel::setFiles(const QVector<tgui::FileStat>& files)
             if (column == Size || column == Done)
                 item->setText(QString::fromStdString(tgui::formatSize(
                     column == Size ? total.size : total.done)));
-            if (column == Progress)
-                item->setData(total.size > 0 ? total.done * 100.0 / total.size : 100.0,
-                              Qt::DisplayRole);
+            if (column == Progress) {
+                // Во время проверки процент — это прогресс проверки.
+                const auto& first = files.at(total.rows.first().toInt());
+                const double progress =
+                    total.rows.size() == 1 && first.checkProgress >= 0.0
+                        ? first.checkProgress * 100.0
+                        : total.checkSize > 0.0
+                        ? total.checkDone * 100.0 / total.checkSize
+                        : (total.size > 0 ? total.done * 100.0 / total.size : 100.0);
+                item->setData(progress, Qt::DisplayRole);
+            }
             if (column == Priority)
                 item->setText(total.mixed ? tr("Mixed") : total.priority == -2 ?
                               tr("Skip") : priorityText(total.priority));

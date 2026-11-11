@@ -794,6 +794,32 @@ TEST(TorrentInteraction, StatusDistinguishesSeedingAndPauseAndSeedQueue)
 }
 
 
+TEST(TorrentInteraction, VerificationShowsRecheckProgressInDone)
+{
+    // При проверке уже скачанного торрента sizeWhenDone-leftUntilDone = 100%,
+    // поэтому Done/прогресс-бар должны показывать recheckProgress (референс —
+    // FillTorrentsList, main.pas).
+    Torrent torrent;
+    torrent.id = 501;
+    torrent.status = static_cast<int>(TorrentStatus::Check);
+    torrent.sizeWhenDone = 100.;
+    torrent.leftUntilDone = 0.;
+    torrent.recheckProgress = 0.42;
+    TorrentModel model;
+    model.setTorrents({torrent});
+    EXPECT_EQ(model.index(0, TorrentModel::ColDone).data().toString(),
+              QStringLiteral("42.0%"));
+    EXPECT_NEAR(model.index(0, 0).data(TorrentModel::ProgressRole).toDouble(), 42.0, 0.01);
+
+    // После завершения проверки — обычный прогресс.
+    torrent.status = static_cast<int>(TorrentStatus::Seed);
+    torrent.recheckProgress = 1.0;
+    model.setTorrents({torrent});
+    EXPECT_EQ(model.index(0, TorrentModel::ColDone).data().toString(),
+              QStringLiteral("100.0%"));
+    EXPECT_DOUBLE_EQ(model.index(0, 0).data(TorrentModel::ProgressRole).toDouble(), 100.0);
+}
+
 TEST(TorrentInteraction, ReferenceCompletionAndErrorRules)
 {
     Torrent torrent; torrent.id = 500; torrent.status = 0;
@@ -870,62 +896,56 @@ TEST(TorrentInteraction, MoveBrowseStartsAtMappedFolderAndReturnsDaemonPath)
 }
 
 
-#include "adddialog.h"
+#include "fileselectdialog.h"
 #include "sequentialpolicy.h"
 #include <QCheckBox>
 #include <QPlainTextEdit>
 
 TEST(AutoSequential, MetadataFileCountManualOverrideAndCapabilities)
 {
-    using V = tgui::bencode::Value;
-    QTemporaryDir directory; ASSERT_TRUE(directory.isValid());
-    const QString path = directory.filePath("not-a-video.torrent");
-    auto write = [&](const V& info) {
-        QFile file(path); if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
-        const auto bytes = tgui::bencode::encode(V::dictionary({{"info",info}}));
-        return file.write(bytes.data(), qint64(bytes.size())) == qint64(bytes.size());
-    };
+    tgui::TorrentDetails details;
+    details.name = "Movie.MKV";
+    details.downloadDir = "/downloads";
+    tgui::FileStat file;
+    file.name = details.name;
+    file.size = 100;
+    details.files = {file};
     QSettings settings;
-    settings.remove("downloads/autoSequential"); settings.remove("downloads/sequentialExtensions");
-    ASSERT_TRUE(write(V::dictionary({{"length", V::integer(100)}, {"name",V::string("Movie.MKV")}})));
-    EXPECT_FALSE(tgui::automaticSequential(path,18));
-    OptionsDialog options(nullptr,18);
+    settings.remove("downloads/autoSequential");
+    settings.remove("downloads/sequentialExtensions");
+    EXPECT_FALSE(tgui::automaticSequential(details.files, 18));
+
+    OptionsDialog options(nullptr, 18);
     options.findChild<QCheckBox*>("autoSequential")->setChecked(true);
     EXPECT_TRUE(options.findChild<QPlainTextEdit*>("sequentialExtensions")->toPlainText().contains("mkv"));
     options.apply();
-    EXPECT_TRUE(tgui::automaticSequential(path,18));
-    EXPECT_FALSE(tgui::automaticSequential(path,17));
-    AddTorrentDialog add(path, directory.path(),18,false,nullptr);
-    EXPECT_TRUE(add.params().sequential);
-    auto* checkbox=add.findChild<QCheckBox*>("sequentialDownload");
-    ASSERT_NE(checkbox,nullptr); checkbox->click();
-    EXPECT_FALSE(add.params().sequential); // User choice survives params()/acceptance.
-    AddTorrentDialog old(path,directory.path(),17,false,nullptr);
+
+    FileSelectDialog add(details, false, 18);
+    EXPECT_TRUE(add.options().sequential);
+    auto* checkbox = add.findChild<QCheckBox*>("sequentialDownload");
+    ASSERT_NE(checkbox, nullptr);
+    checkbox->click();
+    EXPECT_FALSE(add.options().sequential);
+
+    FileSelectDialog old(details, false, 17);
     EXPECT_FALSE(old.findChild<QCheckBox*>("sequentialDownload")->isEnabled());
-    EXPECT_FALSE(old.params().sequential);
-    OptionsDialog unsupported(nullptr,17);
+    EXPECT_FALSE(old.options().sequential);
+    OptionsDialog unsupported(nullptr, 17);
     EXPECT_FALSE(unsupported.findChild<QCheckBox*>("autoSequential")->isEnabled());
 
     settings.setValue("downloads/sequentialExtensions", ".mp4, *.FLAC; mkv");
-    EXPECT_TRUE(tgui::automaticSequential(path,18));
-    auto file = [](const std::string& name) { return V::dictionary({
-        {"length",V::integer(100)},{"path",V::list({V::string(name)})}}); };
-    ASSERT_TRUE(write(V::dictionary({{"files",V::list({file("clip.mp4"),file("audio.flac")})},{"name",V::string("Movie.mkv")}})));
-    EXPECT_FALSE(tgui::automaticSequential(path,18));
-    ASSERT_TRUE(write(V::dictionary({{"files",V::list({file("audio.flac")})},{"name",V::string("Folder")}})));
-    EXPECT_TRUE(tgui::automaticSequential(path,18));
-    ASSERT_TRUE(write(V::dictionary({{"length",V::integer(100)},{"name",V::string("document.pdf")}})));
-    EXPECT_FALSE(tgui::automaticSequential(path,18));
-    AddTorrentDialog manual(path,directory.path(),18,false,nullptr);
-    EXPECT_FALSE(manual.params().sequential);
+    file.name = "Folder/audio.FLAC";
+    EXPECT_TRUE(tgui::automaticSequential({file}, 18));
+    EXPECT_FALSE(tgui::automaticSequential({file, details.files.first()}, 18));
+    EXPECT_FALSE(tgui::automaticSequential({}, 18));
+    details.files.first().name = "document.pdf";
+    FileSelectDialog manual(details, false, 18);
+    EXPECT_FALSE(manual.options().sequential);
     manual.findChild<QCheckBox*>("sequentialDownload")->click();
-    EXPECT_TRUE(manual.params().sequential);
-    ASSERT_TRUE(write(V::dictionary({{"file tree",V::dictionary({{"audio.flac",V::dictionary({{"",V::dictionary({{"length",V::integer(100)}})}})}})}})));
-    EXPECT_TRUE(tgui::automaticSequential(path,18));
-    QFile broken(path); ASSERT_TRUE(broken.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    broken.write("not bencode"); broken.close();
-    EXPECT_FALSE(tgui::automaticSequential(path,18));
-    settings.remove("downloads/autoSequential"); settings.remove("downloads/sequentialExtensions");
+    EXPECT_TRUE(manual.options().sequential);
+
+    settings.remove("downloads/autoSequential");
+    settings.remove("downloads/sequentialExtensions");
 }
 
 

@@ -13,6 +13,7 @@ add_executable(tgui_tests
     test_e2e_tabs.cpp
     test_rpcclient.cpp
     test_addlinkdialog.cpp
+    test_fileselectdialog.cpp
     test_i18n.cpp
     test_optionsdialog.cpp
     test_profiles.cpp
@@ -32,7 +33,6 @@ add_executable(tgui_tests
     ${CMAKE_SOURCE_DIR}/app/src/mainwindow.cpp
     ${CMAKE_SOURCE_DIR}/app/src/propsform.cpp
     ${CMAKE_SOURCE_DIR}/app/src/statsform.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/adddialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/addlinkdialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/connectdialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/fileselectdialog.cpp
@@ -46,7 +46,6 @@ add_executable(tgui_tests
     ${CMAKE_SOURCE_DIR}/app/src/aboutdialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/mainwindow.h
     ${CMAKE_SOURCE_DIR}/app/src/theme.h
-    ${CMAKE_SOURCE_DIR}/app/src/adddialog.h
     ${CMAKE_SOURCE_DIR}/app/src/addlinkdialog.h
     ${CMAKE_SOURCE_DIR}/app/src/connectdialog.h
     ${CMAKE_SOURCE_DIR}/app/src/fileselectdialog.h

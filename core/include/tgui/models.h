@@ -118,6 +118,13 @@ struct FileStat {
     double completion = 0.0; // 0..1
     int priority = 0;  // -1 / 0 / 1
     bool wanted = true;
+    // Диапазон кусков файла [beginPiece, endPiece) из torrent-get files.
+    // Нужен, чтобы показать прогресс проверки: она идёт по кускам от начала.
+    int beginPiece = 0;
+    int endPiece = 0;
+    // Прогресс проверки файла 0..1; < 0 — торрент не проверяется
+    // (или демон не вернул диапазон кусков).
+    double checkProgress = -1.0;
 };
 
 // Детали одного торрента для вкладки «Файлы».
@@ -125,7 +132,21 @@ struct TorrentDetails {
     int id = 0;
     QString downloadDir;
     QVector<FileStat> files;
+    QString name;
+    int peerLimit = 0;
+    // Состояние торрента в момент ответа: во время проверки per-file
+    // bytesCompleted уже скачанного торрента остаётся 100%, а реальный
+    // прогресс проверки есть только в recheckProgress (0..1).
+    int status = -1;
+    int pieceCount = 0;
+    std::optional<double> recheckProgress;
 };
+
+// Пересчитать per-file прогресс проверки по общему состоянию торрента.
+// Используется и в RpcClient, и в UI, чтобы список торрентов и вкладка
+// «Файлы» показывали проценты из одного и того же снимка данных.
+void applyCheckProgress(QVector<FileStat>& files, int status, std::optional<double> recheckProgress,
+                        int pieceCount);
 
 // session-get (информация о сессии + параметры демона).
 struct SessionInfo {

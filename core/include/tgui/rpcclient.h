@@ -34,11 +34,14 @@ public:
         QString file;         // Source::File — путь к .torrent
         QString metainfoBase64; // Source::Base64 — base64 метаданных
         QString url;          // Source::Url — magnet/URL (идёт в "filename")
-        QString downloadDir;  // "path"
+        QString downloadDir;
         int peerLimit = 0;    // 0 — не устанавливать
         bool start = false;   // true → paused=false сразу
         bool sequential = false; // пошлется только при rpc-version >= 18
     };
+
+    using DetailsCallback = std::function<void(const std::optional<TorrentDetails>&)>;
+    using RequestCallback = JsonRpcClient::Callback;
 
     explicit RpcClient(const Options& options, QObject* parent = nullptr);
 
@@ -56,7 +59,7 @@ public:
 
     // --- Чтение ---
     void getTorrents(const QStringList& extraFields = {});
-    void getTorrentDetails(int id); // files + priorities + wanted + downloadDir
+    void getTorrentDetails(int id, DetailsCallback callback = {});
     void getPeers(int id);
     void getTrackers(int id);
     void getSessionStats();
@@ -69,7 +72,7 @@ public:
     void stopTorrent(int id);
     void startAll(bool force = false);              // без ids — все торренты
     void stopAll();
-    void removeTorrent(int id, bool deleteLocalData = false);
+    void removeTorrent(int id, bool deleteLocalData = false, RequestCallback callback = {});
     void reannounce(int id);
     void verify(int id);
     // Очередь (legacy-методы queue-move-*, RPC ≥ 14).
@@ -91,7 +94,10 @@ public:
     void addTracker(int id, const QString& url);
     void removeTracker(int id, int trackerId);
     void replaceTracker(int id, int trackerId, const QString& newUrl);
-    void addTorrent(const AddTorrent& params);
+    void addTorrent(const AddTorrent& params, RequestCallback callback = {});
+    void configureAddedTorrent(const TorrentDetails& details, const AddTorrent& options,
+                               const QString& name, const QVector<int>& unwanted,
+                               RequestCallback callback);
 
     // --- Демон (session-set и прочее) ---
     void setSession(const QJsonObject& params); // общий session-set
@@ -122,7 +128,9 @@ signals:
 
 private:
     void request(const QString& method, const QJsonObject& arguments);
-    void requestReport(const QString& method, const QJsonObject& arguments);
+    void requestReport(const QString& method, const QJsonObject& arguments,
+                       RequestCallback callback = {});
+    void applyAddSettings(QList<QPair<QString, QJsonObject>> requests, RequestCallback callback);
     void torrentIds(QJsonObject& args, int id) const;
     static QString describeError(const JsonRpcResult& r);
 

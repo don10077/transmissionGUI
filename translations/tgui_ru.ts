@@ -61,108 +61,6 @@
     </message>
   </context>
   <context>
-    <name>AddTorrentDialog</name>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="25" />
-      <location filename="../app/src/adddialog.cpp" line="99" />
-      <location filename="../app/src/adddialog.cpp" line="104" />
-      <source>Add torrent</source>
-      <translation>Добавить торрент</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="27" />
-      <source>.torrent file:</source>
-      <translation>Файл .torrent:</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="32" />
-      <source>Path to a .torrent file</source>
-      <translation>Путь к файлу .torrent</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="33" />
-      <location filename="../app/src/adddialog.cpp" line="43" />
-      <source>Browse…</source>
-      <translation>Обзор…</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="28" />
-      <source>Magnet link or URL:</source>
-      <translation>Магнит-ссылка или URL:</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="40" />
-      <source>magnet:?xt=urn:btih:… or http://…</source>
-      <translation>magnet:?xt=urn:btih:… или http://…</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="56" />
-      <source>Free: %1</source>
-      <translation>Свободно: %1</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="64" />
-      <source>Unlimited</source>
-      <translation>Без лимита</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="66" />
-      <source>Save .torrent file</source>
-      <translation>Сохранить .torrent-файл</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="68" />
-      <source>Destination folder/file name</source>
-      <translation>Папка назначения / имя файла</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="72" />
-      <source>Start</source>
-      <translation>Старт</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="75" />
-      <source>Sequential download</source>
-      <translation>Последовательная загрузка</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="78" />
-      <source>Requires Transmission 4.1 or newer (RPC 18)</source>
-      <translation>Требуется Transmission 4.1 или новее (RPC 18)</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="86" />
-      <location filename="../app/src/adddialog.cpp" line="157" />
-      <source>Download to</source>
-      <translation>Скачивать в</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="88" />
-      <source>Peer limit</source>
-      <translation>Лимит пиров</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="100" />
-      <source>Specify an existing .torrent file.</source>
-      <translation>Укажите существующий файл .torrent.</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="104" />
-      <source>Specify a magnet link or URL.</source>
-      <translation>Укажите магнит-ссылку или URL.</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="149" />
-      <source>Select a .torrent file</source>
-      <translation>Выберите файл .torrent</translation>
-    </message>
-    <message>
-      <location filename="../app/src/adddialog.cpp" line="150" />
-      <source>Torrent files (*.torrent);;All files (*)</source>
-      <translation>Торрент-файлы (*.torrent);;Все файлы (*)</translation>
-    </message>
-  </context>
-  <context>
     <name>ColSetupDialog</name>
     <message>
       <location filename="../app/src/colsetup.cpp" line="135" />
@@ -499,29 +397,100 @@
   <context>
     <name>FileSelectDialog</name>
     <message>
-      <location filename="../app/src/fileselectdialog.cpp" line="15" />
-      <source>File selection</source>
-      <translation>Выбор файлов</translation>
+      <source>File name</source>
+      <translation>Имя файла</translation>
     </message>
     <message>
-      <location filename="../app/src/fileselectdialog.cpp" line="20" />
-      <source>File (size)</source>
-      <translation>Файл (размер)</translation>
+      <source>Size</source>
+      <translation>Размер</translation>
     </message>
     <message>
-      <location filename="../app/src/fileselectdialog.cpp" line="31" />
       <source>Select all</source>
       <translation>Выбрать все</translation>
     </message>
     <message>
-      <location filename="../app/src/fileselectdialog.cpp" line="32" />
-      <source>Deselect all</source>
-      <translation>Снять выделение</translation>
+      <source>Select none</source>
+      <translation>Снять все</translation>
     </message>
     <message>
-      <location filename="../app/src/fileselectdialog.cpp" line="47" />
-      <source>Unselected files will not be downloaded.</source>
-      <translation>Невыбранные файлы не будут скачаны.</translation>
+      <source>Size: %1</source>
+      <translation>Размер: %1</translation>
+    </message>
+    <message>
+      <source>Start torrent</source>
+      <translation>Запустить торрент</translation>
+    </message>
+    <message>
+      <source>Sequential download</source>
+      <translation>Последовательная загрузка</translation>
+    </message>
+    <message>
+      <source>Requires Transmission 4.1 or newer (RPC 18)</source>
+      <translation>Требуется Transmission 4.1 или новее (RPC 18)</translation>
+    </message>
+    <message>
+      <source>Add new torrent</source>
+      <translation>Добавление торрента</translation>
+    </message>
+    <message>
+      <source>Destination folder:</source>
+      <translation>Папка назначения:</translation>
+    </message>
+    <message>
+      <source>Remove</source>
+      <translation>Удалить</translation>
+    </message>
+    <message>
+      <source>Browse…</source>
+      <translation>Обзор…</translation>
+    </message>
+    <message>
+      <source>Save as:</source>
+      <translation>Сохранить как:</translation>
+    </message>
+    <message>
+      <source>Template:</source>
+      <translation>Шаблон:</translation>
+    </message>
+    <message>
+      <source>For example: *.mkv *.mp4</source>
+      <translation>Например, *.mkv *.mp4</translation>
+    </message>
+    <message>
+      <source>Peer limit:</source>
+      <translation>Лимит пиров:</translation>
+    </message>
+    <message>
+      <source>Free disk space: %1</source>
+      <translation>Свободное место: %1</translation>
+    </message>
+    <message>
+      <source>Torrent contents</source>
+      <translation>Содержимое торрента</translation>
+    </message>
+    <message>
+      <source>Specify a destination folder.</source>
+      <translation>Укажите папку назначения.</translation>
+    </message>
+    <message>
+      <source>The destination is not accessible locally. Check path mappings or enter the daemon path.</source>
+      <translation>Папка недоступна локально. Проверьте сопоставления путей или введите путь на сервере.</translation>
+    </message>
+    <message>
+      <source>Specify a valid file or folder name.</source>
+      <translation>Укажите допустимое имя файла или папки.</translation>
+    </message>
+    <message>
+      <source>Save .torrent file…</source>
+      <translation>Сохранить .torrent-файл…</translation>
+    </message>
+    <message>
+      <source>Torrent files (*.torrent)</source>
+      <translation>Торрент-файлы (*.torrent)</translation>
+    </message>
+    <message>
+      <source>Unable to save file: %1</source>
+      <translation>Не удалось сохранить файл: %1</translation>
     </message>
   </context>
   <context>
@@ -1655,6 +1624,22 @@ Restart the application to apply the changes.</source>
       <location filename="../app/src/mainwindow.cpp" line="1390" />
       <source>GeoIP update is not available in this build.</source>
       <translation>Обновление GeoIP недоступно в этой сборке.</translation>
+    </message>
+    <message>
+      <source>Select a .torrent file</source>
+      <translation>Выберите файл .torrent</translation>
+    </message>
+    <message>
+      <source>Torrent files (*.torrent);;All files (*)</source>
+      <translation>Торрент-файлы (*.torrent);;Все файлы (*)</translation>
+    </message>
+    <message>
+      <source>Torrent already exists.</source>
+      <translation>Торрент уже добавлен.</translation>
+    </message>
+    <message>
+      <source>Unable to add torrent.</source>
+      <translation>Не удалось добавить торрент.</translation>
     </message>
   </context>
   <context>

@@ -297,9 +297,42 @@ QVector<FileStat> parseFiles(const QJsonObject& torrent)
         if (i < wanted.size())
             fs.wanted = wanted.at(i).isBool() ? wanted.at(i).toBool()
                                               : wanted.at(i).toInt() != 0;
+        // Диапазон кусков (Transmission 4.x: begin_piece/end_piece,
+        // в legacy-диалекте — camelCase). endPiece — за последним куском.
+        const QJsonValue begin = f.contains("begin_piece") ? f.value("begin_piece")
+                                                           : f.value("beginPiece");
+        const QJsonValue end = f.contains("end_piece") ? f.value("end_piece")
+                                                       : f.value("endPiece");
+        if (begin.isDouble())
+            fs.beginPiece = begin.toInt();
+        if (end.isDouble())
+            fs.endPiece = end.toInt();
         result.push_back(fs);
     }
     return result;
+}
+
+void applyCheckProgress(QVector<FileStat>& files, int status, std::optional<double> recheckProgress,
+                        int pieceCount)
+{
+    const bool verifying = status == static_cast<int>(TorrentStatus::Check) && recheckProgress;
+    const double progress = std::clamp(recheckProgress.value_or(0.0), 0.0, 1.0);
+    for (auto& file : files) {
+        if (verifying && files.size() == 1) {
+            file.checkProgress = progress;
+            continue;
+        }
+        const int span = file.endPiece - file.beginPiece;
+        if (!verifying || pieceCount <= 0 || span <= 0) {
+            file.checkProgress = -1.0;
+            continue;
+        }
+        // Проверка идёт по кускам от начала торрента: для файла это доля
+        // проверенных кусков из его диапазона [beginPiece, endPiece).
+        const double checkedPieces = progress * pieceCount;
+        file.checkProgress =
+            std::clamp((checkedPieces - file.beginPiece) / span, 0.0, 1.0);
+    }
 }
 
 namespace {
