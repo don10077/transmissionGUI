@@ -264,7 +264,6 @@ private:
     tgui::GeoIpDb m_geoip; // GeoIP Country Edition (W11b)
     QTimer m_refreshTimer;
     QSplitter* m_mainSplitter = nullptr;
-    int m_totalsMode = 3;
     bool m_settingsImported = false;
     bool m_checkingUpdate = false;
     // Ожидание подтверждённого нового downloadDir после переноса.
@@ -300,10 +299,6 @@ private:
     QToolButton* m_statusUpload = nullptr;
     QWidget* m_statusAlternative = nullptr;
     QLabel* m_statusFree = nullptr;
-    QLabel* m_statusSize = nullptr;
-    QLabel* m_statusSelectedSize = nullptr;
-    QLabel* m_statusDone = nullptr;
-    QLabel* m_statusLeft = nullptr;
     QLabel* m_countLabel = nullptr;
     QLabel* m_statusText = nullptr;
     QLabel* m_statusDot = nullptr;

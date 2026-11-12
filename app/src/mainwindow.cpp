@@ -176,8 +176,7 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
     resize(1200, 780);
 
     m_proxy.setSourceModel(&m_model);
-    const QSettings preferences;
-    m_totalsMode = qBound(0, preferences.value("ui/totalsMode", 3).toInt(), 3);
+
     createUi();
     createActions();
     createMenus();
@@ -583,10 +582,6 @@ void MainWindow::createUi()
         return label;
     };
     m_statusFree = addLabel();
-    m_statusSize = addLabel();
-    m_statusSelectedSize = addLabel();
-    m_statusDone = addLabel();
-    m_statusLeft = addLabel();
     strip->addStretch(1);
     m_countLabel = addLabel();
 
@@ -1693,62 +1688,28 @@ void MainWindow::onRemoveSelected()
         runTorrentAction("torrent-remove", ids);
 }
 
-/** Считает скорости, объёмы и число выбранных торрентов для строки состояния. */
+/** Считает скорости, свободное место и число торрентов для строки состояния. */
 void MainWindow::updateStatusBarTotals()
 {
     if (!m_statusStrip)
         return;
 
-    struct Sizes {
-        double total = 0.0;
-        double done = 0.0;
-        double left = 0.0;
-
-        void add(const tgui::Torrent& torrent)
-        {
-            const double wanted = qMax(0.0, torrent.sizeWhenDone.value_or(torrent.totalSize.value_or(0.0)));
-            const double remaining = qBound(0.0, torrent.leftUntilDone.value_or(wanted), wanted);
-            total += torrent.totalSize.value_or(wanted);
-            done += wanted - remaining;
-            left += remaining;
-        }
-    };
-
     m_statusDownRate = 0.0;
     m_statusUpRate = 0.0;
-    Sizes totals;
     for (const auto& torrent : m_model.torrents()) {
         const auto rates = m_model.displayedRates(torrent);
         m_statusDownRate += rates.first;
         m_statusUpRate += rates.second;
-        if (m_totalsMode == 3)
-            totals.add(torrent);
     }
-    if (m_totalsMode == 1)
-        for (int row = 0; row < m_proxy.rowCount(); ++row)
-            totals.add(m_proxy.torrentAt(row));
-
-    const auto selected = m_view->selectionModel()->selectedRows();
-    Sizes selectedSizes;
-    if (m_totalsMode != 0)
-        for (const auto& row : selected)
-            selectedSizes.add(m_proxy.torrentAt(row.row()));
-    if (m_totalsMode == 2)
-        totals = selectedSizes;
 
     const auto format = [](double bytes) { return QString::fromStdString(tgui::formatSize(bytes)); };
-    const QString sizeCaption = m_totalsMode == 1 ? tr("Visible: %1")
-        : m_totalsMode == 2 ? tr("Selected: %1") : tr("Total: %1");
-    m_statusSize->setText(sizeCaption.arg(format(totals.total)));
-    m_statusSelectedSize->setText(tr("Selected: %1").arg(format(selectedSizes.total)));
-    m_statusDone->setText(tr("Done: %1").arg(format(totals.done)));
-    m_statusLeft->setText(tr("Left: %1").arg(format(totals.left)));
     if (const auto free = m_sessionInfo.downloadDirFreeSpace; free && *free >= 0) {
         m_statusFree->setText(tr("Free: %1").arg(format(static_cast<double>(*free))));
     } else {
         m_statusFree->clear();
     }
 
+    const auto selected = m_view->selectionModel()->selectedRows();
     const int count = m_model.rowCount();
     QString countText = count == 1 ? tr("1 torrent") : tr("%1 torrents").arg(count);
     if (selected.size() > 1)
@@ -1767,14 +1728,8 @@ void MainWindow::updateStatusBarPresentation()
     constexpr int ratePadding = 42;       // края, иконка и зазор
     const int width = m_statusStrip->width();
     QString connection = m_connectionStateText;
-    if (m_connected) {
+    if (m_connected)
         connection = tr("Transmission %1 (RPC %2)").arg(m_sessionInfo.version).arg(m_sessionInfo.rpcVersion);
-        if (m_rpc) {
-            const QString address = m_rpc->options().url.adjusted(QUrl::RemoveUserInfo).authority();
-            if (!address.isEmpty())
-                connection += tr(" on %1").arg(address);
-        }
-    }
 
     const QString message = statusBar()->currentMessage();
     const bool showMessage = !message.isEmpty() && message != tr("Connected") && message != tr("Disconnected");
@@ -1821,8 +1776,7 @@ void MainWindow::updateStatusBarPresentation()
         const QString shown = !compact ? full
             : metrics.horizontalAdvance(compactText) <= textRoom ? compactText : current;
         button->setText(metrics.elidedText(shown, Qt::ElideRight, textRoom));
-        button->setToolTip(full + QLatin1Char('
-') +
+        button->setToolTip(full + QLatin1Char('\n') +
             (download ? tr("Max download speed") : tr("Max upload speed")));
         button->setAccessibleName(full);
     };
@@ -1853,10 +1807,6 @@ void MainWindow::updateStatusBarPresentation()
     showSegment(m_countLabel, true);
     showSegment(m_statusAlternative, m_sessionInfo.altSpeedEnabled);
     showSegment(m_statusFree, !m_statusFree->text().isEmpty());
-    showSegment(m_statusSize, m_totalsMode != 0);
-    showSegment(m_statusSelectedSize, m_totalsMode != 0 && m_totalsMode != 2);
-    showSegment(m_statusDone, m_totalsMode != 0);
-    showSegment(m_statusLeft, m_totalsMode != 0);
 }
 
 void MainWindow::onShowProperties()
@@ -2550,20 +2500,6 @@ void MainWindow::createMenus()
             m_filterPanel->selectAllTorrents();
     });
     mView->addSeparator();
-    auto* totals = mView->addMenu(tr("Size totals"));
-    auto* totalChoices = new QActionGroup(totals);
-    const QStringList captions{tr("Hide size totals"), tr("Visible torrents"), tr("Selected torrents"), tr("All torrents")};
-    for (int i = 0; i < captions.size(); ++i) {
-        auto* action = totals->addAction(captions.at(i));
-        action->setCheckable(true);
-        action->setChecked(m_totalsMode == i);
-        totalChoices->addAction(action);
-        connect(action, &QAction::triggered, this, [this, i] {
-            m_totalsMode = i;
-            QSettings().setValue("ui/totalsMode", i);
-            updateStatusBarTotals();
-        });
-    }
 
     // Видимость панелей. F11/F12 и Shift+F11/Shift+F12 работают и тогда,
     // когда меню/тулбар скрыты — действия добавлены в окно.
