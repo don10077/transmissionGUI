@@ -74,10 +74,21 @@ void ConnectButton::paintEvent(QPaintEvent*)
     const auto& colors = tgui::theme::palette();
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
-    painter.setBrush(m_connected ? colors.panel : colors.connectOfflineBg);
-    const QColor border = m_connected ? colors.inputBorder : colors.connectOfflineBorder;
-    painter.setPen(underMouse() || hasFocus() || isDown() ? colors.inputFocus : border);
-    painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 3, 3);
+
+    //const bool isInteractive = underMouse() || hasFocus() || isDown();
+    const bool isInteractive = underMouse() || isDown();
+
+    // Фон и бордюр рисуем ТОЛЬКО в интерактивном состоянии.
+    // В обычном виде кнопка полностью прозрачная.
+    if (isInteractive) {
+        painter.setBrush(m_connected ? colors.panel : colors.connectOfflineBg);
+        const QColor border = colors.inputFocus;
+        painter.setPen(border);
+        painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 3, 3);
+    } else {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(Qt::NoBrush);
+    }
 
     icon().paint(&painter, QRect(kPadding, (height() - kIconSize) / 2, kIconSize, kIconSize));
     const int arrowX = width() - kPadding - kArrowWidth / 2;
