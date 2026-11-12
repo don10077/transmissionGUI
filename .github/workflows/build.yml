@@ -10,6 +10,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7.0.1
+      - name: Check theme color tokens
+        shell: bash
+        run: |
+          if git grep -nE '#([[:xdigit:]]{3}|[[:xdigit:]]{6}|[[:xdigit:]]{8})\b' -- app/src/theme.cpp; then
+            exit 1
+          fi
       - uses: msys2/setup-msys2@v2
         id: msys2
         with:
@@ -20,6 +26,7 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-svg
             mingw-w64-x86_64-qt6-tools
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
@@ -67,7 +74,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build qt6-base-dev qt6-tools-dev qt6-l10n-tools libgtest-dev zlib1g-dev libxkbcommon-dev dpkg-dev file xvfb xauth desktop-file-utils
+          sudo apt-get install -y ninja-build qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-l10n-tools libgtest-dev zlib1g-dev libxkbcommon-dev dpkg-dev file xvfb xauth desktop-file-utils
       - name: Build and run tests
         run: |
           cmake --preset release

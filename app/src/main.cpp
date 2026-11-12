@@ -83,7 +83,7 @@ int main(int argc, char* argv[])
     }
 
     tgui::theme::apply(app);
-    app.setWindowIcon(QIcon(tgui::theme::appIconPixmap(64)));
+    app.setWindowIcon(tgui::theme::icon(tgui::theme::Icon::App));
 
     // i18n (W06): русский по умолчанию, язык — QSettings("ui/language");
     // Сначала внешний .qm рядом с exe, затем встроенный перевод.

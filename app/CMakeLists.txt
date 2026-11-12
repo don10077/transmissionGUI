@@ -2,6 +2,7 @@
 add_executable(transmissiongui WIN32
     src/main.cpp
     src/externalopen.cpp
+    icons/icons.qrc
     src/theme.cpp
     src/mainwindow.cpp
     src/torrentmodel.cpp
@@ -46,7 +47,7 @@ add_executable(transmissiongui WIN32
 )
 target_include_directories(transmissiongui PRIVATE src)
 target_compile_definitions(transmissiongui PRIVATE TGUI_VERSION="${PROJECT_VERSION}")
-target_link_libraries(transmissiongui PRIVATE tgui_core Qt6::Widgets Qt6::Network ZLIB::ZLIB)
+target_link_libraries(transmissiongui PRIVATE tgui_core Qt6::Widgets Qt6::Network Qt6::Svg ZLIB::ZLIB)
 if(WIN32)
     target_link_libraries(transmissiongui PRIVATE shell32)
 endif()

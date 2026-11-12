@@ -1,833 +1,551 @@
 #include "theme.h"
 
 #include <QApplication>
+#include <QFileInfo>
 #include <QFont>
+#include <QFontMetrics>
+#include <QHash>
 #include <QPainter>
-#include <QPainterPath>
 #include <QPalette>
 #include <QStyleFactory>
+#include <QSvgRenderer>
 
-#include <cmath>
+#include <algorithm>
 
 namespace {
 
 using tgui::theme::Icon;
-using tgui::theme::color::accent;
-using tgui::theme::color::amber;
-using tgui::theme::color::green;
-using tgui::theme::color::iconSlate;
-using tgui::theme::color::purple;
-using tgui::theme::color::red;
 
-// Все иконки рисуются в условной сетке 24×24 и масштабируются под размер.
-constexpr qreal kGrid = 24.0;
-
-QColor defaultColor(Icon id)
+/**
+ * Сопоставляет роль иконки с SVG из макета или дополнительного набора.
+ * @param id Роль иконки.
+ */
+QString iconPath(Icon id)
 {
     switch (id) {
-        case Icon::Disconnect:
-        case Icon::Remove:
-        case Icon::FilterError:
-            return red;
-        case Icon::Start:
-        case Icon::StartAll:
-        case Icon::Add:
-        case Icon::AddLink:
-        case Icon::FilterCompleted:
-        case Icon::FilterActive:
-        case Icon::FilterWaiting:
-            return green;
-        case Icon::Stop:
-        case Icon::StopAll:
-            return QColor(0xC7, 0x4C, 0x4C);
-        case Icon::AltSpeed:
-        case Icon::Move:
-        case Icon::Folder:
-        case Icon::FilterInactive:
-        case Icon::FilterStopped:
-        case Icon::StatusWaiting:
-            return amber;
-        case Icon::StatusDone:
-        case Icon::StatusSeed:
-            return green;
-        case Icon::StatusDown:
+        case Icon::App:
+            return QStringLiteral(":/icons/i-app.svg");
         case Icon::Connect:
-            return accent;
-        case Icon::StatusError:
-            return red;
-        case Icon::StatusVerifying:
-            return purple;
-        case Icon::StatusStopped:
-            return QColor(0x78, 0x7C, 0x82);
-        default:
-            return iconSlate;
-    }
-}
-
-void stroke(QPainter& p, const QColor& c, qreal width = 2.0)
-{
-    QPen pen(c, width);
-    pen.setCapStyle(Qt::RoundCap);
-    pen.setJoinStyle(Qt::RoundJoin);
-    p.setPen(pen);
-    p.setBrush(Qt::NoBrush);
-}
-
-void fill(QPainter& p, const QColor& c)
-{
-    p.setPen(Qt::NoPen);
-    p.setBrush(c);
-}
-
-// Квадратная «плашка» статуса торрента (как imgDone/imgDown в эталоне).
-void badge(QPainter& p, const QColor& c)
-{
-    fill(p, c);
-    p.drawRoundedRect(QRectF(2.5, 2.5, 19.0, 19.0), 5.5, 5.5);
-}
-
-void drawFolder(QPainter& p, const QRectF& r, const QColor& c, bool openRight = false)
-{
-    QPainterPath path;
-    path.moveTo(r.left(), r.top() + r.height() * 0.22);
-    path.lineTo(r.left() + r.width() * 0.38, r.top() + r.height() * 0.22);
-    path.lineTo(r.left() + r.width() * 0.48, r.top() + r.height() * 0.36);
-    path.lineTo(r.right() - 1.5, r.top() + r.height() * 0.36);
-    path.quadTo(r.right(), r.top() + r.height() * 0.36, r.right(), r.top() + r.height() * 0.48);
-    path.lineTo(r.right(), r.bottom() - 2.0);
-    path.quadTo(r.right(), r.bottom(), r.right() - 2.0, r.bottom());
-    path.lineTo(r.left() + 2.0, r.bottom());
-    path.quadTo(r.left(), r.bottom(), r.left(), r.bottom() - 2.0);
-    path.closeSubpath();
-    fill(p, c.lighter(112));
-    p.drawPath(path);
-    stroke(p, c.darker(115), 1.4);
-    p.drawPath(path);
-
-    if (openRight) {
-        stroke(p, accent, 2.0);
-        p.drawLine(QPointF(r.right() - 7.0, r.center().y() + 1.0),
-                   QPointF(r.right() - 1.5, r.center().y() + 1.0));
-        p.drawLine(QPointF(r.right() - 4.0, r.center().y() - 1.5),
-                   QPointF(r.right() - 1.5, r.center().y() + 1.0));
-        p.drawLine(QPointF(r.right() - 4.0, r.center().y() + 3.5),
-                   QPointF(r.right() - 1.5, r.center().y() + 1.0));
-    }
-}
-
-void drawLink(QPainter& p, const QColor& c)
-{
-    stroke(p, c, 2.0);
-    // Два наклонных звена цепочки.
-    p.save();
-    p.translate(12, 12);
-    p.rotate(-45);
-    p.drawRoundedRect(QRectF(-8, -4.5, 8.5, 9), 4.0, 4.0);
-    p.drawRoundedRect(QRectF(-0.5, -4.5, 8.5, 9), 4.0, 4.0);
-    p.restore();
-}
-
-void drawDocument(QPainter& p, const QColor& c)
-{
-    QPainterPath path;
-    path.moveTo(6, 3);
-    path.lineTo(14, 3);
-    path.lineTo(19, 8);
-    path.lineTo(19, 21);
-    path.lineTo(6, 21);
-    path.closeSubpath();
-    fill(p, c.lighter(190));
-    stroke(p, c, 1.7);
-    p.drawPath(path);
-    p.drawLine(QPointF(14, 3), QPointF(14, 8));
-    p.drawLine(QPointF(14, 8), QPointF(19, 8));
-    stroke(p, c.lighter(130), 1.2);
-    p.drawLine(QPointF(9, 12), QPointF(16, 12));
-    p.drawLine(QPointF(9, 15), QPointF(16, 15));
-    p.drawLine(QPointF(9, 18), QPointF(13, 18));
-}
-
-void drawPerson(QPainter& p, const QColor& c, const QPointF& center, qreal scale)
-{
-    fill(p, c);
-    p.drawEllipse(center + QPointF(-3.2 * scale, -4.6 * scale), 3.0 * scale, 3.0 * scale);
-    QPainterPath body;
-    body.moveTo(center.x() - 5.6 * scale, center.y() + 6.4 * scale);
-    body.quadTo(center.x() - 5.4 * scale, center.y() + 0.6 * scale,
-                center.x(), center.y() + 0.6 * scale);
-    body.quadTo(center.x() + 5.4 * scale, center.y() + 0.6 * scale,
-                center.x() + 5.6 * scale, center.y() + 6.4 * scale);
-    body.closeSubpath();
-    p.drawPath(body);
-}
-
-void drawIcon(QPainter& p, Icon id, const QColor& c)
-{
-    p.save();
-    p.setRenderHint(QPainter::Antialiasing, true);
-    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-
-    switch (id) {
-        case Icon::Connect: {
-            stroke(p, c, 1.9);
-            p.drawLine(QPointF(9, 3.5), QPointF(9, 8));
-            p.drawLine(QPointF(15, 3.5), QPointF(15, 8));
-            p.drawRoundedRect(QRectF(6.2, 8, 11.6, 7.2), 2.4, 2.4);
-            p.drawLine(QPointF(12, 15.2), QPointF(12, 21));
-            p.drawLine(QPointF(9.5, 18.2), QPointF(12, 21));
-            p.drawLine(QPointF(14.5, 18.2), QPointF(12, 21));
-            break;
-        }
-        case Icon::Disconnect: {
-            stroke(p, c.lighter(125), 1.8);
-            p.drawLine(QPointF(9, 4), QPointF(9, 8));
-            p.drawLine(QPointF(15, 4), QPointF(15, 8));
-            p.drawRoundedRect(QRectF(6.2, 8, 11.6, 7.2), 2.4, 2.4);
-            p.drawLine(QPointF(12, 15.2), QPointF(12, 20));
-            stroke(p, c, 2.2);
-            p.drawLine(QPointF(4, 20), QPointF(20, 4));
-            break;
-        }
-        case Icon::Add: {
-            stroke(p, c, 2.0);
-            p.drawEllipse(QPointF(12, 12), 8.6, 8.6);
-            p.drawLine(QPointF(12, 7.8), QPointF(12, 16.2));
-            p.drawLine(QPointF(7.8, 12), QPointF(16.2, 12));
-            break;
-        }
-        case Icon::AddLink: {
-            // Цепочка + «плюс»: добавление торрента по ссылке.
-            stroke(p, c, 1.9);
-            p.drawArc(QRectF(3.8, 9.0, 9.0, 6.0), 90 * 16, 180 * 16);
-            p.drawArc(QRectF(11.2, 9.0, 9.0, 6.0), 270 * 16, 180 * 16);
-            p.drawLine(QPointF(8.0, 12), QPointF(16.0, 12));
-            break;
-        }
-        case Icon::Start: {
-            fill(p, c);
-            QPainterPath path;
-            path.moveTo(8.4, 4.8);
-            path.lineTo(19.2, 12);
-            path.lineTo(8.4, 19.2);
-            path.closeSubpath();
-            p.drawPath(path);
-            break;
-        }
-        case Icon::StartAll: {
-            fill(p, c);
-            for (qreal dx : {0.0, 6.0}) {
-                QPainterPath path;
-                path.moveTo(5.5 + dx, 6);
-                path.lineTo(12.0 + dx, 12);
-                path.lineTo(5.5 + dx, 18);
-                path.closeSubpath();
-                p.drawPath(path);
-            }
-            break;
-        }
-        case Icon::Pause: {
-            fill(p, c);
-            p.drawRoundedRect(QRectF(6, 5, 4, 14), 0.7, 0.7);
-            p.drawRoundedRect(QRectF(14, 5, 4, 14), 0.7, 0.7);
-            break;
-        }
-        case Icon::Stop: {
-            fill(p, c);
-            p.drawRoundedRect(QRectF(6.5, 6.5, 11, 11), 2.4, 2.4);
-            break;
-        }
-        case Icon::StopAll: {
-            fill(p, c);
-            p.drawRoundedRect(QRectF(4.5, 6.5, 7, 11), 2.0, 2.0);
-            p.drawRoundedRect(QRectF(13.0, 6.5, 7, 11), 2.0, 2.0);
-            break;
-        }
-        case Icon::Remove: {
-            stroke(p, c, 1.9);
-            p.drawLine(QPointF(4.5, 7), QPointF(19.5, 7));
-            p.drawLine(QPointF(9, 4), QPointF(15, 4));
-            QPainterPath body;
-            body.moveTo(6.5, 7);
-            body.lineTo(7.4, 20);
-            body.quadTo(7.5, 21, 8.5, 21);
-            body.lineTo(15.5, 21);
-            body.quadTo(16.5, 21, 16.6, 20);
-            body.lineTo(17.5, 7);
-            p.drawPath(body);
-            stroke(p, c.lighter(145), 1.5);
-            p.drawLine(QPointF(10.2, 10.5), QPointF(10.7, 17.5));
-            p.drawLine(QPointF(13.8, 10.5), QPointF(13.3, 17.5));
-            break;
-        }
-        case Icon::Properties: {
-            stroke(p, c, 1.8);
-            for (qreal y : {6.5, 12.0, 17.5}) {
-                p.drawLine(QPointF(4.5, y), QPointF(19.5, y));
-            }
-            fill(p, c);
-            p.drawEllipse(QPointF(9, 6.5), 2.4, 2.4);
-            p.drawEllipse(QPointF(15, 12.0), 2.4, 2.4);
-            p.drawEllipse(QPointF(10.5, 17.5), 2.4, 2.4);
-            break;
-        }
+            return QStringLiteral(":/icons/i-conn.svg");
+        case Icon::Disconnect:
+            return QStringLiteral(":/icons/i-conn-off.svg");
+        case Icon::Add:
+            return QStringLiteral(":/icons/i-add.svg");
+        case Icon::AddLink:
+            return QStringLiteral(":/icons/i-magnet.svg");
+        case Icon::Start:
+            return QStringLiteral(":/icons/i-start.svg");
+        case Icon::ForceStart:
+            return QStringLiteral(":/icons/i-force.svg");
+        case Icon::Pause:
+            return QStringLiteral(":/icons/i-pause.svg");
+        case Icon::Remove:
+            return QStringLiteral(":/icons/i-remove.svg");
+        case Icon::Properties:
+            return QStringLiteral(":/icons/i-props.svg");
+        case Icon::Move:
+            return QStringLiteral(":/icons/i-move.svg");
+        case Icon::Refresh:
+            return QStringLiteral(":/icons/i-refresh.svg");
+        case Icon::AltSpeed:
+            return QStringLiteral(":/icons/i-alt.svg");
+        case Icon::Queue:
+            return QStringLiteral(":/icons/i-queue.svg");
+        case Icon::QueueUp:
+            return QStringLiteral(":/icons/i-up.svg");
+        case Icon::QueueDown:
+            return QStringLiteral(":/icons/i-down.svg");
         case Icon::DaemonOptions:
-        case Icon::AppOptions: {
-            // Шестерёнка настроек (у Transmission-опций — точка-индикатор).
-            stroke(p, c, 1.8);
-            p.drawEllipse(QPointF(12, 12), 4.2, 4.2);
-            for (int i = 0; i < 8; ++i) {
-                const qreal a = i * 3.14159265358979 / 4.0;
-                p.drawLine(QPointF(12 + std::cos(a) * 6.2, 12 + std::sin(a) * 6.2),
-                           QPointF(12 + std::cos(a) * 8.4, 12 + std::sin(a) * 8.4));
-            }
-            if (id == Icon::DaemonOptions) {
-                fill(p, accent);
-                p.drawEllipse(QPointF(18.5, 18.5), 2.0, 2.0);
-            }
-            break;
-        }
-        case Icon::Move: {
-            drawFolder(p, QRectF(3.5, 5.5, 14.5, 13.5), amber, true);
-            break;
-        }
-        case Icon::Refresh: {
-            stroke(p, c, 2.1);
-            QRectF r(4.5, 4.5, 15, 15);
-            p.drawArc(r, 35 * 16, 285 * 16);
-            p.drawLine(QPointF(18.2, 4.2), QPointF(18.2, 8.6));
-            p.drawLine(QPointF(18.2, 8.6), QPointF(13.8, 8.6));
-            break;
-        }
-        case Icon::AutoRefresh: {
-            stroke(p, c, 1.7);
-            p.drawEllipse(QPointF(12, 12), 8.4, 8.4);
-            p.drawLine(QPointF(12, 7.2), QPointF(12, 12));
-            p.drawLine(QPointF(12, 12), QPointF(15.6, 14.2));
-            break;
-        }
-        case Icon::Queue: {
-            stroke(p, c, 1.7);
-            for (int y : {6, 12, 18}) p.drawLine(QPointF(3, y), QPointF(14, y));
-            p.drawLine(QPointF(19, 5), QPointF(19, 19));
-            p.drawLine(QPointF(16.5, 8), QPointF(19, 5));
-            p.drawLine(QPointF(21.5, 8), QPointF(19, 5));
-            p.drawLine(QPointF(16.5, 16), QPointF(19, 19));
-            p.drawLine(QPointF(21.5, 16), QPointF(19, 19));
-            break;
-        }
-        case Icon::AltSpeed: {
-            stroke(p, c, 1.7);
-            p.drawArc(QRectF(4, 4, 15, 18), 0, 180 * 16);
-            p.drawLine(QPointF(3, 13), QPointF(20, 13));
-            p.drawLine(QPointF(7, 13), QPointF(7, 17));
-            p.drawLine(QPointF(16, 13), QPointF(16, 17));
-            p.drawEllipse(QRectF(19, 9, 3, 3));
-            p.drawLine(QPointF(2, 12), QPointF(4, 11));
-            break;
-        }
-        case Icon::About: {
-            stroke(p, c, 1.9);
-            p.drawEllipse(QPointF(12, 12), 8.6, 8.6);
-            fill(p, c);
-            p.drawEllipse(QPointF(12, 7.8), 1.15, 1.15);
-            stroke(p, c, 2.0);
-            p.drawLine(QPointF(12, 11), QPointF(12, 16.8));
-            break;
-        }
-        case Icon::Search: {
-            stroke(p, c, 2.0);
-            p.drawEllipse(QPointF(10.5, 10.5), 5.8, 5.8);
-            p.drawLine(QPointF(15.0, 15.0), QPointF(20.0, 20.0));
-            break;
-        }
-        case Icon::Folder:
-            drawFolder(p, QRectF(2.8, 5.0, 18.4, 14.5), amber);
-            break;
-        case Icon::Tracker:
-            drawLink(p, c);
-            break;
-        case Icon::FilterAll: {
-            fill(p, c);
-            p.drawEllipse(QPointF(12, 12), 6.4, 6.4);
-            fill(p, QColor(255, 255, 255, 190));
-            p.drawEllipse(QPointF(12, 12), 2.3, 2.3);
-            break;
-        }
-        case Icon::FilterDownloading:
-        case Icon::FilterCompleted:
-        case Icon::FilterActive:
-        case Icon::FilterInactive:
-        case Icon::FilterStopped:
-        case Icon::FilterError:
-        case Icon::FilterWaiting: {
-            const QColor dot = defaultColor(id);
-            fill(p, dot);
-            p.drawEllipse(QPointF(12, 12), 6.2, 6.2);
-            fill(p, QColor(255, 255, 255, 150));
-            p.drawEllipse(QPointF(9.6, 9.4), 1.7, 1.7);
-            break;
-        }
-        case Icon::StatusDone: {
-            badge(p, c);
-            stroke(p, Qt::white, 2.6);
-            QPainterPath check;
-            check.moveTo(6.6, 12.2);
-            check.lineTo(10.3, 15.9);
-            check.lineTo(17.6, 8.4);
-            p.drawPath(check);
-            break;
-        }
-        case Icon::StatusStopped: {
-            badge(p, c);
-            fill(p, Qt::white);
-            p.drawRoundedRect(QRectF(8.2, 7.2, 2.8, 9.6), 1.0, 1.0);
-            p.drawRoundedRect(QRectF(13.0, 7.2, 2.8, 9.6), 1.0, 1.0);
-            break;
-        }
-        case Icon::StatusDown: {
-            badge(p, c);
-            stroke(p, Qt::white, 2.4);
-            p.drawLine(QPointF(12, 6.4), QPointF(12, 16.4));
-            p.drawLine(QPointF(12, 16.4), QPointF(7.8, 12.2));
-            p.drawLine(QPointF(12, 16.4), QPointF(16.2, 12.2));
-            break;
-        }
-        case Icon::StatusSeed: {
-            badge(p, c);
-            stroke(p, Qt::white, 2.4);
-            p.drawLine(QPointF(12, 17.6), QPointF(12, 7.6));
-            p.drawLine(QPointF(12, 7.6), QPointF(7.8, 11.8));
-            p.drawLine(QPointF(12, 7.6), QPointF(16.2, 11.8));
-            break;
-        }
-        case Icon::StatusError: {
-            badge(p, c);
-            fill(p, Qt::white);
-            p.drawRoundedRect(QRectF(10.6, 6.2, 2.8, 8.8), 1.4, 1.4);
-            p.drawEllipse(QPointF(12, 17.8), 1.7, 1.7);
-            break;
-        }
-        case Icon::StatusWaiting: {
-            badge(p, c);
-            stroke(p, Qt::white, 1.9);
-            p.drawEllipse(QPointF(12, 12), 6.2, 6.2);
-            p.drawLine(QPointF(12, 8.2), QPointF(12, 12.2));
-            p.drawLine(QPointF(12, 12.2), QPointF(15.3, 14.2));
-            break;
-        }
-        case Icon::StatusVerifying: {
-            badge(p, c);
-            fill(p, Qt::white);
-            QPainterPath top;
-            top.moveTo(7.4, 5.8);
-            top.lineTo(16.6, 5.8);
-            top.lineTo(12.0, 11.8);
-            top.closeSubpath();
-            p.drawPath(top);
-            QPainterPath bottom;
-            bottom.moveTo(7.4, 18.2);
-            bottom.lineTo(16.6, 18.2);
-            bottom.lineTo(12.0, 12.2);
-            bottom.closeSubpath();
-            p.drawPath(bottom);
-            break;
-        }
+            return QStringLiteral(":/icons/i-daemon.svg");
+        case Icon::AppOptions:
+            return QStringLiteral(":/icons/i-opt.svg");
+        case Icon::About:
         case Icon::TabGeneral:
-        case Icon::TabFiles:
-            drawDocument(p, c);
-            break;
+            return QStringLiteral(":/icons/i-info.svg");
+        case Icon::Search:
+            return QStringLiteral(":/icons/i-search.svg");
+        case Icon::Folder:
+            return QStringLiteral(":/icons/i-folder.svg");
+        case Icon::Film:
+            return QStringLiteral(":/icons/i-film.svg");
+        case Icon::Label:
+            return QStringLiteral(":/icons/i-label.svg");
+        case Icon::LabelVideo:
+            return QStringLiteral(":/icons/lb-video.svg");
+        case Icon::LabelSerials:
+            return QStringLiteral(":/icons/lb-serials.svg");
+        case Icon::LabelMusic:
+            return QStringLiteral(":/icons/lb-music.svg");
+        case Icon::LabelBooks:
+            return QStringLiteral(":/icons/lb-books.svg");
+        case Icon::LabelGames:
+            return QStringLiteral(":/icons/lb-games.svg");
+        case Icon::LabelSoft:
+            return QStringLiteral(":/icons/lb-soft.svg");
+        case Icon::LabelPictures:
+            return QStringLiteral(":/icons/lb-pictures.svg");
+        case Icon::Copy:
+            return QStringLiteral(":/icons/i-copy.svg");
+        case Icon::Warning:
+            return QStringLiteral(":/icons/i-warn.svg");
+        case Icon::Question:
+            return QStringLiteral(":/icons/i-q.svg");
+        case Icon::Information:
+            return QStringLiteral(":/icons/i-inf32.svg");
+        case Icon::Tracker:
         case Icon::TabTrackers:
-            drawLink(p, c);
-            break;
+            return QStringLiteral(":/icons/i-tracker.svg");
+        case Icon::FilterAll:
+            return QStringLiteral(":/icons/i-all.svg");
+        case Icon::FilterDownloading:
+        case Icon::StatusDown:
+            return QStringLiteral(":/icons/st-dl.svg");
+        case Icon::FilterCompleted:
+        case Icon::StatusDone:
+            return QStringLiteral(":/icons/st-fin.svg");
+        case Icon::FilterActive:
+            return QStringLiteral(":/icons/i-act.svg");
+        case Icon::FilterInactive:
+            return QStringLiteral(":/icons/i-inact.svg");
+        case Icon::FilterStopped:
+        case Icon::StatusStopped:
+            return QStringLiteral(":/icons/st-stop.svg");
+        case Icon::FilterError:
+        case Icon::StatusError:
+            return QStringLiteral(":/icons/st-err.svg");
+        case Icon::FilterWaiting:
+        case Icon::StatusWaiting:
+            return QStringLiteral(":/icons/st-wait.svg");
+        case Icon::StatusSeed:
+            return QStringLiteral(":/icons/st-seed.svg");
+        case Icon::StatusVerifying:
+            return QStringLiteral(":/icons/st-check.svg");
         case Icon::TabPeers:
-            drawPerson(p, c, QPointF(9.2, 10.0), 0.92);
-            drawPerson(p, c.lighter(135), QPointF(15.4, 10.8), 0.72);
-            break;
-        case Icon::TabStatistics: {
-            fill(p, c);
-            p.drawRoundedRect(QRectF(4.5, 13.0, 3.6, 7.0), 1.0, 1.0);
-            p.drawRoundedRect(QRectF(10.2, 9.0, 3.6, 11.0), 1.0, 1.0);
-            p.drawRoundedRect(QRectF(15.9, 5.0, 3.6, 15.0), 1.0, 1.0);
-            break;
-        }
+            return QStringLiteral(":/icons/i-peer.svg");
+        case Icon::TabFiles:
+            return QStringLiteral(":/icons/i-file.svg");
+        case Icon::TabStatistics:
+            return QStringLiteral(":/icons/i-stat.svg");
     }
-
-    p.restore();
+    return {};
 }
 
-QPixmap renderIcon(Icon id, int size, const QColor& tint, qreal dpr)
+/**
+ * Рендерит SVG в физическом разрешении экрана.
+ * @param renderer Загруженный SVG.
+ * @param size Размер в логических пикселях.
+ * @param dpr Масштаб экрана.
+ */
+QPixmap renderIcon(QSvgRenderer& renderer, int size, qreal dpr)
 {
-    QPixmap pm(qRound(size * dpr), qRound(size * dpr));
-    pm.setDevicePixelRatio(dpr);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    const qreal scale = (size * dpr) / kGrid;
-    p.scale(scale, scale);
-    drawIcon(p, id, tint.isValid() ? tint : defaultColor(id));
-    p.end();
-    return pm;
+    const int pixels = qRound(size * dpr);
+    QPixmap pixmap(pixels, pixels);
+    pixmap.fill(Qt::transparent);
+    {
+        QPainter painter(&pixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+        renderer.render(&painter);
+    }
+    pixmap.setDevicePixelRatio(dpr);
+    return pixmap;
+}
+
+/**
+ * Уменьшает непрозрачность готового значка, как у отключённой кнопки в макете.
+ * @param normal Обычное изображение значка.
+ */
+QPixmap disabledIcon(const QPixmap& normal)
+{
+    QPixmap disabled(normal.size());
+    disabled.setDevicePixelRatio(normal.devicePixelRatio());
+    disabled.fill(Qt::transparent);
+    {
+        QPainter painter(&disabled);
+        painter.setOpacity(0.38);
+        painter.drawPixmap(QPoint(0, 0), normal);
+    }
+    return disabled;
 }
 
 } // namespace
 
 namespace tgui::theme {
 
-QIcon icon(Icon id, const QColor& tint)
+const Palette& palette()
 {
+    // Светлая палитра нового дизайна — значения из design/mockup.html
+    // (таблицы DESIGN_PLAN 0.1/0.2; расхождения с макетом зафиксированы там же).
+    static const Palette p{
+        // Поверхности
+        QColor(0xF0, 0xF0, 0xF0), // window
+        QColor(0xFF, 0xFF, 0xFF), // panel
+        QColor(0xFA, 0xFB, 0xFC), // zebra
+        QColor(0xE1, 0xE1, 0xE1), // section
+        QColor(0xFF, 0xFF, 0xFF), // headerBg
+        // Границы
+        QColor(0xD5, 0xD5, 0xD5), // border
+        QColor(0xE9, 0xE9, 0xE9), // borderSoft
+        QColor(0xD5, 0xD5, 0xD5), // layoutBorder
+        // Текст
+        QColor(0x1B, 0x1B, 0x1B), // text
+        QColor(0x6D, 0x6D, 0x6D), // textMuted
+        QColor(0x7A, 0x7A, 0x7A), // textFaint
+        QColor(0x33, 0x33, 0x33), // iconSlate
+        // Акцент
+        QColor(0x00, 0x67, 0xC0), // accent
+        QColor(0x00, 0x53, 0x9E), // accentDark
+        QColor(0x1A, 0x88, 0xE0), // accentHover
+        // Статусы
+        QColor(0x2F, 0x9E, 0x4A), // green
+        QColor(0xE7, 0xF6, 0xED), // greenLight
+        QColor(0xD0, 0x8A, 0x14), // amber
+        QColor(0xFD, 0xF3, 0xDC), // amberLight
+        QColor(0xD9, 0x36, 0x3E), // red
+        QColor(0xFB, 0xEA, 0xEA), // redLight
+        QColor(0x7A, 0x65, 0xC0), // purple
+        // Прогресс/куски
+        QColor(0x2B, 0x7B, 0xD6), // blue
+        QColor(0x3F, 0xAE, 0x5A), // progressGreen
+        QColor(0xE7, 0xB4, 0x5A), // progressAmber
+        QColor(0xE0, 0x67, 0x6D), // progressRed
+        QColor(0xA3, 0xA3, 0xA3), // progressStopped
+        // Состояния
+        QColor(0xE5, 0xF3, 0xFF), // hoverBg
+        QColor(0xCC, 0xE8, 0xFF), // selBg
+        QColor(0xB9, 0xDC, 0xFB), // selBgActive
+        QColor(0xDC, 0xEA, 0xF7), // selBgInactive
+        QColor(0xCC, 0xE8, 0xFF), // itemSelBg
+        QColor(0x1B, 0x1B, 0x1B), // itemSelText
+        QColor(0x99, 0x99, 0x99), // disabledText
+        QColor(0xCC, 0xE8, 0xFF), // highlight
+        QColor(0x1B, 0x1B, 0x1B), // highlightText
+        // Новые элементы
+        QColor(0xF0, 0x7C, 0x12), // newBadge
+        QColor(0xF1, 0xF4, 0xF7), // groupRow
+        QColor(0xF9, 0xF9, 0xF9), // toolbarBg
+        QColor(0xD3, 0xD3, 0xD3), // toolbarSep
+        QColor(0xE9, 0xEC, 0xEF), // sectionHeader
+        // Чипы
+        QColor(0xE8, 0xEE, 0xF6), // chipBg
+        QColor(0x2D, 0x4A, 0x6B), // chipText
+        QColor(0xCF, 0xDE, 0xEC), // chipBorder
+        // PieceBar
+        QColor(0xE3, 0xE8, 0xEE), // pieceEmpty
+        QColor(0x9F, 0xB6, 0xCF), // pieceBorder
+        // Input (как в mockup .srch/input: НЕ accent)
+        QColor(0xAB, 0xAD, 0xB3), // inputBorder
+        QColor(0x00, 0x78, 0xD7), // inputFocus
+        QColor(0xFF, 0xFF, 0xFF), // inputSelectionText
+        QColor(0xFF, 0xFF, 0xB6), // tooltipBg
+        // Кнопки диалогов (.btn)
+        QColor(0xE1, 0xE1, 0xE1), // btnBg
+        QColor(0xAD, 0xAD, 0xAD), // btnBorder
+        QColor(0xE5, 0xF1, 0xFB), // btnHoverBg
+        QColor(0xFB, 0xE9, 0xE9), // btnDangerHover
+        QColor(0xEE, 0xEE, 0xEE), // btnDisabledBg
+        QColor(0xCC, 0xCC, 0xCC), // btnDisabledBorder
+        QColor(0x99, 0x99, 0x99), // btnDisabledText
+        // Нативный прогресс-бар
+        QColor(0xE6, 0xE6, 0xE6), // progressBg
+        QColor(0xBC, 0xBC, 0xBC), // progressBorder
+        // Скроллбары
+        QColor(0xC0, 0xC0, 0xC0), // scrollbarHandle
+        QColor(0xA0, 0xA0, 0xA0)  // scrollHover
+    };
+    return p;
+}
+
+int rowHeightFor(const QFont& font)
+{
+    // A.2: не фиксировать жёстко — при крупном шрифте строки растут.
+    return std::max(dp(22), QFontMetrics(font).height() + dp(6));
+}
+
+QIcon icon(Icon id)
+{
+    // Роли с одинаковым рисунком используют один набор пиксмапов.
+    static QHash<QString, QIcon> cache;
+    const QString path = iconPath(id);
+    const auto found = cache.constFind(path);
+    if (found != cache.cend())
+        return *found;
+
+    QSvgRenderer renderer(path);
+    if (!renderer.isValid())
+        return {};
+
     QIcon result;
-    for (int size : {16, 20, 24, 32, 48}) {
-        result.addPixmap(renderIcon(id, size, tint, 1.0), QIcon::Normal, QIcon::Off);
-        result.addPixmap(renderIcon(id, size, tint, 2.0), QIcon::Normal, QIcon::Off);
+    const auto addSize = [&](int size) {
+        for (qreal dpr : {1.0, 1.25, 1.5, 2.0}) {
+            const QPixmap normal = renderIcon(renderer, size, dpr);
+            result.addPixmap(normal, QIcon::Normal);
+            result.addPixmap(disabledIcon(normal), QIcon::Disabled);
+        }
+    };
+    for (int size : {14, 16, 18, 20, 22, 24, 32})
+        addSize(size);
+    if (id == Icon::App) {
+        addSize(48);
+        addSize(64);
     }
+    cache.insert(path, result);
     return result;
 }
 
-QPixmap appIconPixmap(int size)
+QIcon fileIcon(const QString& fileName)
 {
-    QPixmap pm(size, size);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing, true);
-
-    QLinearGradient bg(0, 0, 0, size);
-    bg.setColorAt(0.0, QColor(0x4B, 0x9A, 0xE3));
-    bg.setColorAt(1.0, QColor(0x24, 0x6B, 0xB5));
-    p.setPen(Qt::NoPen);
-    p.setBrush(bg);
-    p.drawRoundedRect(QRectF(1, 1, size - 2, size - 2), size * 0.23, size * 0.23);
-
-    QPen pen(Qt::white, size * 0.105);
-    pen.setCapStyle(Qt::RoundCap);
-    pen.setJoinStyle(Qt::RoundJoin);
-    p.setPen(pen);
-    p.setBrush(Qt::NoBrush);
-
-    const qreal cx = size / 2.0;
-    // Стрелка вниз (слева) и вверх (справа) — мотив «обмена».
-    p.drawLine(QPointF(cx - size * 0.14, size * 0.27), QPointF(cx - size * 0.14, size * 0.63));
-    p.drawLine(QPointF(cx - size * 0.14, size * 0.63), QPointF(cx - size * 0.24, size * 0.49));
-    p.drawLine(QPointF(cx - size * 0.14, size * 0.63), QPointF(cx - size * 0.04, size * 0.49));
-    p.drawLine(QPointF(cx + size * 0.14, size * 0.73), QPointF(cx + size * 0.14, size * 0.37));
-    p.drawLine(QPointF(cx + size * 0.14, size * 0.37), QPointF(cx + size * 0.04, size * 0.51));
-    p.drawLine(QPointF(cx + size * 0.14, size * 0.37), QPointF(cx + size * 0.24, size * 0.51));
-    return pm;
+    const QString suffix = QFileInfo(fileName).suffix().toLower();
+    const bool isVideo = suffix == QStringLiteral("mkv") ||
+                         suffix == QStringLiteral("mp4") ||
+                         suffix == QStringLiteral("avi");
+    return icon(isVideo ? Icon::Film : Icon::TabFiles);
 }
 
-QPixmap statusDotPixmap(const QColor& color, int size)
+QPixmap statusDotPixmap(const QColor& color, int size, qreal dpr)
 {
-    QPixmap pm(size, size);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing, true);
-    p.setPen(Qt::NoPen);
-    p.setBrush(color);
-    p.drawEllipse(QRectF(0.5, 0.5, size - 1.0, size - 1.0));
-    return pm;
+    const int pixels = qRound(size * dpr);
+    QPixmap pixmap(pixels, pixels);
+    pixmap.fill(Qt::transparent);
+    {
+        QPainter painter(&pixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(color);
+        const qreal inset = 0.5 * dpr;
+        painter.drawEllipse(QRectF(inset, inset, pixels - 2 * inset, pixels - 2 * inset));
+    }
+    pixmap.setDevicePixelRatio(dpr);
+    return pixmap;
 }
 
-void apply(QApplication& app)
+// DESIGN_PLAN 0.2: QSS генерируется из токенов палитры — без hex-литералов.
+// Порядок правок не важен: имя каждого токена уникально (скобки %…% не пересекаются).
+QString buildQss(const Palette& p)
 {
-    app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
-
-    QPalette p;
-    p.setColor(QPalette::Window, color::window);
-    p.setColor(QPalette::WindowText, color::text);
-    p.setColor(QPalette::Base, color::panel);
-    p.setColor(QPalette::AlternateBase, color::panelAlt);
-    p.setColor(QPalette::Text, color::text);
-    p.setColor(QPalette::Button, color::panel);
-    p.setColor(QPalette::ButtonText, color::text);
-    p.setColor(QPalette::BrightText, Qt::white);
-    p.setColor(QPalette::Highlight, color::accent);
-    p.setColor(QPalette::HighlightedText, Qt::white);
-    p.setColor(QPalette::ToolTipBase, color::text);
-    p.setColor(QPalette::ToolTipText, Qt::white);
-    p.setColor(QPalette::PlaceholderText, color::textFaint);
-    p.setColor(QPalette::Disabled, QPalette::Text, color::textFaint);
-    p.setColor(QPalette::Disabled, QPalette::ButtonText, color::textFaint);
-    p.setColor(QPalette::Disabled, QPalette::WindowText, color::textFaint);
-    app.setPalette(p);
-
-    QFont font(QStringLiteral("Segoe UI"));
-    font.setPointSize(9);
-    app.setFont(font);
-
-    app.setStyleSheet(QStringLiteral(R"(
+    QString q = QStringLiteral(R"(
 * { outline: none; }
-QWidget { color: #000000; }
-QMainWindow, QDialog { background: #F0F0F0; }
-
-QMenuBar {
-    background: #FFFFFF;
-    border-bottom: 1px solid #D9D9D9;
-    padding: 1px 4px;
-}
-QMenuBar::item {
-    background: transparent;
-    padding: 5px 10px;
-    border-radius: 3px;
-    color: #000000;
-}
-QMenuBar::item:selected { background: #CCE8FF; color: #000000; }
-QMenuBar::item:pressed { background: #B8DCFA; }
-
-QMenu {
-    background: #FFFFFF;
-    border: 1px solid #ABADB3;
-    border-radius: 4px;
-    padding: 3px;
-}
-QMenu::item {
-    padding: 5px 28px 5px 10px;
-    border-radius: 3px;
-}
-QMenu::item:selected { background: #CCE8FF; color: #000000; }
-QMenu::item:disabled { color: #8C8C8C; }
-QMenu::separator { height: 1px; background: #D9D9D9; margin: 4px 8px; }
-
-QToolBar {
-    background: #F0F0F0;
-    border: none;
-    border-bottom: 1px solid #D9D9D9;
-    spacing: 1px;
-    padding: 3px 6px;
-}
-QToolBar::separator {
-    background: #ABADB3;
-    width: 1px;
-    margin: 4px 5px;
-}
-QToolButton {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 3px;
-    padding: 3px;
-}
-QToolButton:hover { background: #E5F3FF; border-color: #ABADB3; }
-QToolButton:pressed { background: #CCE8FF; }
-QToolButton:checked { background: #CCE8FF; border-color: #0078D7; }
-
+QWidget { color: %text%; }
+QMainWindow, QDialog { background: %window%; }
+QMenuBar { background: %panel%; border-bottom: 1px solid %layoutBorder%; padding: 1px 4px; }
+QMenuBar::item { background: transparent; padding: 5px 10px; border-radius: 3px; color: %text%; }
+QMenuBar::item:selected { background: %selBg%; color: %text%; }
+QMenuBar::item:pressed { background: %selBgActive%; }
+QMenu { background: %panel%; border: 1px solid %border%; border-radius: 4px; padding: 3px; }
+QMenu::item { padding: 5px 28px 5px 10px; border-radius: 3px; }
+QMenu::item:selected { background: %selBg%; color: %text%; }
+QMenu::item:disabled { color: %disabledText%; }
+QMenu::separator { height: 1px; background: %borderSoft%; margin: 4px 8px; }
+QToolBar { background: %toolbarBg%; border: none; border-bottom: 1px solid %layoutBorder%; spacing: 1px; padding: 3px 6px; }
+QToolBar::separator { background: %toolbarSep%; width: 1px; margin: 4px 5px; }
+QToolButton { background: transparent; border: 1px solid transparent; border-radius: 3px; padding: 3px; }
+QToolButton:hover { background: %hoverBg%; border-color: %border%; }
+QToolButton:pressed { background: %selBg%; }
+QToolButton:checked { background: %selBg%; border-color: %inputFocus%; }
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
-    background: #FFFFFF;
-    border: 1px solid #ABADB3;
+    background: %panel%;
+    border: 1px solid %inputBorder%;
     border-radius: 3px;
     padding: 4px 7px;
     min-height: 18px;
-    selection-background-color: #0078D7;
-    selection-color: #FFFFFF;
+    selection-background-color: %inputFocus%;
+    selection-color: %inputSelectionText%;
 }
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {
-    border-color: #0078D7;
-}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus { border-color: %inputFocus%; }
 QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {
-    background: #F0F0F0;
-    color: #8C8C8C;
-    border-color: #D9D9D9;
+    background: %window%;
+    color: %disabledText%;
+    border-color: %borderSoft%;
 }
 QComboBox::drop-down { border: none; width: 20px; }
 QComboBox QAbstractItemView {
-    background: #FFFFFF;
-    border: 1px solid #ABADB3;
-    selection-background-color: #CCE8FF;
-    selection-color: #000000;
+    background: %panel%;
+    border: 1px solid %inputBorder%;
+    selection-background-color: %selBg%;
+    selection-color: %text%;
     padding: 2px;
 }
-
-QPushButton {
-    background: #F0F0F0;
-    border: 1px solid #ABADB3;
-    border-radius: 3px;
-    padding: 5px 14px;
-    min-height: 18px;
-}
-QPushButton:hover { background: #E5F3FF; border-color: #0078D7; }
-QPushButton:pressed { background: #CCE8FF; }
-QPushButton:default { background: #0078D7; border-color: #005A9E; color: #FFFFFF; }
-QPushButton:default:hover { background: #1A88E0; }
-QPushButton:disabled {
-    background: #F0F0F0;
-    color: #8C8C8C;
-    border-color: #D9D9D9;
-}
-
+QPushButton { background: %btnBg%; border: 1px solid %btnBorder%; border-radius: 3px; padding: 5px 14px; min-height: 18px; }
+QPushButton:hover { background: %btnHoverBg%; border-color: %inputFocus%; }
+QPushButton:pressed { background: %selBg%; }
+QPushButton:default { background: %inputFocus%; border-color: %accentDark%; color: %inputSelectionText%; }
+QPushButton:default:hover { background: %accentHover%; }
+QPushButton:disabled { background: %btnDisabledBg%; color: %btnDisabledText%; border-color: %btnDisabledBorder%; }
 QTreeView, QTableView, QListView {
-    background: #FFFFFF;
-    alternate-background-color: #F7F7F7;
-    border: 1px solid #ABADB3;
+    background: %panel%;
+    alternate-background-color: %zebra%;
+    border: 1px solid %border%;
     border-radius: 2px;
-    selection-background-color: #0078D7;
-    selection-color: #FFFFFF;
-    gridline-color: #E1E1E1;
+    selection-background-color: %itemSelBg%;
+    selection-color: %itemSelText%;
+    gridline-color: %section%;
 }
 QTreeView::item, QTableView::item, QListView::item { padding: 2px 5px; }
 QTreeView::item:selected, QTableView::item:selected, QListView::item:selected {
-    background: #0078D7;
-    color: #FFFFFF;
+    background: %itemSelBg%;
+    color: %itemSelText%;
 }
-QHeaderView { background: #F0F0F0; }
+QHeaderView { background: %headerBg%; }
 QHeaderView::section {
-    background: #F0F0F0;
-    color: #000000;
+    background: %headerBg%;
+    color: %text%;
     border: none;
-    border-right: 1px solid #D9D9D9;
-    border-bottom: 1px solid #ABADB3;
+    border-right: 1px solid %borderSoft%;
+    border-bottom: 1px solid %border%;
     padding: 4px 7px;
     font-weight: 600;
 }
-QHeaderView::section:hover { background: #E5F3FF; }
-QTableCornerButton::section { background: #F0F0F0; border: none; }
-
-QTabWidget::pane {
-    border: 1px solid #ABADB3;
-    border-radius: 0;
-    background: #FFFFFF;
-    top: -1px;
-}
-QTabBar { background: #F0F0F0; }
+QHeaderView::section:hover { background: %hoverBg%; }
+QTableCornerButton::section { background: %headerBg%; border: none; }
+QTabWidget::pane { border: 1px solid %border%; border-radius: 0; background: %panel%; top: -1px; }
+QTabBar { background: %window%; }
 QTabBar::tab {
-    background: #F0F0F0;
-    color: #000000;
+    background: %window%;
+    color: %text%;
     border: 1px solid transparent;
     border-bottom: none;
     padding: 5px 12px;
     margin-right: 2px;
     margin-top: 2px;
 }
-QTabBar::tab:hover { background: #E5F3FF; }
+QTabBar::tab:hover { background: %hoverBg%; }
 QTabBar::tab:selected {
-    background: #FFFFFF;
-    border-color: #ABADB3;
-    border-bottom-color: #FFFFFF;
+    background: %panel%;
+    border-color: %border%;
+    border-bottom-color: %panel%;
     margin-top: 0;
     padding-top: 7px;
 }
-QTabBar::tab:disabled { color: #8C8C8C; }
-
-QStatusBar {
-    background: #F0F0F0;
-    border-top: 1px solid #D9D9D9;
-    color: #000000;
-}
+QTabBar::tab:disabled { color: %disabledText%; }
+)");
+    q += QStringLiteral(R"(
+QStatusBar { background: %window%; border-top: 1px solid %layoutBorder%; color: %text%; }
 QStatusBar::item { border: none; }
-QLabel#statusText { color: #000000; padding: 0 4px; }
-QLabel#statusSegment {
-    color: #000000;
-    border-left: 1px solid #ABADB3;
-    padding: 0 10px;
-}
-
-QSplitter::handle { background: #D9D9D9; }
-QSplitter::handle:hover { background: #A0A0A0; }
+QLabel#statusText { color: %text%; padding: 0 4px; }
+QLabel#statusSegment { color: %text%; border-left: 1px solid %border%; padding: 0 10px; }
+QSplitter::handle { background: %layoutBorder%; }
+QSplitter::handle:hover { background: %scrollHover%; }
 QSplitter::handle:vertical { height: 4px; }
 QSplitter::handle:horizontal { width: 4px; }
-
-QScrollBar:vertical {
-    background: #F0F0F0;
-    width: 14px;
-    margin: 0;
-    border-left: 1px solid #D9D9D9;
-}
-QScrollBar::handle:vertical {
-    background: #CDCDCD;
-    min-height: 24px;
-    border: 1px solid #ABADB3;
-    border-radius: 2px;
-    margin: 1px;
-}
-QScrollBar::handle:vertical:hover { background: #A0A0A0; }
+QScrollBar:vertical { background: %window%; width: 14px; margin: 0; border-left: 1px solid %borderSoft%; }
+QScrollBar::handle:vertical { background: %scrollbarHandle%; min-height: 24px; border: 1px solid %border%; border-radius: 2px; margin: 1px; }
+QScrollBar::handle:vertical:hover { background: %scrollHover%; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
-QScrollBar:horizontal {
-    background: #F0F0F0;
-    height: 14px;
-    margin: 0;
-    border-top: 1px solid #D9D9D9;
-}
-QScrollBar::handle:horizontal {
-    background: #CDCDCD;
-    min-width: 24px;
-    border: 1px solid #ABADB3;
-    border-radius: 2px;
-    margin: 1px;
-}
-QScrollBar::handle:horizontal:hover { background: #A0A0A0; }
+QScrollBar:horizontal { background: %window%; height: 14px; margin: 0; border-top: 1px solid %borderSoft%; }
+QScrollBar::handle:horizontal { background: %scrollbarHandle%; min-width: 24px; border: 1px solid %border%; border-radius: 2px; margin: 1px; }
+QScrollBar::handle:horizontal:hover { background: %scrollHover%; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
-
 QProgressBar {
-    background: #FFFFFF;
-    border: 1px solid #A0A0A0;
+    background: %progressBg%;
+    border: 1px solid %progressBorder%;
     border-radius: 0;
     min-height: 12px;
     max-height: 12px;
     text-align: center;
-    color: #000000;
+    color: %text%;
     font-weight: 600;
 }
-QProgressBar::chunk {
-    border-radius: 0;
-    /* Как в эталоне: сплошная синяя заливка #0078D7. */
-    background: #0078D7;
-}
-
+QProgressBar::chunk { border-radius: 0; background: %blue%; }
 QGroupBox {
-    background: #FFFFFF;
-    border: 1px solid #ABADB3;
+    background: %panel%;
+    border: 1px solid %border%;
     border-radius: 2px;
     margin-top: 14px;
     padding: 10px;
     font-weight: 600;
 }
-QGroupBox::title {
-    subcontrol-origin: margin;
-    left: 10px;
-    padding: 0 4px;
-    color: #000000;
-}
-
-/* Вкладка «General»: секции «Transfer»/«Torrent» — как в старом transgui,
-   плоские блоки: жирный заголовок без рамки и без серой полосы
+QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: %text%; }
+/* Вкладка «General»: секции «Transfer»/«Torrent» — плоские блоки
    (вкладку Statistics тоже оформили так же). */
-QFrame#sectionPanel {
-    background: transparent;
-    border: none;
-}
-QLabel#sectionTitle {
-    color: #000000;
-    font-weight: 700;
-    font-size: 13px;
-    padding: 2px;
-}
-QLabel#fieldLabel { color: #000000; }
-QLabel#fieldValue { color: #000000; }
-QLabel#statsHeader {
-    color: #000000;
-    font-weight: 700;
-    padding: 4px 0;
-    border-bottom: 1px solid #ABADB3;
-}
-
-QWidget#filterPanel { background: #FFFFFF; border-right: 1px solid #D9D9D9; }
-QTreeWidget#filterTree {
-    background: #FFFFFF;
-    border: none;
-    border-radius: 0;
-}
-QTreeWidget#filterTree::item:selected { background: transparent; color: #000000; }
-
+QFrame#sectionPanel { background: transparent; border: none; }
+QLabel#sectionTitle { color: %text%; font-weight: 700; font-size: 13px; padding: 2px; }
+QLabel#fieldLabel { color: %text%; }
+QLabel#fieldValue { color: %text%; }
+QLabel#statsHeader { color: %text%; font-weight: 700; padding: 4px 0; border-bottom: 1px solid %border%; }
+QWidget#filterPanel { background: %panel%; border-right: 1px solid %borderSoft%; }
+QTreeWidget#filterTree { background: %panel%; border: none; border-radius: 0; }
+QTreeWidget#filterTree::item:selected { background: transparent; color: %text%; }
 QScrollArea { background: transparent; border: none; }
 QScrollArea > QWidget > QWidget { background: transparent; }
-
-QToolTip {
-    background: #FFFFB6;
-    color: #000000;
-    border: 1px solid #ABADB3;
-    padding: 3px 6px;
-    border-radius: 0;
+QToolTip { background: %tooltipBg%; color: %text%; border: 1px solid %border%; padding: 3px 6px; border-radius: 0; }
+QCheckBox, QRadioButton { spacing: 6px; }
+)");
+    const struct {
+        const char* token;
+        const QColor& color;
+    } subs[] = {
+        {"%window%", p.window},
+        {"%headerBg%", p.headerBg},
+        {"%panel%", p.panel},
+        {"%zebra%", p.zebra},
+        {"%section%", p.section},
+        {"%border%", p.border},
+        {"%borderSoft%", p.borderSoft},
+        {"%layoutBorder%", p.layoutBorder},
+        {"%text%", p.text},
+        {"%disabledText%", p.disabledText},
+        {"%accentDark%", p.accentDark},
+        {"%accentHover%", p.accentHover},
+        {"%hoverBg%", p.hoverBg},
+        {"%selBg%", p.selBg},
+        {"%selBgActive%", p.selBgActive},
+        {"%itemSelBg%", p.itemSelBg},
+        {"%itemSelText%", p.itemSelText},
+        {"%toolbarBg%", p.toolbarBg},
+        {"%toolbarSep%", p.toolbarSep},
+        {"%inputBorder%", p.inputBorder},
+        {"%inputFocus%", p.inputFocus},
+        {"%inputSelectionText%", p.inputSelectionText},
+        {"%tooltipBg%", p.tooltipBg},
+        {"%btnBg%", p.btnBg},
+        {"%btnBorder%", p.btnBorder},
+        {"%btnHoverBg%", p.btnHoverBg},
+        {"%btnDisabledBg%", p.btnDisabledBg},
+        {"%btnDisabledBorder%", p.btnDisabledBorder},
+        {"%btnDisabledText%", p.btnDisabledText},
+        {"%progressBg%", p.progressBg},
+        {"%progressBorder%", p.progressBorder},
+        {"%blue%", p.blue},
+        {"%scrollbarHandle%", p.scrollbarHandle},
+        {"%scrollHover%", p.scrollHover},
+    };
+    for (const auto& s : subs)
+        q.replace(QLatin1String(s.token), s.color.name());
+    return q;
 }
 
-QCheckBox, QRadioButton { spacing: 6px; }
-)"));
+void apply(QApplication& app)
+{
+    app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+
+    const Palette& pal = palette();
+    QPalette p;
+    p.setColor(QPalette::Window, pal.window);
+    p.setColor(QPalette::WindowText, pal.text);
+    p.setColor(QPalette::Base, pal.panel);
+    p.setColor(QPalette::AlternateBase, pal.zebra);
+    p.setColor(QPalette::Text, pal.text);
+    p.setColor(QPalette::Button, pal.panel);
+    p.setColor(QPalette::ButtonText, pal.text);
+    p.setColor(QPalette::BrightText, Qt::white);
+    p.setColor(QPalette::Highlight, pal.highlight);
+    p.setColor(QPalette::HighlightedText, pal.highlightText);
+    p.setColor(QPalette::ToolTipBase, pal.text);
+    p.setColor(QPalette::ToolTipText, Qt::white);
+    p.setColor(QPalette::PlaceholderText, pal.textFaint);
+    p.setColor(QPalette::Disabled, QPalette::Text, pal.textFaint);
+    p.setColor(QPalette::Disabled, QPalette::ButtonText, pal.textFaint);
+    p.setColor(QPalette::Disabled, QPalette::WindowText, pal.textFaint);
+    app.setPalette(p);
+
+    QFont font;
+    font.setFamilies({QStringLiteral("Segoe UI"), QStringLiteral("SF Pro Text"),
+                      QStringLiteral("Noto Sans"), QStringLiteral("DejaVu Sans")});
+    font.setPointSize(9);
+    app.setFont(font);
+
+    app.setStyleSheet(buildQss(pal));
 }
 
 } // namespace tgui::theme

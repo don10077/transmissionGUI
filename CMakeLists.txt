@@ -23,6 +23,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Qt MOC
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
 # --- Опции -------------------------------------------------------------------
 option(TGUI_WARNINGS_AS_ERRORS "Считать предупреждения ошибками" OFF)
@@ -31,7 +32,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CompilerWarnings)
 
 # --- Зависимости --------------------------------------------------------------
-find_package(Qt6 REQUIRED COMPONENTS Core Network Widgets LinguistTools)
+find_package(Qt6 REQUIRED COMPONENTS Core Network Widgets Svg LinguistTools)
 find_package(ZLIB REQUIRED)
 include(GNUInstallDirs)
 

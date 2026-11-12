@@ -1,38 +1,56 @@
 #pragma once
 
 #include <QColor>
+#include <QFont>
 #include <QIcon>
 #include <QPixmap>
 
 class QApplication;
+class QString;
 
 // Единая тема приложения: палитра, QSS и векторные иконки.
-// Ориентир — оформление transmission-клиента (см. WORKFLOW.md, design/need.png),
-// но с более мягкими границами, аккуратными отступами и hover-состояниями.
+// Ориентир — DESIGN_PLAN.md (design/) + design/mockup.html.
+//
+// Правила (DESIGN_PLAN, Раздел A / Фаза 0):
+// - Все цвета — токены Palette; hex-литералы в QSS запрещены (CI-grep),
+//   значения живут только в определениях палитр.
 namespace tgui::theme {
 
 enum class Icon {
+    App,
     Connect,
     Disconnect,
     Add,
     AddLink,
     Start,
-    Stop,
+    ForceStart,
     Pause,
-    StartAll,
-    StopAll,
     Remove,
     Properties,
     Move,
     Refresh,
-    AutoRefresh,
     AltSpeed,
     Queue,
+    QueueUp,
+    QueueDown,
     DaemonOptions,
     AppOptions,
     About,
     Search,
     Folder,
+    Film,
+    Label,
+    LabelVideo,
+    LabelSerials,
+    LabelMusic,
+    LabelBooks,
+    LabelGames,
+    LabelSoft,
+    LabelPictures,
+    Copy,
+    Warning,
+    Question,
+    Information,
     Tracker,
     FilterAll,
     FilterDownloading,
@@ -57,44 +75,144 @@ enum class Icon {
     TabStatistics,
 };
 
+/** Цветовые токены оформления по design/mockup.html. */
+struct Palette {
+    // Поверхности
+    QColor window;   // «хром» окна/тулбара
+    QColor panel;    // контент
+    QColor zebra;    // чётные строки
+    QColor section;  // сетки/разделения (gridline)
+    QColor headerBg; // заголовки колонок
+    // Границы
+    QColor border;     // лейаутные границы
+    QColor borderSoft; // мягкие границы
+    QColor layoutBorder; // тулбар/статус-бар/spлиттер (мягкая лейаутная)
+    // Текст
+    QColor text;
+    QColor textMuted;
+    QColor textFaint;
+    QColor iconSlate;
+    // Акцент
+    QColor accent;
+    QColor accentDark;
+    QColor accentHover;
+    // Статусы
+    QColor green;
+    QColor greenLight;
+    QColor amber;
+    QColor amberLight;
+    QColor red;
+    QColor redLight;
+    QColor purple;
+    // Прогресс/куски
+    QColor blue;            // «загрузка» (chunk)
+    QColor progressGreen;   // «завершено»
+    QColor progressAmber;   // «ожидание»
+    QColor progressRed;     // «ошибка»
+    QColor progressStopped; // «остановлен»
+    // Состояния строк/кнопок
+    QColor hoverBg;
+    QColor selBg;
+    QColor selBgActive;
+    QColor selBgInactive; // выделение в неактивном окне (Qt-специфика)
+    QColor itemSelBg;   // выделение строк в списках/таблицах
+    QColor itemSelText; // текст выделенных строк
+    QColor disabledText;
+    QColor highlight;     // QPalette::Highlight
+    QColor highlightText; // QPalette::HighlightedText
+    // Новые элементы (Фазы 8–9)
+    QColor newBadge;     // .shownew
+    QColor groupRow;     // .gr
+    QColor toolbarBg;
+    QColor toolbarSep;  // разделитель тулбара
+    QColor sectionHeader; // .fh/.sec
+    // Чипы меток (.chip-s)
+    QColor chipBg;
+    QColor chipText;
+    QColor chipBorder;
+    // PieceBar (.gbar)
+    QColor pieceEmpty;
+    QColor pieceBorder;
+    // Input-контролы (.srch, input, .ftree, .lb)
+    QColor inputBorder;
+    QColor inputFocus;
+    QColor inputSelectionText; // цвет текста выделения в полях
+    QColor tooltipBg;          // фон подсказки (жёлтый, как в transgui)
+    // Кнопки диалогов (.btn)
+    QColor btnBg;
+    QColor btnBorder;
+    QColor btnHoverBg;
+    QColor btnDangerHover;
+    QColor btnDisabledBg;
+    QColor btnDisabledBorder;
+    QColor btnDisabledText;
+    // Нативный прогресс-бар (диалоги)
+    QColor progressBg;
+    QColor progressBorder;
+    // Скроллбары
+    QColor scrollbarHandle;
+    QColor scrollHover;
+};
+
+/** Возвращает палитру приложения по design/mockup.html. */
+const Palette& palette();
+
+// A.2: логические пиксели при 100%; Qt 6 масштабирует сам (HiDPI).
+inline int dp(int v) { return v; }
+// Минимальная высота строки с учётом шрифта (не фиксировать жёстко).
+int rowHeightFor(const QFont& font);
+
+// Имена токенов, используемые в существующих виджетах.
 namespace color {
 
-// Палитра — как в эталоне (transgui): серая «хром-панель», белый контент,
-// системное синее выделение, серые заголовки секций.
-inline const QColor window{0xF0, 0xF0, 0xF0};
-inline const QColor panel{0xFF, 0xFF, 0xFF};
-inline const QColor panelAlt{0xF7, 0xF7, 0xF7};
-inline const QColor border{0xAB, 0xAD, 0xB3};
-inline const QColor borderSoft{0xD9, 0xD9, 0xD9};
-inline const QColor section{0xE1, 0xE1, 0xE1};
-inline const QColor text{0x00, 0x00, 0x00};
-inline const QColor textMuted{0x3C, 0x3C, 0x3C};
-inline const QColor textFaint{0x7A, 0x7A, 0x7A};
-inline const QColor iconSlate{0x33, 0x33, 0x33};
-inline const QColor accent{0x00, 0x78, 0xD7};
-inline const QColor accentDark{0x00, 0x5A, 0x9E};
-inline const QColor accentLight{0xCC, 0xE8, 0xFF};
-inline const QColor hover{0xE5, 0xF3, 0xFF};
-inline const QColor green{0x1E, 0x9E, 0x4A};
-inline const QColor greenLight{0xE7, 0xF6, 0xED};
-inline const QColor amber{0xE8, 0xA2, 0x00};
-inline const QColor amberLight{0xFD, 0xF3, 0xDC};
-inline const QColor red{0xD1, 0x34, 0x38};
-inline const QColor redLight{0xFB, 0xEA, 0xEA};
-inline const QColor purple{0x7A, 0x65, 0xC0};
+inline const QColor& window = palette().window;
+inline const QColor& panel = palette().panel;
+inline const QColor& panelAlt = palette().zebra;
+inline const QColor& border = palette().border;
+inline const QColor& borderSoft = palette().borderSoft;
+inline const QColor& section = palette().section;
+inline const QColor& text = palette().text;
+inline const QColor& textMuted = palette().textMuted;
+inline const QColor& textFaint = palette().textFaint;
+inline const QColor& iconSlate = palette().iconSlate;
+inline const QColor& accent = palette().accent;
+inline const QColor& accentDark = palette().accentDark;
+inline const QColor& accentLight = palette().selBg;
+inline const QColor& hover = palette().hoverBg;
+inline const QColor& green = palette().green;
+inline const QColor& greenLight = palette().greenLight;
+inline const QColor& amber = palette().amber;
+inline const QColor& amberLight = palette().amberLight;
+inline const QColor& red = palette().red;
+inline const QColor& redLight = palette().redLight;
+inline const QColor& purple = palette().purple;
 
 } // namespace color
 
-// Устанавливает Fusion + палитру + QSS. Вызывается один раз в main().
+/**
+ * Устанавливает Fusion, шрифт, палитру и QSS.
+ * @param app Приложение Qt.
+ */
 void apply(QApplication& app);
 
-// Иконка в стиле темы. tint — необязательный цвет (по умолчанию — свой у иконки).
-QIcon icon(Icon id, const QColor& tint = QColor());
+/**
+ * Возвращает иконку темы с вариантами для разных размеров и масштаба.
+ * @param id Иконка из набора приложения.
+ */
+QIcon icon(Icon id);
 
-// Иконка приложения (окно, трей).
-QPixmap appIconPixmap(int size);
+/**
+ * Возвращает значок файла, выделяя видеоформаты из макета.
+ * @param fileName Имя или путь файла.
+ */
+QIcon fileIcon(const QString& fileName);
 
-// Небольшая цветная точка для статус-бара (возвращает pixmap size×size).
-QPixmap statusDotPixmap(const QColor& color, int size = 10);
+/**
+ * Рисует точку состояния с учётом масштаба экрана.
+ * @param color Цвет точки.
+ * @param size Размер в логических пикселях.
+ * @param dpr Масштаб экрана.
+ */
+QPixmap statusDotPixmap(const QColor& color, int size, qreal dpr);
 
 } // namespace tgui::theme

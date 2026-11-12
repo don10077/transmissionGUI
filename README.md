@@ -69,7 +69,7 @@
 
 ## Стек
 
-- **C++23**, **Qt 6** (Core, Network, Widgets);
+- **C++23**, **Qt 6** (Core, Network, Widgets, SVG);
 - **CMake ≥ 3.28** (presets), сборка под Windows через **MSYS2/MinGW64**;
 - Автономные тесты **GoogleTest** с локальным мок-сервером и отдельные
   сценарии против живого демона.
@@ -94,10 +94,10 @@ build.cmd debug --no-pause
 
 По умолчанию используется MSYS2 из `D:\Install\MSYS2`. Для другой установки
 задайте переменную `MSYS2_ROOT`. Нужны пакеты MinGW64: CMake, Ninja, GCC,
-Qt 6 (включая LinguistTools), zlib и GoogleTest. Скрипт собирает приложение
+Qt 6 (включая LinguistTools и `mingw-w64-x86_64-qt6-svg`), zlib и GoogleTest. Скрипт собирает приложение
 и по умолчанию запускает автономные тесты.
 
-Нужны: MSYS2 `mingw64` (g++ 16.x), Qt 6 (Core/Network/Widgets), CMake ≥ 3.28.
+Нужны: MSYS2 `mingw64` (g++ 16.x), Qt 6 (Core/Network/Widgets/SVG), CMake ≥ 3.28.
 Пресеты берутся из `CMakeUserPresets.json` (при отсутствии — скопируйте
 `CMakeUserPresets.json.example`).
 
@@ -128,7 +128,7 @@ cmake --preset win-debug --build-and-run test   # unit-тесты
 `build/packages/transmissiongui-windows-x64.zip` и запустите
 `transmissiongui.exe` из распакованной папки.
 
-Для Ubuntu нужны GCC, CMake ≥ 3.28, Ninja, Qt 6 Base и Tools, GoogleTest и zlib.
+Для Ubuntu нужны GCC, CMake ≥ 3.28, Ninja, Qt 6 Base, SVG и Tools, GoogleTest и zlib.
 Для создания DEB установите также `dpkg-dev` и `file`.
 На macOS эти зависимости можно установить через Homebrew. При конфигурации
 передайте `-DCMAKE_PREFIX_PATH="$(brew --prefix qt)"`.

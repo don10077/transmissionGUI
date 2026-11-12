@@ -1,8 +1,6 @@
 #include "detailmodels.h"
 
 #include <algorithm>
-#include <QApplication>
-#include <QStyle>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -12,6 +10,7 @@
 #include <QHostInfo>
 #include <QPointer>
 
+#include "theme.h"
 #include "tgui/geoip.h"
 #include "tgui/util.h"
 
@@ -407,8 +406,9 @@ void FileTreeModel::setFiles(const QVector<tgui::FileStat>& files)
                     row[Want]->setFlags(row[Want]->flags() | Qt::ItemIsUserCheckable);
                     row[Want]->setCheckState(file.wanted ? Qt::Checked : Qt::Unchecked);
                     row[Name]->setText(parts.at(i));
-                    row[Name]->setIcon(QApplication::style()->standardIcon(
-                        i + 1 < parts.size() ? QStyle::SP_DirIcon : QStyle::SP_FileIcon));
+                    row[Name]->setIcon(i + 1 < parts.size()
+                        ? tgui::theme::icon(tgui::theme::Icon::Folder)
+                        : tgui::theme::fileIcon(parts.at(i)));
                     parent->appendRow(row);
                     // Якорь дерева — ячейка Want (колонка 0): QStandardItem хранит
                     // children по ячейке, поэтому поддерево привязываем к ней.

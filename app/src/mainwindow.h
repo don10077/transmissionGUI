@@ -171,7 +171,6 @@ private:
     void createTray();
     void addSpeedLimitMenu(QMenu* parent, bool download);
     bool ensureFlagImages(bool allowDownload);
-    static QPixmap makeTrayIcon();
     void startConnect(const tgui::RpcClient::Options& opts, bool retry = false);
     void suspendConnection();
     void clearConnection();

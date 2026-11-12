@@ -2,6 +2,7 @@
 find_package(GTest REQUIRED)
 
 add_executable(tgui_tests
+    ../app/icons/icons.qrc
     testmain.cpp
     mockhttpserver.cpp
     test_util.cpp
@@ -22,6 +23,8 @@ add_executable(tgui_tests
     test_about.cpp
     tst_pathmap.cpp
     tst_geoip.cpp
+    # Скриншот-тесты темы (DESIGN_PLAN.md Фаза 0). Последний: apply() меняет глобальный стиль.
+    test_theme.cpp
     # GUI-модели списка (regress: пустая таблица после подключения).
     ${CMAKE_SOURCE_DIR}/app/src/torrentmodel.cpp
     ${CMAKE_SOURCE_DIR}/app/src/groupedproxy.cpp
@@ -64,7 +67,7 @@ add_executable(tgui_tests
     ${CMAKE_SOURCE_DIR}/app/src/movedialog.h
 )
 target_include_directories(tgui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/app/src)
-target_link_libraries(tgui_tests PRIVATE tgui_core Qt6::Widgets Qt6::Network GTest::gtest ZLIB::ZLIB)
+target_link_libraries(tgui_tests PRIVATE tgui_core Qt6::Widgets Qt6::Network Qt6::Svg GTest::gtest ZLIB::ZLIB)
 if(WIN32)
     target_link_libraries(tgui_tests PRIVATE shell32)
 endif()
@@ -73,6 +76,7 @@ tgui_set_warnings(tgui_tests)
 # W06: путь к скомпилированному .qm (проверка конвейера переводов без «железного» русского).
 target_compile_definitions(tgui_tests PRIVATE
     TGUI_QM_PATH="${CMAKE_BINARY_DIR}/app/translations/tgui_ru.qm")
+
 add_dependencies(tgui_tests tgui_translations)
 
 add_test(NAME tgui_tests COMMAND tgui_tests)

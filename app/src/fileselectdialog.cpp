@@ -1,7 +1,7 @@
 #include "fileselectdialog.h"
+#include "theme.h"
 #include "torrentlabels.h"
 
-#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -14,7 +14,6 @@
 #include <QHBoxLayout>
 #include <QHash>
 #include <QHeaderView>
-#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -24,7 +23,6 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSpinBox>
-#include <QStyle>
 #include <QTimer>
 #include <QTreeWidget>
 #include <QVBoxLayout>
@@ -224,8 +222,7 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
             parentItem = item;
         }
         if (parentItem) {
-            parentItem->setIcon(0,
-                                QApplication::style()->standardIcon(QStyle::SP_FileIcon));
+            parentItem->setIcon(0, tgui::theme::fileIcon(parentItem->text(0)));
             parentItem->setData(0, kFileIndexRole, file.index);
             parentItem->setData(0, kFileSizeRole, file.size);
             parentItem->setText(1, QString::fromStdString(tgui::formatSize(file.size)));
@@ -237,7 +234,7 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
         QTreeWidgetItem* item = nodes.value(it.key());
         if (!item)
             continue;
-        item->setIcon(0, QApplication::style()->standardIcon(QStyle::SP_DirIcon));
+        item->setIcon(0, tgui::theme::icon(tgui::theme::Icon::Folder));
         item->setText(1, QString::fromStdString(tgui::formatSize(it.value())));
         item->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
     }
