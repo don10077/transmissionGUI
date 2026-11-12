@@ -1,26 +1,76 @@
 #include "mainwindow.h"
+#include "externalopen.h"
 #include "theme.h"
 
 #include <QApplication>
+#include <QCommandLineParser>
+#include <QFileOpenEvent>
 #include <QFont>
 #include <QIcon>
+#include <QMessageBox>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QTranslator>
 #include <cmath>
 #include <optional>
+#include <utility>
 
-// Запуск:
-//   transmissiongui.exe [--url http://хост:порт] [--user имя] [--pass пароль]
-//                        [--path /transmission/rpc]
+namespace {
+/** Буферизует системные события открытия, которые macOS может послать до создания окна. */
+class TorrentApplication : public QApplication {
+public:
+    using QApplication::QApplication;
+
+    void open(const QStringList& inputs)
+    {
+        if (m_handler)
+            m_handler(inputs);
+        else
+            m_pending.append(inputs);
+    }
+
+    void setOpenHandler(ExternalOpen::Handler handler)
+    {
+        m_handler = std::move(handler);
+        if (!m_pending.isEmpty())
+            open(std::exchange(m_pending, {}));
+    }
+
+protected:
+    bool event(QEvent* event) override
+    {
+        if (event->type() != QEvent::FileOpen)
+            return QApplication::event(event);
+        const auto* openEvent = static_cast<QFileOpenEvent*>(event);
+        open({openEvent->file().isEmpty() ? openEvent->url().toString() : openEvent->file()});
+        return true;
+    }
+
+private:
+    QStringList m_pending;
+    ExternalOpen::Handler m_handler;
+};
+}
+
 int main(int argc, char* argv[])
 {
-    QApplication app(argc, argv);
+    TorrentApplication app(argc, argv);
     app.setOrganizationName("transmissionGUI");
     app.setApplicationName("transmissionGUI");
     app.setApplicationVersion("0.1.0");
-    const bool smokeTest = app.arguments().contains(QStringLiteral("--smoke-test"));
+    QCommandLineParser parser;
+    parser.addHelpOption();
+    parser.addVersionOption();
+    parser.addOption({"url", "Transmission server URL.", "url"});
+    parser.addOption({"user", "RPC user.", "user"});
+    parser.addOption({"pass", "RPC password.", "password"});
+    parser.addOption({"path", "RPC path.", "path"});
+    parser.addOption({"smoke-test", "Check startup with isolated settings."});
+    parser.addPositionalArgument("torrent", "Local .torrent files or magnet links.", "[torrent...]");
+    parser.process(app);
+    const bool smokeTest = parser.isSet("smoke-test");
     std::optional<QTemporaryDir> smokeSettings;
     if (smokeTest) {
         smokeSettings.emplace();
@@ -62,30 +112,35 @@ int main(int argc, char* argv[])
     }
 
     tgui::RpcClient::Options autoOpts;
-    for (int i = 1; i < argc; ++i) {
-        const QString arg = QString::fromLocal8Bit(argv[i]);
-        const auto next = [&i, &argc, argv]() -> QString {
-            return (i + 1 < argc) ? QString::fromLocal8Bit(argv[i + 1]) : QString();
-        };
-        if (arg == "--url" && i + 1 < argc) {
-            autoOpts.url = QUrl(next());
-            ++i;
-        } else if (arg == "--user" && i + 1 < argc) {
-            autoOpts.username = next();
-            ++i;
-        } else if (arg == "--pass" && i + 1 < argc) {
-            autoOpts.password = next();
-            ++i;
-        } else if (arg == "--path" && i + 1 < argc) {
-            autoOpts.rpcPath = next();
-            ++i;
-        }
+    autoOpts.url = QUrl(parser.value("url"));
+    autoOpts.username = parser.value("user");
+    autoOpts.password = parser.value("pass");
+    autoOpts.rpcPath = parser.value("path");
+    QStringList inputs;
+    for (const auto& argument : parser.positionalArguments()) {
+        const auto input = externalTorrentInput(argument);
+        if (!input.isEmpty() && !inputs.contains(input))
+            inputs.append(input);
     }
 
-    MainWindow window;
-    if (!smokeTest)
-        window.setAutoConnect(autoOpts);
+    ExternalOpen external(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation));
+    if (!smokeTest && external.listen([&app](const auto& items) { app.open(items); }) ==
+            ExternalOpen::Result::AlreadyRunning && !inputs.isEmpty() && autoOpts.url.isEmpty()) {
+        if (external.forward(inputs))
+            return 0;
+        QMessageBox::warning(nullptr, app.applicationName(),
+            QCoreApplication::translate("ExternalOpen", "Could not send torrents to the running window."));
+        return 1;
+    }
+    MainWindow window(nullptr, smokeTest ? tgui::RpcClient::Options{} : autoOpts);
     window.show();
+    if (!smokeTest) {
+        app.setOpenHandler([window = QPointer(&window)](const auto& items) {
+            if (window)
+                window->openExternalTorrents(items);
+        });
+        app.open(inputs);
+    }
     if (smokeTest)
         QTimer::singleShot(250, &app, &QCoreApplication::quit);
     return app.exec();

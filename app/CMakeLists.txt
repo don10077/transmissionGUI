@@ -1,6 +1,7 @@
 # app: графическое приложение (Qt 6 Widgets).
 add_executable(transmissiongui WIN32
     src/main.cpp
+    src/externalopen.cpp
     src/theme.cpp
     src/mainwindow.cpp
     src/torrentmodel.cpp
@@ -45,6 +46,9 @@ add_executable(transmissiongui WIN32
 )
 target_include_directories(transmissiongui PRIVATE src)
 target_link_libraries(transmissiongui PRIVATE tgui_core Qt6::Widgets Qt6::Network ZLIB::ZLIB)
+if(WIN32)
+    target_link_libraries(transmissiongui PRIVATE shell32)
+endif()
 tgui_set_warnings(transmissiongui)
 
 # i18n (W06): компилируем tgui_ru.ts -> tgui_ru.qm рядом с exe (<build>/app/translations/).
@@ -68,6 +72,7 @@ qt_add_resources(transmissiongui "translations"
 if(APPLE)
     set_target_properties(transmissiongui PROPERTIES
         MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
         MACOSX_BUNDLE_GUI_IDENTIFIER "org.transmissiongui.client"
         MACOSX_BUNDLE_BUNDLE_NAME "transmissionGUI"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"

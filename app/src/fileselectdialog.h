@@ -21,7 +21,8 @@ class FileSelectDialog : public QDialog {
     Q_OBJECT
 public:
     FileSelectDialog(const tgui::TorrentDetails& details, bool start, int rpcVersion,
-                     tgui::RpcClient* rpc = nullptr, QWidget* parent = nullptr);
+                     tgui::RpcClient* rpc = nullptr, QWidget* parent = nullptr,
+                     bool useDestinationTemplates = true);
 
     void offerMetainfoCopy(const tgui::RpcClient::AddTorrent& source);
     QVector<int> wanted() const;

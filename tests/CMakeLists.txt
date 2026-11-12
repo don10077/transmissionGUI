@@ -31,6 +31,7 @@ add_executable(tgui_tests
     # MainWindow + диалоги — нужны для E2E-теста вкладок.
     ${CMAKE_SOURCE_DIR}/app/src/theme.cpp
     ${CMAKE_SOURCE_DIR}/app/src/mainwindow.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/externalopen.cpp
     ${CMAKE_SOURCE_DIR}/app/src/propsform.cpp
     ${CMAKE_SOURCE_DIR}/app/src/statsform.cpp
     ${CMAKE_SOURCE_DIR}/app/src/addlinkdialog.cpp
@@ -64,6 +65,9 @@ add_executable(tgui_tests
 )
 target_include_directories(tgui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/app/src)
 target_link_libraries(tgui_tests PRIVATE tgui_core Qt6::Widgets Qt6::Network GTest::gtest ZLIB::ZLIB)
+if(WIN32)
+    target_link_libraries(tgui_tests PRIVATE shell32)
+endif()
 tgui_set_warnings(tgui_tests)
 
 # W06: путь к скомпилированному .qm (проверка конвейера переводов без «железного» русского).

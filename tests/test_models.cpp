@@ -292,8 +292,6 @@ TEST(ModelSessionInfo, ParseLegacySeedRatioAndExtendedFields)
         {"peer-limit-per-torrent", 60},
         {"port-forwarding-enabled", true},
         {"peer-port-random-on-start", true},
-        {"peer-port-random-low", 50000},
-        {"peer-port-random-high", 60000},
         {"cache-size-mb", 96},
     };
     SessionInfo info;
@@ -318,8 +316,6 @@ TEST(ModelSessionInfo, ParseLegacySeedRatioAndExtendedFields)
     EXPECT_EQ(info.peerLimitPerTorrent, 60);
     EXPECT_TRUE(info.portForwardingEnabled);
     EXPECT_TRUE(info.peerPortRandomOnStart);
-    EXPECT_EQ(info.peerPortRandomLow, 50000);
-    EXPECT_EQ(info.peerPortRandomHigh, 60000);
     EXPECT_EQ(info.cacheSizeMb, 96);
     EXPECT_TRUE(info.hasCacheSize);
 }

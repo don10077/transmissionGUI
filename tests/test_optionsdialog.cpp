@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <QCoreApplication>
+#include <QCheckBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
@@ -65,6 +66,30 @@ TEST(OptionsDialog, RefreshOnlyNoRestart)
     dlg.apply();
     EXPECT_FALSE(dlg.restartRequired());
     EXPECT_EQ(QSettings().value("ui/refreshInterval").toInt(), 3);
+}
+
+TEST(OptionsDialog, AddPreferencesAreOptInAndPersist)
+{
+    isolateTestSettings();
+    QSettings settings;
+    settings.remove(OptionsDialog::skipAddDialogKey);
+    settings.remove(OptionsDialog::deleteSourceTorrentKey);
+
+    OptionsDialog dialog;
+    auto* skip = dialog.findChild<QCheckBox*>("skipAddDialog");
+    auto* remove = dialog.findChild<QCheckBox*>("deleteSourceTorrent");
+    ASSERT_NE(skip, nullptr);
+    ASSERT_NE(remove, nullptr);
+    EXPECT_FALSE(skip->isChecked());
+    EXPECT_FALSE(remove->isChecked());
+    skip->setChecked(true);
+    remove->setChecked(true);
+    ASSERT_TRUE(dialog.apply());
+    OptionsDialog reopened;
+    EXPECT_TRUE(reopened.findChild<QCheckBox*>("skipAddDialog")->isChecked());
+    EXPECT_TRUE(reopened.findChild<QCheckBox*>("deleteSourceTorrent")->isChecked());
+    settings.remove(OptionsDialog::skipAddDialogKey);
+    settings.remove(OptionsDialog::deleteSourceTorrentKey);
 }
 
 TEST(OptionsDialog, TrayDefaultsPersist)

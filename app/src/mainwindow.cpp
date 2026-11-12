@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "externalopen.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -16,6 +17,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QUrl>
+#include <QUrlQuery>
 #include <QFrame>
 #include <QFormLayout>
 #include <QHash>
@@ -36,6 +38,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QProgressDialog>
+#include <QRegularExpression>
 #include <QPointer>
 #include <QPersistentModelIndex>
 #include <QMimeData>
@@ -67,6 +70,7 @@
 #include <QVBoxLayout>
 #include <QWidget>
 #include <algorithm>
+#include <utility>
 
 #include "addlinkdialog.h"
 #include "connectdialog.h"
@@ -80,6 +84,7 @@
 #include "aboutdialog.h"
 #include "daemonprofile.h"
 #include "optionsdialog.h"
+#include "sequentialpolicy.h"
 #include "openpath.h"
 #include "pathmap.h"
 #include "propsdialog.h"
@@ -90,6 +95,20 @@
 #include "tgui/util.h"
 
 namespace {
+/** Идентификатор magnet для отсева повторов с другими dn/tr. */
+QString magnetIdentifier(const QUrl& url)
+{
+    if (url.scheme() != QLatin1String("magnet"))
+        return {};
+    static const QRegularExpression identifier(
+        QStringLiteral("^(urn:btih:(?:[a-f0-9]{40}|[a-z2-7]{32})|urn:btmh:1220[a-f0-9]{64})$"),
+        QRegularExpression::CaseInsensitiveOption);
+    for (const auto& value : QUrlQuery(url).allQueryItemValues("xt", QUrl::FullyDecoded))
+        if (identifier.match(value).hasMatch())
+            return value.toLower();
+    return {};
+}
+
 constexpr int kRefreshIntervalMs = 2000;
 
 // Распаковка gzip через zlib (windowBits=31 = gzip).
@@ -117,8 +136,9 @@ bool gunzipData(const QByteArray& input, QByteArray& output)
 }
 } // namespace
 
-MainWindow::MainWindow(QWidget* parent)
+MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupOptions)
     : QMainWindow(parent)
+    , m_autoConnectOpts(startupOptions)
     , m_labels(torrentlabels::configured())
 {
     setWindowTitle(QStringLiteral("transmissionGUI"));
@@ -151,6 +171,9 @@ MainWindow::MainWindow(QWidget* parent)
     // W07: интервал обновления из настроек (секунды), по умолчанию 2 (ранее 2000 ms).
     m_refreshTimer.setInterval(QSettings().value("ui/refreshInterval", kRefreshIntervalMs / 1000).toInt() * 1000);
     connect(&m_refreshTimer, &QTimer::timeout, this, &MainWindow::onRefresh);
+    connect(QApplication::clipboard(), &QClipboard::dataChanged, this, &MainWindow::onClipboardChanged);
+    m_watchTimer.setInterval(1000);
+    connect(&m_watchTimer, &QTimer::timeout, this, &MainWindow::scanWatchFolder);
 
     // После переноса демон может ответить раньше, чем обновится список.
     m_moveVerifyTimer.setSingleShot(true);
@@ -787,8 +810,11 @@ void MainWindow::onConnect()
 
 void MainWindow::startConnect(const tgui::RpcClient::Options& opts)
 {
+    m_watchTimer.stop();
+    m_watchCandidates.clear();
     m_addQueue.clear();
     m_addingTorrent = false;
+    m_addSelectionId = -1;
     m_rpc = std::make_unique<tgui::RpcClient>(opts, this);
     connect(m_rpc.get(), &tgui::RpcClient::connected, this, &MainWindow::onConnected);
     connect(m_rpc.get(), &tgui::RpcClient::sessionInfoReceived, this,
@@ -833,6 +859,46 @@ void MainWindow::setAutoConnect(const tgui::RpcClient::Options& opts)
     }
 }
 
+/** Открывает входные файлы и ссылки или ждёт подключения к демону. */
+void MainWindow::openExternalTorrents(const QStringList& inputs)
+{
+    QStringList accepted;
+    for (const auto& value : inputs) {
+        const auto input = externalTorrentInput(value);
+        if (!input.isEmpty() && !accepted.contains(input))
+            accepted.append(input);
+    }
+    if (accepted.isEmpty())
+        return;
+    if (isMinimized())
+        showNormal();
+    else
+        show();
+    raise();
+    activateWindow();
+
+    if (!m_rpc || !m_connected) {
+        for (const auto& input : accepted)
+            if (!m_pendingExternalTorrents.contains(input))
+                m_pendingExternalTorrents.append(input);
+        statusBar()->showMessage(tr("Connect to a daemon to add the files or links you opened."), 8000);
+        return;
+    }
+    const auto& session = m_rpc->sessionInfo();
+    for (const auto& input : accepted) {
+        tgui::RpcClient::AddTorrent params;
+        if (input.startsWith("magnet:", Qt::CaseInsensitive)) {
+            params.source = tgui::RpcClient::AddTorrent::Source::Url;
+            params.url = input;
+        } else {
+            params.file = input;
+        }
+        params.downloadDir = session.downloadDir;
+        params.start = session.startAddedTorrents;
+        startAdd(params, AddOrigin::External);
+    }
+}
+
 void MainWindow::maybeAutoConnect()
 {
     // W08: приоритет — параметры из командной строки; иначе — текущий профиль (ConnOptions).
@@ -853,9 +919,12 @@ void MainWindow::maybeAutoConnect()
 void MainWindow::onDisconnect()
 {
     m_refreshTimer.stop();
+    m_watchTimer.stop();
+    m_watchCandidates.clear();
     m_connected = false;
     m_addQueue.clear();
     m_addingTorrent = false;
+    m_addSelectionId = -1;
     m_rpc.reset();
     m_model.setTorrents({});
     updateFilterPanel(m_model.torrents());
@@ -893,12 +962,16 @@ void MainWindow::onConnected(const tgui::SessionInfo& info)
         m_refreshTimer.start();
     m_rpc->getTorrents();
     m_rpc->getSessionStats();
+    updateWatchFolder();
     statusBar()->showMessage(tr("Connected"), 3000);
+    openExternalTorrents(std::exchange(m_pendingExternalTorrents, {}));
 }
 
 void MainWindow::onConnectionFailed(const QString& error)
 {
     m_refreshTimer.stop();
+    m_watchTimer.stop();
+    m_watchCandidates.clear();
     m_connected = false;
     setConnectedUi(false);
     setConnectionState(tr("Connection failed"), tgui::theme::color::red);
@@ -1006,10 +1079,25 @@ void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
     m_model.setTorrents(torrents);
     updateFilterPanel(torrents);
 
-    // Восстанавливаем все ранее выделенные ID (только видимые после фильтра).
-    restoreTorrentSelection(prevSelected, prevId);
+    // После добавления или обновления дубликата выбираем строку из подтверждённого списка.
+    int addedRow = -1;
+    if (m_addSelectionId >= 0 && std::any_of(torrents.cbegin(), torrents.cend(),
+            [this](const auto& torrent) { return torrent.id == m_addSelectionId; })) {
+        addedRow = proxyRowForId(m_addSelectionId);
+        if (addedRow < 0) {
+            m_filterPanel->selectAllTorrents();
+            m_searchEdit->clear();
+            addedRow = proxyRowForId(m_addSelectionId);
+        }
+    }
 
     int nextId = prevId;
+    if (addedRow >= 0) {
+        nextId = std::exchange(m_addSelectionId, -1);
+        restoreTorrentSelection({nextId}, nextId);
+    } else {
+        restoreTorrentSelection(prevSelected, prevId);
+    }
     if (nextId >= 0 && proxyRowForId(nextId) < 0)
         nextId = -1;
     if (nextId < 0) {
@@ -1076,7 +1164,10 @@ void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
     m_countLabel->setText(count == 1 ? tr("1 torrent") : tr("%1 torrents").arg(count));
 
     m_view->doItemsLayout();
-    m_view->verticalScrollBar()->setValue(prevScroll);
+    if (addedRow >= 0)
+        m_view->scrollTo(m_view->currentIndex());
+    else
+        m_view->verticalScrollBar()->setValue(prevScroll);
     updateSelectionActions();
     checkPendingMove();
 }
@@ -1560,11 +1651,12 @@ void MainWindow::onAddTorrent()
 {
     if (!m_rpc || !m_connected)
         return;
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
     const auto paths = QFileDialog::getOpenFileNames(this, tr("Select a .torrent file"), {},
                                                      tr("Torrent files (*.torrent);;All files (*)"));
-    if (!m_rpc || !m_connected)
+    if (!rpc || rpc != m_rpc.get() || !m_connected)
         return;
-    const auto& session = m_rpc->sessionInfo();
+    const auto& session = rpc->sessionInfo();
     for (const auto& path : paths) {
         tgui::RpcClient::AddTorrent params;
         params.file = path;
@@ -1574,11 +1666,120 @@ void MainWindow::onAddTorrent()
     }
 }
 
-void MainWindow::startAdd(const tgui::RpcClient::AddTorrent& params)
+void MainWindow::startAdd(const tgui::RpcClient::AddTorrent& params, AddOrigin origin)
 {
-    m_addQueue.enqueue(params);
+    m_addQueue.enqueue({params, origin});
     if (!m_addingTorrent)
         addNextTorrent();
+}
+
+/** Добавляет новую ссылку из буфера при включённой настройке и активном подключении. */
+void MainWindow::onClipboardChanged()
+{
+    if (!m_rpc || !m_connected || !QSettings().value(OptionsDialog::clipboardLinksKey, false).toBool())
+        return;
+
+    auto text = QApplication::clipboard()->text().trimmed();
+    static const QRegularExpression bareHash(QStringLiteral("^[A-Fa-f0-9]{40}$"));
+    if (bareHash.match(text).hasMatch())
+        text = QStringLiteral("magnet:?xt=urn:btih:") + text.toLower();
+
+    QUrl url(text, QUrl::StrictMode);
+    if (!url.isValid())
+        return;
+    url.setFragment(QString());
+    const auto magnet = magnetIdentifier(url);
+    if (magnet.isEmpty() && ((url.scheme() != "http" && url.scheme() != "https") ||
+                            url.host().isEmpty() || !url.path().endsWith(".torrent", Qt::CaseInsensitive)))
+        return;
+    const auto link = url.toString(QUrl::FullyEncoded);
+    const auto key = magnet.isEmpty() ? link : magnet;
+    if (m_clipboardLinksSeen.contains(key))
+        return;
+    if (!magnet.isEmpty() && std::any_of(m_model.torrents().cbegin(), m_model.torrents().cend(),
+            [&magnet](const auto& torrent) {
+                return magnet == QStringLiteral("urn:btih:") + torrent.hashString.value_or(QString()).toLower() ||
+                    magnet == magnetIdentifier(QUrl(torrent.magnetLink.value_or(QString())));
+            }))
+        return;
+    m_clipboardLinksSeen.insert(key);
+
+    tgui::RpcClient::AddTorrent params;
+    params.source = tgui::RpcClient::AddTorrent::Source::Url;
+    params.url = link;
+    params.downloadDir = m_rpc->sessionInfo().downloadDir;
+    params.start = m_rpc->sessionInfo().startAddedTorrents;
+    startAdd(params);
+}
+
+/** Применяет настройку наблюдения при подключении или сохранении параметров. */
+void MainWindow::updateWatchFolder()
+{
+    const auto path = QSettings().value(OptionsDialog::watchFolderKey).toString();
+    const auto folder = path.isEmpty() ? QString() : QDir(path).absolutePath();
+    if (m_watchFolder != folder) {
+        m_watchFolder = folder;
+        m_watchCandidates.clear();
+    }
+    if (m_connected && !m_watchFolder.isEmpty())
+        m_watchTimer.start();
+    else
+        m_watchTimer.stop();
+}
+
+/** Передаёт в очередь один стабильный файл, версия которого ещё не отправлялась. */
+void MainWindow::scanWatchFolder()
+{
+    if (!m_rpc || !m_connected || m_addingTorrent || !m_addQueue.isEmpty() || m_watchFolder.isEmpty())
+        return;
+    const QDir directory(m_watchFolder);
+    if (!directory.exists() || !directory.isReadable()) {
+        m_watchCandidates.clear();
+        return;
+    }
+
+    QSettings settings;
+    const auto historyKey = QStringLiteral("downloads/watchHistory/") +
+        QString::fromLatin1(QUrl::toPercentEncoding(m_watchFolder));
+    auto history = settings.value(historyKey).toMap();
+    const auto previousHistory = history;
+    QHash<QString, QString> candidates;
+    QString selected;
+    for (const auto& file : directory.entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Name)) {
+        const auto name = file.fileName();
+        if (!name.endsWith(".torrent", Qt::CaseInsensitive))
+            continue;
+        const auto stamp = QString::number(file.size()) + '/' +
+            QString::number(file.lastModified().toMSecsSinceEpoch());
+        candidates.insert(name, stamp);
+        if (selected.isEmpty() && file.size() > 0 && m_watchCandidates.value(name) == stamp &&
+            history.value(name).toString() != stamp) {
+            QFile input(file.absoluteFilePath());
+            if (input.open(QIODevice::ReadOnly))
+                selected = name;
+        }
+    }
+    m_watchCandidates = std::move(candidates);
+    for (auto it = history.begin(); it != history.end();) {
+        if (!m_watchCandidates.contains(it.key()))
+            it = history.erase(it);
+        else
+            ++it;
+    }
+    if (!selected.isEmpty())
+        history.insert(selected, m_watchCandidates.value(selected));
+    if (history != previousHistory)
+        settings.setValue(historyKey, history);
+    if (selected.isEmpty())
+        return;
+
+    tgui::RpcClient::AddTorrent params;
+    params.file = directory.absoluteFilePath(selected);
+    params.downloadDir = settings.value(OptionsDialog::watchDestinationKey).toString();
+    if (params.downloadDir.isEmpty())
+        params.downloadDir = m_rpc->sessionInfo().downloadDir;
+    params.start = m_rpc->sessionInfo().startAddedTorrents;
+    startAdd(params, AddOrigin::WatchFolder);
 }
 
 void MainWindow::addNextTorrent()
@@ -1587,13 +1788,49 @@ void MainWindow::addNextTorrent()
         return;
 
     m_addingTorrent = true;
-    auto params = m_addQueue.dequeue();
+    auto [params, origin] = m_addQueue.dequeue();
+    const bool fromWatchFolder = origin == AddOrigin::WatchFolder;
+    const bool requireLocalFile = origin != AddOrigin::Interactive &&
+        params.source == tgui::RpcClient::AddTorrent::Source::File;
     const bool start = params.start;
     params.start = false;
 
-    // Как в оригинале, берём список файлов у демона, пока торрент на паузе.
-    m_rpc->addTorrent(params, [this, start, params](const tgui::JsonRpcResult& addedResult,
-                                                    const QByteArray& metainfo) {
+    const QSettings settings;
+    const bool skipDialog = settings.value(OptionsDialog::skipAddDialogKey, false).toBool();
+    auto request = params;
+    QByteArray sourceBytes;
+    const bool deleteSource = params.source == tgui::RpcClient::AddTorrent::Source::File &&
+        params.file.endsWith(QLatin1String(".torrent"), Qt::CaseInsensitive) &&
+        settings.value(OptionsDialog::deleteSourceTorrentKey, false).toBool();
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    if (requireLocalFile || deleteSource) {
+        params.file = QFileInfo(params.file).absoluteFilePath();
+        request.file = params.file;
+        QFile file(params.file);
+        if (file.open(QIODevice::ReadOnly)) {
+            sourceBytes = file.readAll();
+            if (file.error() != QFileDevice::NoError)
+                sourceBytes.clear();
+            if (!sourceBytes.isEmpty()) {
+                // Отправляем те же байты, по которым проверим исходник перед удалением.
+                request.source = tgui::RpcClient::AddTorrent::Source::Base64;
+                request.metainfoBase64 = QString::fromLatin1(sourceBytes.toBase64());
+            }
+        }
+        if (requireLocalFile && sourceBytes.isEmpty()) {
+            onReadError(tr("Add torrent"), tr("Could not read the local torrent file: %1").arg(params.file));
+            finishAdd(rpc);
+            return;
+        }
+        if (!deleteSource)
+            sourceBytes.clear();
+    }
+
+    // Берём список файлов у демона, пока торрент на паузе.
+    rpc->addTorrent(request, [this, rpc, start, params, skipDialog, sourceBytes, fromWatchFolder](
+                                const tgui::JsonRpcResult& addedResult, const QByteArray& metainfo) {
+        if (!rpc || rpc != m_rpc.get())
+            return;
         const auto duplicate = addedResult.arguments.value("torrent-duplicate");
         if ((addedResult.ok && duplicate.isObject()) ||
             addedResult.status == "duplicate torrent" || addedResult.error == "duplicate torrent") {
@@ -1605,27 +1842,59 @@ void MainWindow::addNextTorrent()
         if (!addedResult.ok || id < 0) {
             const QString message = !addedResult.ok ? addedResult.error : tr("Unable to add torrent.");
             onReadError(tr("Add torrent"), message);
-            finishAdd();
+            finishAdd(rpc);
             return;
         }
-        m_rpc->getTorrentDetails(id, [this, id, start, params](const auto& details) {
-            const auto remove = [this, id] {
-                m_rpc->removeTorrent(id, false, [this](const tgui::JsonRpcResult& result) {
+        rpc->getTorrentDetails(id, [this, rpc, id, start, params, skipDialog, sourceBytes, fromWatchFolder](const auto& details) {
+            if (!rpc || rpc != m_rpc.get())
+                return;
+            const auto remove = [this, rpc, id] {
+                rpc->removeTorrent(id, false, [this, rpc](const tgui::JsonRpcResult& result) {
+                    if (!rpc || rpc != m_rpc.get())
+                        return;
                     if (!result.ok)
                         onReadError(tr("Remove torrent"), result.error);
-                    finishAdd();
+                    finishAdd(rpc);
                 });
             };
             if (!details) {
                 remove();
                 return;
             }
-            const QPointer<tgui::RpcClient> rpc(m_rpc.get());
-            auto* dialog = new FileSelectDialog(*details, start, rpc->rpcVersion(), rpc, this);
+            const auto configured = [this, rpc, id, path = params.file, sourceBytes](
+                                        const tgui::JsonRpcResult& result) {
+                if (!rpc || rpc != m_rpc.get())
+                    return;
+                if (!result.ok) {
+                    onReadError(tr("Torrent added with incomplete settings"), result.error);
+                } else if (!sourceBytes.isEmpty()) {
+                    QFile original(path);
+                    const bool unchanged = original.open(QIODevice::ReadOnly) &&
+                        original.readAll() == sourceBytes && original.error() == QFileDevice::NoError;
+                    original.close();
+                    if (!unchanged || !original.remove())
+                        onReadError(tr("Torrent added"), tr("Could not remove the original file: %1").arg(path));
+                    else
+                        statusBar()->showMessage(tr("Torrent added"), 5000);
+                } else {
+                    statusBar()->showMessage(tr("Torrent added"), 5000);
+                }
+                finishAdd(rpc, id);
+            };
+            if (skipDialog) {
+                auto options = params;
+                options.downloadDir = details->downloadDir;
+                options.start = start;
+                options.sequential = options.sequential ||
+                    tgui::automaticSequential(details->files, rpc->rpcVersion());
+                rpc->configureAddedTorrent(*details, options, {}, {}, configured);
+                return;
+            }
+            auto* dialog = new FileSelectDialog(*details, start, rpc->rpcVersion(), rpc, this, !fromWatchFolder);
             dialog->offerMetainfoCopy(params);
             dialog->setAttribute(Qt::WA_DeleteOnClose);
             connect(rpc.data(), &QObject::destroyed, dialog, &QDialog::reject);
-            connect(dialog, &QDialog::finished, this, [this, rpc, dialog, remove, details](int dialogResult) {
+            connect(dialog, &QDialog::finished, this, [this, rpc, dialog, remove, details, configured](int dialogResult) {
                 if (!rpc || rpc != m_rpc.get())
                     return;
                 if (dialogResult != QDialog::Accepted) {
@@ -1633,16 +1902,7 @@ void MainWindow::addNextTorrent()
                     return;
                 }
                 rpc->configureAddedTorrent(*details, dialog->options(), dialog->saveAs(),
-                    dialog->unwanted(), [this, rpc](const tgui::JsonRpcResult& result) {
-                        if (result.ok) {
-                            statusBar()->showMessage(tr("Torrent added"), 5000);
-                            if (rpc)
-                                rpc->getTorrents();
-                        } else {
-                            onReadError(tr("Add torrent"), result.error);
-                        }
-                        finishAdd();
-                    });
+                                           dialog->unwanted(), configured);
             });
             dialog->open();
         });
@@ -1666,10 +1926,10 @@ void MainWindow::offerDuplicateUpdate(const tgui::RpcClient::AddTorrent& source,
     box->setAttribute(Qt::WA_DeleteOnClose);
     connect(rpc.data(), &QObject::destroyed, box, &QDialog::reject);
     connect(box, &QDialog::finished, this, [this, rpc, box, update, duplicate, source, metainfo] {
-        if (!rpc)
+        if (!rpc || rpc != m_rpc.get())
             return;
         if (box->clickedButton() != update) {
-            finishAdd();
+            finishAdd(rpc);
             return;
         }
         const int id = duplicate.value("id").toInt(-1);
@@ -1677,6 +1937,8 @@ void MainWindow::offerDuplicateUpdate(const tgui::RpcClient::AddTorrent& source,
                                           const QString& expectedHash = {}) {
             rpc->updateDuplicateTrackers(id, magnet, bytes, [this, rpc, id](const QString& error,
                                                                             bool updated) {
+                if (!rpc || rpc != m_rpc.get())
+                    return;
                 if (!error.isEmpty())
                     onReadError(tr("Update torrent"), error);
                 else
@@ -1684,7 +1946,7 @@ void MainWindow::offerDuplicateUpdate(const tgui::RpcClient::AddTorrent& source,
                                                          tr("No new trackers to add."), 5000);
                 if (updated && m_currentId >= 0 && (id < 0 || id == m_currentId))
                     rpc->getTrackers(m_currentId);
-                finishAdd();
+                finishAdd(rpc, error.isEmpty() ? id : -1);
             }, expectedHash);
         };
         const QUrl url(source.url);
@@ -1696,13 +1958,13 @@ void MainWindow::offerDuplicateUpdate(const tgui::RpcClient::AddTorrent& source,
             const auto expectedHash = duplicate.value("hashString").toString();
             connect(reply, &QNetworkReply::finished, this, [this, rpc, reply, merge, expectedHash] {
                 reply->deleteLater();
-                if (!rpc)
+                if (!rpc || rpc != m_rpc.get())
                     return;
                 if (reply->error() == QNetworkReply::NoError) {
                     merge({}, reply->readAll(), expectedHash);
                 } else {
                     onReadError(tr("Update torrent"), reply->errorString());
-                    finishAdd();
+                    finishAdd(rpc);
                 }
             });
         } else {
@@ -2322,8 +2584,11 @@ void MainWindow::onAddFromLink()
 {
     if (!m_rpc || !m_connected)
         return;
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
     AddLinkDialog dlg(QSettings().value("lastAddLink").toString(), this);
     if (dlg.exec() != QDialog::Accepted)
+        return;
+    if (!rpc || rpc != m_rpc.get() || !m_connected)
         return;
     const QString link = dlg.link();
     if (link.isEmpty())
@@ -2333,7 +2598,7 @@ void MainWindow::onAddFromLink()
     at.source = tgui::RpcClient::AddTorrent::Source::Url;
     at.url = link;
     at.start = dlg.startWhenAdded();
-    at.downloadDir = m_rpc->sessionInfo().downloadDir;
+    at.downloadDir = rpc->sessionInfo().downloadDir;
     startAdd(at);
 }
 
@@ -2580,6 +2845,7 @@ void MainWindow::onOptions()
     if (result != QDialog::Accepted)
         return;
 
+    updateWatchFolder();
     // Интервал обновления — применяем сразу (запущенный таймер подхватит новый интервал).
     m_refreshTimer.setInterval(QSettings().value("ui/refreshInterval", kRefreshIntervalMs / 1000).toInt() * 1000);
     // Иконка трея — применяем сразу (показать/скрыть существующую).
@@ -3185,12 +3451,17 @@ void MainWindow::onRemoveTracker(int trackerId, const QString& announce)
     rpc->removeTracker(id, trackerId, afterTorrentChange("torrent-set", RefreshAfter::Trackers, id));
 }
 
-void MainWindow::finishAdd()
+/** Завершает элемент очереди и перечитывает список на том же подключении. */
+void MainWindow::finishAdd(const QPointer<tgui::RpcClient>& rpc, int selectedId)
 {
-    m_addingTorrent = false;
-    if (!m_rpc || !m_connected)
+    if (!rpc || rpc != m_rpc.get())
         return;
-    m_rpc->getTorrents();
+    m_addingTorrent = false;
+    if (!m_connected)
+        return;
+    if (selectedId >= 0)
+        m_addSelectionId = selectedId;
+    rpc->getTorrents();
     addNextTorrent();
 }
 

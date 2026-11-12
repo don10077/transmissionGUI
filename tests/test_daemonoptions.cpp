@@ -130,8 +130,6 @@ TEST(DaemonSettings, FromSessionMapsExtendedFields)
     s.peerLimitPerTorrent = 50;
     s.portForwardingEnabled = true;
     s.peerPortRandomOnStart = true;
-    s.peerPortRandomLow = 49152;
-    s.peerPortRandomHigh = 65535;
     s.incompleteDir = "/incomplete";
     s.incompleteDirEnabled = true;
     s.renamePartialFiles = true;
@@ -156,8 +154,6 @@ TEST(DaemonSettings, FromSessionMapsExtendedFields)
     EXPECT_EQ(d.peerLimitPerTorrent, 50);
     EXPECT_TRUE(d.portForwardingEnabled);
     EXPECT_TRUE(d.peerPortRandomOnStart);
-    EXPECT_EQ(d.peerPortRandomLow, 49152);
-    EXPECT_EQ(d.peerPortRandomHigh, 65535);
     EXPECT_EQ(d.incompleteDir, "/incomplete");
     EXPECT_TRUE(d.incompleteDirEnabled);
     EXPECT_TRUE(d.renamePartialFiles);
@@ -186,8 +182,6 @@ TEST(DaemonSettings, ExtendedSessionSetKeys)
     d.peerLimitPerTorrent = 70;
     d.portForwardingEnabled = true;
     d.peerPortRandomOnStart = true;
-    d.peerPortRandomLow = 50000;
-    d.peerPortRandomHigh = 60000;
     d.incompleteDir = "/inc";
     d.incompleteDirEnabled = true;
     d.renamePartialFiles = true;
@@ -212,8 +206,6 @@ TEST(DaemonSettings, ExtendedSessionSetKeys)
     EXPECT_EQ(j.value("peer-limit-per-torrent").toInt(), 70);
     EXPECT_TRUE(j.value("port-forwarding-enabled").toBool());
     EXPECT_TRUE(j.value("peer-port-random-on-start").toBool());
-    EXPECT_EQ(j.value("peer-port-random-low").toInt(), 50000);
-    EXPECT_EQ(j.value("peer-port-random-high").toInt(), 60000);
     EXPECT_EQ(j.value("incomplete-dir").toString(), "/inc");
     EXPECT_TRUE(j.value("incomplete-dir-enabled").toBool());
     EXPECT_TRUE(j.value("rename-partial-files").toBool());
@@ -253,7 +245,9 @@ TEST(DaemonOptionsDialog, ChangedSessionSetOnlyIncludesEditedField)
     s.rpcVersion = 15;
     s.downloadQueueSize = 2;
     s.peerLimitGlobal = 100;
+    s.ratioLimit = 2.7534;
     DaemonOptionsDialog dlg(s);
+    EXPECT_TRUE(dlg.changedSessionSet().isEmpty());
     auto* size = dlg.findChild<QSpinBox*>(QStringLiteral("downloadQueueSize"));
     ASSERT_NE(size, nullptr);
     size->setValue(7);

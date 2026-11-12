@@ -37,8 +37,6 @@ struct DaemonSettings {
     int peerPort = 51413;
     bool portForwardingEnabled = false;
     bool peerPortRandomOnStart = false;
-    int peerPortRandomLow = 0;
-    int peerPortRandomHigh = 0;
     QString encryption = QStringLiteral("preferred"); // required | preferred | tolerated
     int peerLimitGlobal = 0;
     int peerLimitPerTorrent = 0;
@@ -110,8 +108,6 @@ private:
     QSpinBox* m_peerPort = nullptr;
     QCheckBox* m_portForwarding = nullptr;
     QCheckBox* m_peerPortRandom = nullptr;
-    QSpinBox* m_peerPortRandomLow = nullptr;
-    QSpinBox* m_peerPortRandomHigh = nullptr;
     QLineEdit* m_downloadDir = nullptr;
     QCheckBox* m_startAddedTorrents = nullptr;
     QGroupBox* m_incompleteGroup = nullptr;

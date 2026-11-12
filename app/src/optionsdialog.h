@@ -5,6 +5,7 @@
 class QComboBox;
 class QSpinBox;
 class QCheckBox;
+class QLineEdit;
 class QPlainTextEdit;
 namespace tgui { class RpcClient; }
 
@@ -15,6 +16,12 @@ namespace tgui { class RpcClient; }
 class OptionsDialog : public QDialog {
     Q_OBJECT
 public:
+    static constexpr char skipAddDialogKey[] = "downloads/skipAddDialog";
+    static constexpr char deleteSourceTorrentKey[] = "downloads/deleteSourceTorrent";
+    static constexpr char clipboardLinksKey[] = "downloads/clipboardLinks";
+    static constexpr char watchFolderKey[] = "downloads/watchFolder";
+    static constexpr char watchDestinationKey[] = "downloads/watchDestination";
+
     explicit OptionsDialog(QWidget* parent = nullptr, int rpcVersion = 0,
                            tgui::RpcClient* rpc = nullptr);
 
@@ -47,6 +54,11 @@ private:
     QCheckBox* m_trayIcon = nullptr;
     QCheckBox* m_trayNotify = nullptr;
     QCheckBox* m_autoSequential = nullptr;
+    QCheckBox* m_skipAddDialog = nullptr;
+    QCheckBox* m_deleteSourceTorrent = nullptr;
+    QCheckBox* m_clipboardLinks = nullptr;
+    QLineEdit* m_watchFolder = nullptr;
+    QLineEdit* m_watchDestination = nullptr;
     QPlainTextEdit* m_sequentialExtensions = nullptr;
     bool m_restartRequired = false;
     bool m_renamingLabel = false;

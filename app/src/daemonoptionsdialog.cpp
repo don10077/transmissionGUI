@@ -78,8 +78,6 @@ DaemonSettings DaemonSettings::fromSession(const tgui::SessionInfo& s)
     d.peerPort = s.peerPort > 0 ? s.peerPort : 51413;
     d.portForwardingEnabled = s.portForwardingEnabled;
     d.peerPortRandomOnStart = s.peerPortRandomOnStart;
-    d.peerPortRandomLow = s.peerPortRandomLow;
-    d.peerPortRandomHigh = s.peerPortRandomHigh;
     d.encryption = s.encryption.isEmpty() ? QStringLiteral("preferred") : s.encryption;
     d.peerLimitGlobal = s.peerLimitGlobal;
     d.peerLimitPerTorrent = s.peerLimitPerTorrent;
@@ -127,8 +125,6 @@ QJsonObject DaemonSettings::toSessionSetJson() const
     j[QStringLiteral("peer-port")] = peerPort;
     j[QStringLiteral("port-forwarding-enabled")] = portForwardingEnabled;
     j[QStringLiteral("peer-port-random-on-start")] = peerPortRandomOnStart;
-    j[QStringLiteral("peer-port-random-low")] = peerPortRandomLow;
-    j[QStringLiteral("peer-port-random-high")] = peerPortRandomHigh;
     j[QStringLiteral("encryption")] = encryption;
     j[QStringLiteral("peer-limit-global")] = peerLimitGlobal;
     j[QStringLiteral("peer-limit-per-torrent")] = peerLimitPerTorrent;
@@ -283,19 +279,6 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
         portRow->addStretch(1);
         netLayout->addLayout(portRow);
     }
-    {
-        auto* randomRow = new QHBoxLayout;
-        m_peerPortRandomLow = makeCountSpin(net, s.peerPortRandomLow, 65535);
-        m_peerPortRandomLow->setObjectName(QStringLiteral("peerPortRandomLow"));
-        m_peerPortRandomHigh = makeCountSpin(net, s.peerPortRandomHigh, 65535);
-        m_peerPortRandomHigh->setObjectName(QStringLiteral("peerPortRandomHigh"));
-        randomRow->addWidget(new QLabel(tr("Random range"), net));
-        randomRow->addWidget(m_peerPortRandomLow);
-        randomRow->addWidget(new QLabel(tr("to"), net));
-        randomRow->addWidget(m_peerPortRandomHigh);
-        randomRow->addStretch(1);
-        netLayout->addLayout(randomRow);
-    }
     m_portForwarding = new QCheckBox(tr("Enable port forwarding"), net);
     m_portForwarding->setObjectName(QStringLiteral("portForwarding"));
     netLayout->addWidget(m_portForwarding);
@@ -445,8 +428,9 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
     connect(m_seedQueueEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
     connect(m_queueStalledEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
     connect(m_idleSeedingEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
-    connect(m_peerPortRandom, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
     setSettings(s);
+    // Сравниваем с тем, что увидел пользователь: округление и ограничения формы не считаются правкой.
+    m_initial = settings();
     applyFeatureGates();
 }
 
@@ -471,8 +455,6 @@ void DaemonOptionsDialog::applyFeatureGates()
     gate(m_peerLimitPerTorrent, version >= 5, tr("Requires RPC version 5 or newer."));
     gate(m_portForwarding, version >= 5, tr("Requires RPC version 5 or newer."));
     gate(m_peerPortRandom, version >= 5, tr("Requires RPC version 5 or newer."));
-    gate(m_peerPortRandomLow, version >= 5, tr("Requires RPC version 5 or newer."));
-    gate(m_peerPortRandomHigh, version >= 5, tr("Requires RPC version 5 or newer."));
 }
 
 void DaemonOptionsDialog::updateEnabledState()
@@ -492,8 +474,6 @@ void DaemonOptionsDialog::updateEnabledState()
     m_seedQueueSize->setEnabled(m_seedQueueEnabled->isChecked());
     m_queueStalledMinutes->setEnabled(m_queueStalledEnabled->isChecked());
     m_idleSeedingLimit->setEnabled(m_idleSeedingEnabled->isChecked());
-    m_peerPortRandomLow->setEnabled(m_peerPortRandom->isChecked());
-    m_peerPortRandomHigh->setEnabled(m_peerPortRandom->isChecked());
 }
 
 void DaemonOptionsDialog::setSettings(const DaemonSettings& s)
@@ -517,8 +497,6 @@ void DaemonOptionsDialog::setSettings(const DaemonSettings& s)
     m_peerPort->setValue(s.peerPort > 0 ? s.peerPort : 51413);
     m_portForwarding->setChecked(s.portForwardingEnabled);
     m_peerPortRandom->setChecked(s.peerPortRandomOnStart);
-    m_peerPortRandomLow->setValue(qMax(0, s.peerPortRandomLow));
-    m_peerPortRandomHigh->setValue(qMax(0, s.peerPortRandomHigh));
     const int encryptionIndex = m_encryption->findData(s.encryption);
     m_encryption->setCurrentIndex(encryptionIndex >= 0 ? encryptionIndex
                                                        : m_encryption->findData(QStringLiteral("preferred")));
@@ -569,8 +547,6 @@ DaemonSettings DaemonOptionsDialog::settings() const
     d.peerPort = m_peerPort->value();
     d.portForwardingEnabled = m_portForwarding->isChecked();
     d.peerPortRandomOnStart = m_peerPortRandom->isChecked();
-    d.peerPortRandomLow = m_peerPortRandomLow->value();
-    d.peerPortRandomHigh = m_peerPortRandomHigh->value();
     d.encryption = m_encryption->currentData().toString();
     d.peerLimitGlobal = m_peerLimitGlobal->value();
     d.peerLimitPerTorrent = m_peerLimitPerTorrent->value();

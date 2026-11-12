@@ -412,8 +412,6 @@
     <message><source>Global peer limit</source><translation>Общий лимит пиров</translation></message>
     <message><source>Per torrent</source><translation>На торрент</translation></message>
     <message><source>Random port on start</source><translation>Случайный порт при запуске</translation></message>
-    <message><source>Random range</source><translation>Диапазон</translation></message>
-    <message><source>to</source><translation>до</translation></message>
     <message><source>Enable port forwarding</source><translation>Включить проброс портов</translation></message>
     <message><source>Incomplete files</source><translation>Незавершённые файлы</translation></message>
     <message><source>Use incomplete folder</source><translation>Использовать папку незавершённых</translation></message>
@@ -1280,6 +1278,22 @@ Are you sure to start verification of %1 torrents?</source>
       <translation>Торрент добавлен</translation>
     </message>
     <message>
+      <source>Torrent added with incomplete settings</source>
+      <translation>Торрент добавлен, но не все настройки применены</translation>
+    </message>
+    <message>
+      <source>Could not remove the original file: %1</source>
+      <translation>Не удалось удалить исходный файл: %1</translation>
+    </message>
+    <message>
+      <source>Could not read the local torrent file: %1</source>
+      <translation>Не удалось прочитать локальный торрент-файл: %1</translation>
+    </message>
+    <message>
+      <source>Connect to a daemon to add the files or links you opened.</source>
+      <translation>Подключитесь к демону, чтобы добавить открытые файлы или ссылки.</translation>
+    </message>
+    <message>
       <location filename="../app/src/mainwindow.cpp" line="2294" />
       <source>Show</source>
       <translation>Показать</translation>
@@ -1804,6 +1818,19 @@ Restart the application to apply the changes.</source>
   </context>
   <context>
     <name>OptionsDialog</name>
+    <message><source>Adding torrents</source><translation>Добавление торрентов</translation></message>
+    <message><source>Skip the add torrent dialog</source><translation>Пропускать окно добавления торрента</translation></message>
+    <message><source>Delete the original .torrent file after successful addition</source><translation>Удалять исходный файл .torrent после успешного добавления</translation></message>
+    <message><source>Automatically add torrent links from the clipboard</source><translation>Автоматически добавлять торрент-ссылки из буфера обмена</translation></message>
+    <message><source>Watch folder</source><translation>Отслеживаемая папка</translation></message>
+    <message><source>Leave empty to disable monitoring</source><translation>Пустое поле отключает отслеживание</translation></message>
+    <message><source>Browse…</source><translation>Обзор…</translation></message>
+    <message><source>Choose a watch folder</source><translation>Выберите отслеживаемую папку</translation></message>
+    <message><source>Local folder</source><translation>Локальная папка</translation></message>
+    <message><source>Use the daemon's default folder</source><translation>Папка по умолчанию на демоне</translation></message>
+    <message><source>Download folder on the daemon</source><translation>Папка загрузки на демоне</translation></message>
+    <message><source>Register .torrent and magnet handlers in Windows</source><translation>Зарегистрировать обработчики .torrent и magnet в Windows</translation></message>
+    <message><source>Could not register the handlers in Windows.</source><translation>Не удалось зарегистрировать обработчики в Windows.</translation></message>
     <message><source>Labels</source><translation>Метки</translation></message>
     <message><source>Enter one label per line.</source><translation>Введите по одной метке на строку.</translation></message>
     <message><source>Restore default labels</source><translation>Восстановить предустановленные метки</translation></message>
@@ -2637,5 +2664,12 @@ Used when opening files/torrents with double-click.</source>
   <context>
     <name>TorrentLabels</name>
     <message><source>No label</source><translation>Без метки</translation></message>
+  </context>
+  <context>
+    <name>ExternalOpen</name>
+    <message>
+      <source>Could not send torrents to the running window.</source>
+      <translation>Не удалось передать торренты в открытое окно.</translation>
+    </message>
   </context>
 </TS>

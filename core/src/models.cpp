@@ -444,8 +444,6 @@ bool parseSessionInfo(const QJsonObject& j, SessionInfo& out)
     out.peerLimitPerTorrent = j.value("peer-limit-per-torrent").toInt();
     out.portForwardingEnabled = j.value("port-forwarding-enabled").toBool();
     out.peerPortRandomOnStart = j.value("peer-port-random-on-start").toBool();
-    out.peerPortRandomLow = j.value("peer-port-random-low").toInt();
-    out.peerPortRandomHigh = j.value("peer-port-random-high").toInt();
     // Кеш: показываем только если демон вернул поле.
     out.hasCacheSize = j.contains("cache-size-mb");
     out.cacheSizeMb = j.value("cache-size-mb").toInt();

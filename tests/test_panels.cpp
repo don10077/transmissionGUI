@@ -5,19 +5,24 @@
 #include <algorithm>
 
 #include <QApplication>
+#include <QAbstractButton>
 #include <QToolButton>
 #include <QAction>
 #include <QClipboard>
 #include <QComboBox>
+#include <QDropEvent>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QMimeData>
+#include <QScopeGuard>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTableWidget>
+#include <QTemporaryDir>
 #include <QDir>
 #include "theme.h"
 #include <QTreeView>
@@ -25,6 +30,8 @@
 #include <QWheelEvent>
 
 #include "mainwindow.h"
+#include "externalopen.h"
+#include "fileselectdialog.h"
 #include "filterpanel.h"
 #include "propsform.h"
 #include "statsform.h"
@@ -617,6 +624,331 @@ bool waitForSettings(const std::function<bool()>& predicate)
 }
 }
 
+enum class AddScenario { Default, AddFailure, StartFailure, SkipAndDelete, Cancel, Duplicate, ChangedSource };
+class TorrentAddOutcome : public testing::TestWithParam<AddScenario> {};
+
+TEST_P(TorrentAddOutcome, HandlesResultAndOriginalFile)
+{
+    QSettings settings;
+    const auto scenario = GetParam();
+    const bool skipDialog = scenario == AddScenario::SkipAndDelete || scenario == AddScenario::ChangedSource;
+    QHash<QString, QVariant> saved;
+    for (const QString& key : {QStringLiteral("daemons/current"), QStringLiteral("ui/autoRefresh"),
+                               QString(OptionsDialog::skipAddDialogKey), QString(OptionsDialog::deleteSourceTorrentKey)})
+        saved.insert(key, settings.value(key));
+    const auto restore = qScopeGuard([&] {
+        for (auto it = saved.cbegin(); it != saved.cend(); ++it) {
+            if (it.value().isValid()) settings.setValue(it.key(), it.value());
+            else settings.remove(it.key());
+        }
+    });
+    settings.remove("daemons/current");
+    settings.setValue("ui/autoRefresh", false);
+    settings.setValue(OptionsDialog::skipAddDialogKey, skipDialog);
+    settings.setValue(OptionsDialog::deleteSourceTorrentKey, scenario != AddScenario::Default);
+
+    MockRpcServer server;
+    ASSERT_NE(server.start(), 0);
+    const MockRpcServer::Response initial{200, R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","download-dir":"/downloads","torrents":[{"id":1,"name":"Original"}]}})", {}};
+    server.setDefault(initial);
+    class DropWindow : public MainWindow {
+    public:
+        using MainWindow::dropEvent;
+    } window;
+    RpcClient::Options options;
+    options.url = server.url();
+    window.setAutoConnect(options);
+    ASSERT_TRUE(waitForSettings([&] { return window.currentId() == 1 && server.requestCount() >= 6; }));
+
+    QTemporaryDir sourceDir;
+    ASSERT_TRUE(sourceDir.isValid());
+    QFile source(sourceDir.filePath("source.torrent"));
+    ASSERT_TRUE(source.open(QIODevice::WriteOnly));
+    ASSERT_EQ(source.write("de"), 2);
+    source.close();
+    QMimeData file;
+    file.setUrls({QUrl::fromLocalFile(source.fileName())});
+    const auto drop = [&](const QMimeData& mime) {
+        QDropEvent event(QPointF(), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        window.dropEvent(&event);
+        EXPECT_TRUE(event.isAccepted());
+    };
+    const auto countRequests = [&](const QString& method) {
+        const auto requests = server.requests();
+        return std::count_if(requests.cbegin(), requests.cend(),
+            [&](const auto& request) { return request.rpcMethod == method; });
+    };
+    if (scenario == AddScenario::AddFailure) {
+        server.enqueue({200, R"({"result":"test add failure"})", {}});
+        drop(file);
+        ASSERT_TRUE(waitForSettings([&] {
+            return window.statusBar()->currentMessage().contains("test add failure");
+        }));
+        EXPECT_TRUE(QFile::exists(source.fileName()));
+        EXPECT_EQ(countRequests("torrent-remove"), 0);
+        return;
+    }
+    const MockRpcServer::Response duplicate{200, R"({"result":"success","arguments":{"torrent-duplicate":{"id":1,"name":"Original"}}})", {}};
+    const auto duplicatePrompt = [&]() -> QMessageBox* {
+        for (auto* box : window.findChildren<QMessageBox*>())
+            if (box->isVisible())
+                return box;
+        return nullptr;
+    };
+    if (scenario == AddScenario::Duplicate) {
+        server.enqueue(duplicate);
+        drop(file);
+        ASSERT_TRUE(waitForSettings([&] { return duplicatePrompt() != nullptr; }));
+        const int before = server.requestCount();
+        duplicatePrompt()->reject();
+        ASSERT_TRUE(waitForSettings([&] { return server.requestCount() > before; }));
+        EXPECT_TRUE(QFile::exists(source.fileName()));
+        EXPECT_EQ(countRequests("torrent-add"), 1);
+        EXPECT_EQ(countRequests("torrent-remove"), 0);
+        return;
+    }
+    auto* search = window.findChild<QLineEdit*>("searchEdit");
+    ASSERT_NE(search, nullptr);
+    search->setText("Original");
+    server.enqueue({200, R"({"result":"success","arguments":{"torrent-added":{"id":2,"name":"New"}}})", {}});
+    const MockRpcServer::Response addedList{200, R"({"result":"success","arguments":{"torrents":[{"id":2,"name":"New","downloadDir":"/downloads"},{"id":1,"name":"Original","downloadDir":"/downloads"}]}})", {}};
+    server.setDefault(addedList);
+    if (skipDialog) {
+        server.enqueue(addedList);
+        server.enqueue({200, R"({"result":"success"})", {}, 200});
+    }
+    drop(file);
+    const auto visibleOptions = [&] {
+        auto* dialog = window.findChild<FileSelectDialog*>();
+        return dialog && dialog->isVisible();
+    };
+    if (skipDialog) {
+        ASSERT_TRUE(waitForSettings([&] { return countRequests("torrent-start") == 1; }));
+        EXPECT_FALSE(visibleOptions());
+        EXPECT_TRUE(QFile::exists(source.fileName()));
+        if (scenario == AddScenario::ChangedSource) {
+            QFile replacement(source.fileName());
+            ASSERT_TRUE(replacement.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            ASSERT_EQ(replacement.write("replacement"), 11);
+        }
+    } else {
+        ASSERT_TRUE(waitForSettings(visibleOptions));
+        auto* dialog = window.findChild<FileSelectDialog*>();
+        if (scenario == AddScenario::Cancel) {
+            server.setDefault(initial);
+            dialog->reject();
+            ASSERT_TRUE(waitForSettings([&] { return countRequests("torrent-remove") == 1; }));
+            EXPECT_EQ(countRequests("torrent-start"), 0);
+            EXPECT_TRUE(QFile::exists(source.fileName()));
+            return;
+        }
+        auto* start = dialog->findChild<QCheckBox*>("startTorrent");
+        ASSERT_NE(start, nullptr);
+        start->setChecked(true);
+        if (scenario == AddScenario::StartFailure)
+            server.enqueue({200, R"({"result":"test start failure"})", {}});
+        static_cast<QDialog*>(dialog)->accept();
+    }
+    ASSERT_TRUE(waitForSettings([&] { return window.currentId() == 2 && server.requestCount() >= 13; }));
+    if (scenario == AddScenario::StartFailure) {
+        EXPECT_TRUE(window.statusBar()->currentMessage().contains("test start failure"));
+    }
+    EXPECT_TRUE(search->text().isEmpty());
+    EXPECT_EQ(QFile::exists(source.fileName()), scenario != AddScenario::SkipAndDelete);
+    if (scenario != AddScenario::Default)
+        return;
+
+    QMimeData magnet;
+    magnet.setText("magnet:?xt=urn:btih:0123456789012345678901234567890123456789");
+    server.enqueue(duplicate);
+    drop(magnet);
+    ASSERT_TRUE(waitForSettings([&] { return duplicatePrompt() != nullptr; }));
+    auto* box = duplicatePrompt();
+    const auto buttons = box->buttons();
+    const auto update = std::find_if(buttons.cbegin(), buttons.cend(),
+        [box](auto* button) { return box->buttonRole(button) == QMessageBox::AcceptRole; });
+    ASSERT_NE(update, buttons.cend());
+    (*update)->click();
+    ASSERT_TRUE(waitForSettings([&] { return window.currentId() == 1; }));
+
+    int adds = 0;
+    for (const auto& request : server.requests()) {
+        if (request.rpcMethod == "torrent-add")
+            ++adds;
+        EXPECT_NE(request.rpcMethod, "torrent-remove");
+    }
+    EXPECT_EQ(adds, 2);
+    EXPECT_TRUE(QFile::exists(source.fileName()));
+}
+
+INSTANTIATE_TEST_SUITE_P(AddSettings, TorrentAddOutcome,
+    testing::Values(AddScenario::Default, AddScenario::AddFailure, AddScenario::StartFailure,
+                    AddScenario::SkipAndDelete, AddScenario::Cancel, AddScenario::Duplicate,
+                    AddScenario::ChangedSource));
+
+class AutomaticAddSources : public testing::Test {
+protected:
+    void SetUp() override
+    {
+        for (const QString& key : {QStringLiteral("daemons/current"), QStringLiteral("ui/autoRefresh"),
+                                   QString(OptionsDialog::clipboardLinksKey), QString(OptionsDialog::watchFolderKey),
+                                   QString(OptionsDialog::watchDestinationKey)})
+            saved.insert(key, settings.value(key));
+        settings.remove("daemons/current");
+        settings.setValue("ui/autoRefresh", false);
+        settings.setValue(OptionsDialog::clipboardLinksKey, false);
+        settings.remove(OptionsDialog::watchFolderKey);
+        ASSERT_NE(server.start(), 0);
+        server.setDefault({200, R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","download-dir":"/default","torrents":[]}})", {}});
+    }
+
+    void TearDown() override
+    {
+        for (auto it = saved.cbegin(); it != saved.cend(); ++it) {
+            if (it.value().isValid()) settings.setValue(it.key(), it.value());
+            else settings.remove(it.key());
+        }
+    }
+
+    void connectWindow(MainWindow& window)
+    {
+        const int before = server.requestCount();
+        RpcClient::Options options;
+        options.url = server.url();
+        window.setAutoConnect(options);
+        ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow() && server.requestCount() >= before + 3; }));
+    }
+
+    QList<QJsonObject> additions() const
+    {
+        QList<QJsonObject> result;
+        for (const auto& request : server.requests())
+            if (request.rpcMethod == "torrent-add")
+                result.append(request.arguments);
+        return result;
+    }
+
+    QSettings settings;
+    MockRpcServer server;
+    QHash<QString, QVariant> saved;
+};
+
+TEST_F(AutomaticAddSources, ClipboardOptInAndNormalizesRepeatedLinks)
+{
+    MainWindow window;
+    ASSERT_NO_FATAL_FAILURE(connectWindow(window));
+    auto* clipboard = QApplication::clipboard();
+    const auto previous = clipboard->text();
+    const auto restore = qScopeGuard([&] {
+        settings.setValue(OptionsDialog::clipboardLinksKey, false);
+        clipboard->setText(previous);
+    });
+    clipboard->setText("https://example.test/disabled.torrent");
+    QCoreApplication::processEvents();
+    EXPECT_TRUE(additions().isEmpty());
+
+    settings.setValue(OptionsDialog::clipboardLinksKey, true);
+    clipboard->setText("https://example.test/ordinary-page");
+    clipboard->setText("  0123456789ABCDEF0123456789ABCDEF01234567  ");
+    ASSERT_TRUE(waitForSettings([&] { return additions().size() >= 1; }));
+    clipboard->setText("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=repeat");
+    clipboard->setText("https://example.test/file.torrent?token=example#fragment");
+    ASSERT_TRUE(waitForSettings([&] { return additions().size() >= 2 && server.requestCount() >= 7; }));
+    const auto result = additions();
+    ASSERT_EQ(result.size(), 2);
+    EXPECT_EQ(result.at(0).value("filename").toString(),
+              "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567");
+    EXPECT_EQ(result.at(1).value("filename").toString(),
+              "https://example.test/file.torrent?token=example");
+}
+
+TEST_F(AutomaticAddSources, WatchFolderWaitsForStableFileAndPersistsAttempt)
+{
+    QTemporaryDir directory;
+    ASSERT_TRUE(directory.isValid());
+    settings.setValue(OptionsDialog::watchFolderKey, directory.path());
+    settings.setValue(OptionsDialog::watchDestinationKey, "/watched");
+    const auto historyKey = QStringLiteral("downloads/watchHistory/") +
+        QString::fromLatin1(QUrl::toPercentEncoding(QDir(directory.path()).absolutePath()));
+    const auto cleanup = qScopeGuard([&] { settings.remove(historyKey); });
+    const auto path = directory.filePath("example.TORRENT");
+    const auto writeSource = [&](const QByteArray& bytes) {
+        QFile source(path);
+        ASSERT_TRUE(source.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        ASSERT_EQ(source.write(bytes), bytes.size());
+    };
+    ASSERT_NO_FATAL_FAILURE(writeSource("de"));
+    const auto scan = [](MainWindow& window) {
+        EXPECT_TRUE(QMetaObject::invokeMethod(&window, "scanWatchFolder", Qt::DirectConnection));
+    };
+    {
+        MainWindow window;
+        ASSERT_NO_FATAL_FAILURE(connectWindow(window));
+        scan(window);
+        ASSERT_NO_FATAL_FAILURE(writeSource("d1:ai1ee"));
+        scan(window);
+        EXPECT_TRUE(settings.value(historyKey).toMap().isEmpty());
+        scan(window);
+        ASSERT_TRUE(waitForSettings([&] { return additions().size() == 1 && server.requestCount() >= 5; }));
+        EXPECT_EQ(additions().first().value("download-dir").toString(), "/watched");
+        EXPECT_EQ(additions().first().value("metainfo").toString(), QString::fromLatin1(QByteArray("d1:ai1ee").toBase64()));
+        EXPECT_TRUE(QFile::exists(path));
+    }
+    MainWindow reopened;
+    ASSERT_NO_FATAL_FAILURE(connectWindow(reopened));
+    scan(reopened);
+    scan(reopened);
+    ASSERT_NO_FATAL_FAILURE(writeSource("d1:ai10ee"));
+    scan(reopened);
+    scan(reopened);
+    ASSERT_TRUE(waitForSettings([&] { return additions().size() >= 2; }));
+    const auto result = additions();
+    ASSERT_EQ(result.size(), 2);
+    EXPECT_EQ(result.last().value("metainfo").toString(), QString::fromLatin1(QByteArray("d1:ai10ee").toBase64()));
+}
+
+TEST_F(AutomaticAddSources, ExternalOpenForwardsUnicodeFileAndMagnetBeforeConnection)
+{
+    QTemporaryDir directory;
+    ASSERT_TRUE(directory.isValid());
+    QFile source(directory.filePath(QStringLiteral("тест файл.torrent")));
+    ASSERT_TRUE(source.open(QIODevice::WriteOnly));
+    ASSERT_EQ(source.write("de"), 2);
+    source.close();
+    const auto path = externalTorrentInput(QUrl::fromLocalFile(source.fileName()).toString(QUrl::FullyEncoded));
+    EXPECT_EQ(path, source.fileName());
+    const auto magnet = externalTorrentInput("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567");
+    ASSERT_FALSE(magnet.isEmpty());
+    EXPECT_TRUE(externalTorrentInput("https://example.test/file.torrent").isEmpty());
+
+    MainWindow window;
+    ExternalOpen primary(directory.path());
+    QStringList received;
+    ASSERT_EQ(primary.listen([&](const auto& inputs) {
+        received.append(inputs);
+        window.openExternalTorrents(inputs);
+    }), ExternalOpen::Result::Listening);
+    ExternalOpen secondary(directory.path());
+    ASSERT_EQ(secondary.listen([](const auto&) {}), ExternalOpen::Result::AlreadyRunning);
+    const QStringList inputs{path, magnet};
+    bool delivered = false;
+    const std::unique_ptr<QThread> sender(QThread::create([&] { delivered = secondary.forward(inputs); }));
+    sender->start();
+    const bool finished = waitForSettings([&] { return sender->isFinished(); });
+    ASSERT_TRUE(sender->wait(4000));
+    ASSERT_TRUE(finished);
+    ASSERT_TRUE(delivered);
+    EXPECT_EQ(received, inputs);
+    EXPECT_TRUE(additions().isEmpty());
+
+    ASSERT_NO_FATAL_FAILURE(connectWindow(window));
+    ASSERT_TRUE(waitForSettings([&] { return additions().size() >= 2; }));
+    const auto result = additions();
+    ASSERT_EQ(result.size(), 2);
+    EXPECT_EQ(result.first().value("metainfo").toString(), QString::fromLatin1(QByteArray("de").toBase64()));
+    EXPECT_EQ(result.last().value("filename").toString(), magnet);
+}
+
 TEST(SettingsFixes, CompletionNotificationIsTransitionAndPreferenceGated)
 {
     QCoreApplication::setOrganizationName("tgui-test");
@@ -803,7 +1135,6 @@ TEST(InfoPanel, PeersTabRequestsRefresh)
 
 
 #include <QDesktopServices>
-#include <QTemporaryDir>
 #include <QFile>
 #include <QToolButton>
 
@@ -1063,7 +1394,6 @@ TEST(TorrentInteraction, MoveBrowseStartsAtMappedFolderAndReturnsDaemonPath)
 }
 
 
-#include "fileselectdialog.h"
 #include "sequentialpolicy.h"
 #include <QCheckBox>
 #include <QPlainTextEdit>

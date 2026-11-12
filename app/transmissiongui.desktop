@@ -2,6 +2,7 @@
 Type=Application
 Name=transmissionGUI
 Comment=Manage torrents on a Transmission server
-Exec=transmissiongui
+Exec=transmissiongui -- %U
 Terminal=false
 Categories=Network;FileTransfer;
+MimeType=application/x-bittorrent;x-scheme-handler/magnet;

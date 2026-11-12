@@ -90,7 +90,7 @@ const QHash<QString, QString>& legacyKeys()
             "leftUntilDone", "lpd-enabled", "magnetLink", "maxConnectedPeers",
             "metadataPercentComplete", "nextAnnounceTime", "pausedTorrentCount", "peerIsChoked",
             "peer-limit", "peer-limit-global", "peer-limit-per-torrent", "peer-port",
-            "peer-port-random-high", "peer-port-random-low", "peer-port-random-on-start",
+            "peer-port-random-on-start",
             "peersGettingFromUs", "peersSendingToUs", "pex-enabled", "pieceCount", "pieceSize",
             "port-forwarding-enabled", "port-is-open", "priority-high", "priority-low",
             "priority-normal", "queue-stalled-enabled", "queue-stalled-minutes", "queuePosition",

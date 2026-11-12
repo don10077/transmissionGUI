@@ -5,12 +5,16 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QDesktopServices>
+#include <QDir>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPointer>
@@ -19,7 +23,13 @@
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QTextBlock>
+#include <QUrl>
 #include <QVBoxLayout>
+
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#include <shlobj.h>
+#endif
 
 #include "pathmap.h"
 #include "sequentialpolicy.h"
@@ -35,6 +45,37 @@ constexpr char kKeyMinimizeToTray[] = "ui/minimizeToTray";
 constexpr char kKeyTrayIcon[] = "ui/trayIcon";
 constexpr char kKeyTrayNotify[] = "ui/trayNotify";
 constexpr char kKeyPaths[] = "paths/mappings";
+
+#ifdef Q_OS_WIN
+/** Регистрирует клиент как возможный обработчик для текущего пользователя. */
+bool registerTorrentHandlers()
+{
+    const auto command = QStringLiteral("\"%1\" -- \"%2\"")
+        .arg(QDir::toNativeSeparators(QCoreApplication::applicationFilePath()), QStringLiteral("%1"));
+    QSettings classes("HKEY_CURRENT_USER\\Software\\Classes", QSettings::NativeFormat);
+    classes.setValue("transmissionGUI.Torrent/Default", "Torrent file");
+    classes.setValue("transmissionGUI.Torrent/shell/open/command/Default", command);
+    classes.setValue("transmissionGUI.Magnet/Default", "Magnet link");
+    classes.setValue("transmissionGUI.Magnet/URL Protocol", QStringLiteral(""));
+    classes.setValue("transmissionGUI.Magnet/shell/open/command/Default", command);
+    classes.setValue(".torrent/OpenWithProgids/transmissionGUI.Torrent", QStringLiteral(""));
+    classes.sync();
+    if (classes.status() != QSettings::NoError)
+        return false;
+
+    QSettings software("HKEY_CURRENT_USER\\Software", QSettings::NativeFormat);
+    software.setValue("transmissionGUI/Capabilities/ApplicationName", "transmissionGUI");
+    software.setValue("transmissionGUI/Capabilities/ApplicationDescription", "Manage torrents on a Transmission server");
+    software.setValue("transmissionGUI/Capabilities/FileAssociations/.torrent", "transmissionGUI.Torrent");
+    software.setValue("transmissionGUI/Capabilities/UrlAssociations/magnet", "transmissionGUI.Magnet");
+    software.setValue("RegisteredApplications/transmissionGUI", "Software\\transmissionGUI\\Capabilities");
+    software.sync();
+    if (software.status() != QSettings::NoError)
+        return false;
+    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
+    return true;
+}
+#endif
 
 /** Возвращает названия меток из редактора в порядке ввода. */
 QStringList readLabels(const QPlainTextEdit& editor)
@@ -151,6 +192,55 @@ OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion, tgui::RpcClient* r
     pathsLayout->addWidget(pathsHint);
     pathsLayout->addWidget(m_paths, 1);
     tabs->addTab(pathsPage, tr("Paths"));
+
+    auto* addingPage = new QWidget(tabs);
+    auto* addingLayout = new QVBoxLayout(addingPage);
+    addingLayout->setContentsMargins(16, 16, 16, 16);
+    m_skipAddDialog = new QCheckBox(tr("Skip the add torrent dialog"), addingPage);
+    m_skipAddDialog->setObjectName(QStringLiteral("skipAddDialog"));
+    m_skipAddDialog->setChecked(QSettings().value(skipAddDialogKey, false).toBool());
+    m_deleteSourceTorrent = new QCheckBox(tr("Delete the original .torrent file after successful addition"), addingPage);
+    m_deleteSourceTorrent->setObjectName(QStringLiteral("deleteSourceTorrent"));
+    m_deleteSourceTorrent->setChecked(QSettings().value(deleteSourceTorrentKey, false).toBool());
+    addingLayout->addWidget(m_skipAddDialog);
+    addingLayout->addWidget(m_deleteSourceTorrent);
+    m_clipboardLinks = new QCheckBox(tr("Automatically add torrent links from the clipboard"), addingPage);
+    m_clipboardLinks->setObjectName(QStringLiteral("clipboardLinks"));
+    m_clipboardLinks->setChecked(QSettings().value(clipboardLinksKey, false).toBool());
+    addingLayout->addWidget(m_clipboardLinks);
+
+    auto* watch = new QGroupBox(tr("Watch folder"), addingPage);
+    auto* watchForm = new QFormLayout(watch);
+    auto* folderRow = new QHBoxLayout;
+    m_watchFolder = new QLineEdit(QSettings().value(watchFolderKey).toString(), watch);
+    m_watchFolder->setObjectName(QStringLiteral("watchFolder"));
+    m_watchFolder->setPlaceholderText(tr("Leave empty to disable monitoring"));
+    auto* browse = new QPushButton(tr("Browse…"), watch);
+    connect(browse, &QPushButton::clicked, this, [this] {
+        const auto path = QFileDialog::getExistingDirectory(this, tr("Choose a watch folder"), m_watchFolder->text());
+        if (!path.isEmpty())
+            m_watchFolder->setText(path);
+    });
+    folderRow->addWidget(m_watchFolder, 1);
+    folderRow->addWidget(browse);
+    watchForm->addRow(tr("Local folder"), folderRow);
+    m_watchDestination = new QLineEdit(QSettings().value(watchDestinationKey).toString(), watch);
+    m_watchDestination->setObjectName(QStringLiteral("watchDestination"));
+    m_watchDestination->setPlaceholderText(tr("Use the daemon's default folder"));
+    watchForm->addRow(tr("Download folder on the daemon"), m_watchDestination);
+    addingLayout->addWidget(watch);
+#ifdef Q_OS_WIN
+    auto* handlers = new QPushButton(tr("Register .torrent and magnet handlers in Windows"), addingPage);
+    addingLayout->addWidget(handlers, 0, Qt::AlignLeft);
+    connect(handlers, &QPushButton::clicked, this, [this] {
+        if (registerTorrentHandlers())
+            QDesktopServices::openUrl(QUrl(QStringLiteral("ms-settings:defaultapps?registeredAppUser=transmissionGUI")));
+        else
+            QMessageBox::warning(this, windowTitle(), tr("Could not register the handlers in Windows."));
+    });
+#endif
+    addingLayout->addStretch();
+    tabs->addTab(addingPage, tr("Adding torrents"));
 
     auto* sequentialPage = new QWidget(tabs);
     auto* sequentialLayout = new QVBoxLayout(sequentialPage);
@@ -311,6 +401,11 @@ bool OptionsDialog::apply()
     s.setValue(kKeyMinimizeToTray, m_minimizeToTray->isChecked());
     s.setValue(kKeyTrayIcon, m_trayIcon->isChecked());
     s.setValue(kKeyTrayNotify, m_trayNotify->isChecked());
+    s.setValue(skipAddDialogKey, m_skipAddDialog->isChecked());
+    s.setValue(deleteSourceTorrentKey, m_deleteSourceTorrent->isChecked());
+    s.setValue(clipboardLinksKey, m_clipboardLinks->isChecked());
+    s.setValue(watchFolderKey, m_watchFolder->text().trimmed());
+    s.setValue(watchDestinationKey, m_watchDestination->text().trimmed());
     s.setValue("downloads/autoSequential", m_autoSequential->isChecked());
     s.setValue("downloads/sequentialExtensions", m_sequentialExtensions->toPlainText());
     s.setValue(kKeyPaths, tgui::pathMappingsFromText(pathMappingsText()));

@@ -68,7 +68,8 @@ void forEachFile(QTreeWidgetItem* item, const std::function<void(QTreeWidgetItem
 } // namespace
 
 FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool start,
-                                   int rpcVersion, tgui::RpcClient* rpc, QWidget* parent)
+                                   int rpcVersion, tgui::RpcClient* rpc, QWidget* parent,
+                                   bool useDestinationTemplates)
     : QDialog(parent)
 {
     setWindowTitle(tr("Add new torrent"));
@@ -129,7 +130,7 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
 
     QString initialPath = details.downloadDir;
     double bestSize = 0.0;
-    for (auto it = m_history.cbegin(); it != m_history.cend(); ++it) {
+    for (auto it = m_history.cbegin(); useDestinationTemplates && it != m_history.cend(); ++it) {
         const auto patterns = destinationPatterns(it.value().toString());
         double matchedSize = 0.0;
         for (const auto& file : details.files) {

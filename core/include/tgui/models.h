@@ -200,8 +200,6 @@ struct SessionInfo {
     int peerLimitPerTorrent = 0;
     bool portForwardingEnabled = false;
     bool peerPortRandomOnStart = false;
-    int peerPortRandomLow = 0;
-    int peerPortRandomHigh = 0;
     // Кеш (RPC >= 10; отсутствует у части сборок демона).
     int cacheSizeMb = 0;
     bool hasCacheSize = false;

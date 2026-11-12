@@ -1,7 +1,10 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QHash>
+#include <QPointer>
 #include <QQueue>
+#include <QSet>
 #include <QTimer>
 #include <QEvent>
 #include <memory>
@@ -36,10 +39,11 @@ class OptionsDialog;
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    explicit MainWindow(QWidget* parent = nullptr);
+    explicit MainWindow(QWidget* parent = nullptr, const tgui::RpcClient::Options& startupOptions = {});
 
     // Быстрый запуск из командной строки: --url/--user/--pass/--path.
     void setAutoConnect(const tgui::RpcClient::Options& opts);
+    void openExternalTorrents(const QStringList& inputs);
 
     // Чтение-только для E2E-тестов (offscreen): состояние и вкладки деталей.
     bool isConnectedNow() const { return m_connected; }
@@ -70,6 +74,7 @@ private slots:
     void onConnect();
     void onDisconnect();
     void onAddTorrent();
+    void scanWatchFolder();
     void onRefresh();
     void onConnected(const tgui::SessionInfo& info);
     void onConnectionFailed(const QString& error);
@@ -188,11 +193,14 @@ private:
     void applyViewVisibility();
     void restoreTorrentSelection(const QVector<int>& ids, int currentId);
     int proxyRowForId(int id) const;
-    void startAdd(const tgui::RpcClient::AddTorrent& params);
+    enum class AddOrigin { Interactive, WatchFolder, External };
+    void startAdd(const tgui::RpcClient::AddTorrent& params, AddOrigin origin = AddOrigin::Interactive);
     void addNextTorrent();
+    void onClipboardChanged();
+    void updateWatchFolder();
     void offerDuplicateUpdate(const tgui::RpcClient::AddTorrent& source,
                               const QJsonObject& duplicate, const QByteArray& metainfo);
-    void finishAdd();
+    void finishAdd(const QPointer<tgui::RpcClient>& rpc, int selectedId = -1);
     QVector<int> selectedTorrentIds() const;
     enum class RefreshAfter { List, Files, Trackers, Properties };
     tgui::RpcClient::RequestCallback afterTorrentChange(const QString& method,
@@ -212,8 +220,18 @@ private:
 
     // Состояние добавления торрента.
     QNetworkAccessManager m_nam;
-    QQueue<tgui::RpcClient::AddTorrent> m_addQueue;
+    struct PendingAdd {
+        tgui::RpcClient::AddTorrent params;
+        AddOrigin origin;
+    };
+    QQueue<PendingAdd> m_addQueue;
+    QStringList m_pendingExternalTorrents;
     bool m_addingTorrent = false;
+    int m_addSelectionId = -1;
+    QSet<QString> m_clipboardLinksSeen;
+    QString m_watchFolder;
+    QHash<QString, QString> m_watchCandidates;
+    QTimer m_watchTimer;
 
     TorrentModel m_model;
     TorrentFilterProxy m_proxy;
