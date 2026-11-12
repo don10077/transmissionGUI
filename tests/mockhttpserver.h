@@ -34,6 +34,7 @@ public:
         int code = 200;
         QByteArray body = "{\"result\": \"success\", \"arguments\": {}}";
         QMap<QByteArray, QByteArray> headers; // например x-transmission-session-id
+        int delayMs = 0;
     };
 
     explicit MockRpcServer(QObject* parent = nullptr);

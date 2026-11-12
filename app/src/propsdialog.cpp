@@ -16,7 +16,7 @@
 #include <QMessageBox>
 #include <functional>
 
-PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion) : QDialog(parent)
+PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion, int page) : QDialog(parent)
 {
     setWindowTitle(tr("Properties — %1").arg(t.name.value_or(tr("(no name)"))));
     resize(600, 430);
@@ -126,6 +126,7 @@ PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion
     trackers->setPlainText(original.join('\n'));
     advancedLayout->addWidget(trackers);
     tabs->addTab(advanced, tr("Advanced"));
+    tabs->setCurrentIndex(page);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     root->addWidget(tabs, 1); root->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);

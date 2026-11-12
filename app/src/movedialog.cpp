@@ -1,6 +1,7 @@
 #include "movedialog.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QDir>
@@ -14,6 +15,11 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+namespace {
+constexpr int kMoveHistoryLimit = 10;
+const char kMoveHistoryKey[] = "paths/moveDirs";
+}  // namespace
+
 MoveDialog::MoveDialog(const QString& currentDir, QWidget* parent) : QDialog(parent)
 {
     setWindowTitle(tr("Move torrent"));
@@ -24,9 +30,13 @@ MoveDialog::MoveDialog(const QString& currentDir, QWidget* parent) : QDialog(par
     auto* row = new QHBoxLayout();
     auto* browse = new QPushButton(tr("Browse…"), this);
     connect(browse, &QPushButton::clicked, this, &MoveDialog::onBrowse);
-    m_path = new QLineEdit(this);
-    m_path->setText(currentDir);
-    m_path->setPlaceholderText(tr("Folder for the torrent files"));
+    m_path = new QComboBox(this);
+    m_path->setEditable(true);
+    m_path->setInsertPolicy(QComboBox::NoInsert);
+    m_path->addItems(QSettings().value(QLatin1String(kMoveHistoryKey)).toStringList());
+    m_path->setCurrentText(currentDir);
+    if (m_path->lineEdit())
+        m_path->lineEdit()->setPlaceholderText(tr("Folder for the torrent files"));
     row->addWidget(m_path, 1);
     row->addWidget(browse);
     layout->addLayout(row);
@@ -48,7 +58,7 @@ MoveDialog::MoveDialog(const QString& currentDir, QWidget* parent) : QDialog(par
     buttons->button(QDialogButtonBox::Cancel)->setText(tr("Cancel"));
     buttons->button(QDialogButtonBox::Ok)->setDefault(true);
     connect(buttons, &QDialogButtonBox::accepted, this, [this] {
-        if (m_path->text().trimmed().isEmpty()) {
+        if (m_path->currentText().trimmed().isEmpty()) {
             QMessageBox::warning(this, tr("Move"), tr("Specify a folder."));
             return;
         }
@@ -60,12 +70,27 @@ MoveDialog::MoveDialog(const QString& currentDir, QWidget* parent) : QDialog(par
 
 QString MoveDialog::targetDir() const
 {
-    return m_path->text().trimmed();
+    return m_path->currentText().trimmed();
 }
 
 bool MoveDialog::moveData() const
 {
     return m_rename->isChecked();
+}
+
+void MoveDialog::rememberDirectory(const QString& dir)
+{
+    const QString target = dir.trimmed();
+    if (target.isEmpty())
+        return;
+    QSettings settings;
+    QStringList history = settings.value(QLatin1String(kMoveHistoryKey)).toStringList();
+    history.removeAll(target);
+    history.prepend(target);
+    while (history.size() > kMoveHistoryLimit)
+        history.removeLast();
+    settings.setValue(QLatin1String(kMoveHistoryKey), history);
+    settings.sync();
 }
 
 void MoveDialog::onBrowse()
@@ -79,5 +104,5 @@ void MoveDialog::onBrowse()
     }
     const QString dir = QFileDialog::getExistingDirectory(
         this, tr("Folder for the torrent files"), local);
-    if (!dir.isEmpty()) m_path->setText(tgui::mapLocalToRemote(dir, mappings));
+    if (!dir.isEmpty()) m_path->setCurrentText(tgui::mapLocalToRemote(dir, mappings));
 }

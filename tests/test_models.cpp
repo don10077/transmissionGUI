@@ -269,6 +269,70 @@ TEST(ModelSessionInfo, Parse)
     EXPECT_TRUE(info.downloadDirFreeSpace == std::nullopt);
 }
 
+TEST(ModelSessionInfo, ParseLegacySeedRatioAndExtendedFields)
+{
+    const QJsonObject j = {
+        {"rpc-version", 14},
+        {"version", "4.0.6"},
+        {"seedRatioLimit", 1.75},
+        {"seedRatioLimited", true},
+        {"download-queue-enabled", true},
+        {"download-queue-size", 5},
+        {"seed-queue-enabled", true},
+        {"seed-queue-size", 8},
+        {"queue-stalled-enabled", true},
+        {"queue-stalled-minutes", 25},
+        {"incomplete-dir", "/incomplete"},
+        {"incomplete-dir-enabled", true},
+        {"rename-partial-files", true},
+        {"idle-seeding-limit-enabled", true},
+        {"idle-seeding-limit", 90},
+        {"encryption", "tolerated"},
+        {"peer-limit-global", 240},
+        {"peer-limit-per-torrent", 60},
+        {"port-forwarding-enabled", true},
+        {"peer-port-random-on-start", true},
+        {"peer-port-random-low", 50000},
+        {"peer-port-random-high", 60000},
+        {"cache-size-mb", 96},
+    };
+    SessionInfo info;
+    ASSERT_TRUE(parseSessionInfo(j, info));
+    EXPECT_DOUBLE_EQ(info.ratioLimit, 1.75);
+    EXPECT_TRUE(info.ratioLimitEnabled);
+    EXPECT_TRUE(info.downloadQueueEnabled);
+    EXPECT_EQ(info.downloadQueueSize, 5);
+    EXPECT_TRUE(info.queueEnabled); // совместимость
+    EXPECT_EQ(info.queueSize, 5);
+    EXPECT_TRUE(info.seedQueueEnabled);
+    EXPECT_EQ(info.seedQueueSize, 8);
+    EXPECT_TRUE(info.queueStalledEnabled);
+    EXPECT_EQ(info.queueStalledMinutes, 25);
+    EXPECT_EQ(info.incompleteDir, "/incomplete");
+    EXPECT_TRUE(info.incompleteDirEnabled);
+    EXPECT_TRUE(info.renamePartialFiles);
+    EXPECT_TRUE(info.idleSeedingLimitEnabled);
+    EXPECT_EQ(info.idleSeedingLimit, 90);
+    EXPECT_EQ(info.encryption, "tolerated");
+    EXPECT_EQ(info.peerLimitGlobal, 240);
+    EXPECT_EQ(info.peerLimitPerTorrent, 60);
+    EXPECT_TRUE(info.portForwardingEnabled);
+    EXPECT_TRUE(info.peerPortRandomOnStart);
+    EXPECT_EQ(info.peerPortRandomLow, 50000);
+    EXPECT_EQ(info.peerPortRandomHigh, 60000);
+    EXPECT_EQ(info.cacheSizeMb, 96);
+    EXPECT_TRUE(info.hasCacheSize);
+}
+
+TEST(ModelSessionInfo, NormalizesModernEncryptionAllowed)
+{
+    const QJsonObject j = {{"rpc-version", 19}, {"version", "6.0.0"}, {"encryption", "allowed"}};
+    SessionInfo info;
+    ASSERT_TRUE(parseSessionInfo(j, info));
+    EXPECT_EQ(info.encryption, "tolerated");
+    EXPECT_FALSE(info.hasCacheSize);
+}
+
 TEST(ModelSessionStats, ParseValid)
 {
     const QJsonObject j = {

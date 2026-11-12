@@ -1,16 +1,58 @@
 #include "daemonoptionsdialog.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QSpinBox>
+#include <QTimeEdit>
+#include <QTime>
 #include <QVBoxLayout>
 #include <QTabWidget>
 #include <QScrollArea>
+
+namespace {
+
+// Битовая маска alt-speed-time-day в Transmission: Sunday=1, Monday=2, … Saturday=64.
+constexpr int kDayBits[7] = {2, 4, 8, 16, 32, 64, 1}; // Mon..Sun
+const char* const kDayNames[7] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+
+QSpinBox* makeKbSpin(QWidget* parent, int value)
+{
+    auto* s = new QSpinBox(parent);
+    s->setRange(0, 1000000000);
+    s->setSuffix(QStringLiteral(" KB/s"));
+    s->setValue(qMax(0, value));
+    return s;
+}
+
+QSpinBox* makeCountSpin(QWidget* parent, int value, int maxValue)
+{
+    auto* s = new QSpinBox(parent);
+    s->setRange(0, maxValue);
+    s->setValue(qMax(0, value));
+    return s;
+}
+
+QTime minutesToTime(int minutes)
+{
+    const int normalized = ((minutes % 1440) + 1440) % 1440;
+    return QTime(normalized / 60, normalized % 60);
+}
+
+int timeToMinutes(const QTime& time, bool endOfDay)
+{
+    const int minutes = time.hour() * 60 + time.minute();
+    // 00:00 в поле «конец» — это полночь (1440), как в RPC-спецификации.
+    return endOfDay && minutes == 0 ? 1440 : minutes;
+}
+
+}  // namespace
 
 DaemonSettings DaemonSettings::fromSession(const tgui::SessionInfo& s)
 {
@@ -22,17 +64,45 @@ DaemonSettings DaemonSettings::fromSession(const tgui::SessionInfo& s)
     d.altSpeedEnabled = s.altSpeedEnabled;
     d.altSpeedDown = qMax(0, s.altSpeedDown);
     d.altSpeedUp = qMax(0, s.altSpeedUp);
+    d.altSpeedTimeEnabled = s.altSpeedTimeEnabled;
+    // 00:00 в поле «конец» трактуем как полночь (1440), чтобы diff не слал лишнее.
+    d.altSpeedTimeBegin = s.altSpeedTimeBegin % 1440;
+    d.altSpeedTimeEnd = s.altSpeedTimeEnd % 1440;
+    if (d.altSpeedTimeEnd == 0)
+        d.altSpeedTimeEnd = 1440;
+    d.altSpeedTimeDay = s.altSpeedTimeDay;
     d.dht = s.dhtEnabled;
     d.pex = s.pexEnabled;
     d.lpd = s.lpdEnabled;
     d.utp = s.utpEnabled;
     d.peerPort = s.peerPort > 0 ? s.peerPort : 51413;
+    d.portForwardingEnabled = s.portForwardingEnabled;
+    d.peerPortRandomOnStart = s.peerPortRandomOnStart;
+    d.peerPortRandomLow = s.peerPortRandomLow;
+    d.peerPortRandomHigh = s.peerPortRandomHigh;
+    d.encryption = s.encryption.isEmpty() ? QStringLiteral("preferred") : s.encryption;
+    d.peerLimitGlobal = s.peerLimitGlobal;
+    d.peerLimitPerTorrent = s.peerLimitPerTorrent;
     d.downloadDir = s.downloadDir;
     d.startAddedTorrents = s.startAddedTorrents;
+    d.incompleteDir = s.incompleteDir;
+    d.incompleteDirEnabled = s.incompleteDirEnabled;
+    d.renamePartialFiles = s.renamePartialFiles;
+    d.downloadQueueEnabled = s.downloadQueueEnabled;
+    d.downloadQueueSize = s.downloadQueueSize;
+    d.seedQueueEnabled = s.seedQueueEnabled;
+    d.seedQueueSize = s.seedQueueSize;
+    d.queueStalledEnabled = s.queueStalledEnabled;
+    d.queueStalledMinutes = s.queueStalledMinutes;
     d.ratioLimitEnabled = s.ratioLimitEnabled;
     d.ratioLimit = qMax(0.0, s.ratioLimit);
     d.blocklistEnabled = s.blocklistEnabled;
     d.blocklistUrl = s.blocklistUrl;
+    d.idleSeedingLimitEnabled = s.idleSeedingLimitEnabled;
+    d.idleSeedingLimit = s.idleSeedingLimit;
+    d.cacheSizeMb = s.cacheSizeMb;
+    d.hasCacheSize = s.hasCacheSize;
+    d.rpcVersion = s.rpcVersion;
     return d;
 }
 
@@ -46,37 +116,62 @@ QJsonObject DaemonSettings::toSessionSetJson() const
     j[QStringLiteral("alt-speed-enabled")] = altSpeedEnabled;
     j[QStringLiteral("alt-speed-down")] = altSpeedDown;
     j[QStringLiteral("alt-speed-up")] = altSpeedUp;
+    j[QStringLiteral("alt-speed-time-enabled")] = altSpeedTimeEnabled;
+    j[QStringLiteral("alt-speed-time-begin")] = altSpeedTimeBegin;
+    j[QStringLiteral("alt-speed-time-end")] = altSpeedTimeEnd;
+    j[QStringLiteral("alt-speed-time-day")] = altSpeedTimeDay;
     j[QStringLiteral("dht-enabled")] = dht;
     j[QStringLiteral("pex-enabled")] = pex;
     j[QStringLiteral("lpd-enabled")] = lpd;
     j[QStringLiteral("utp-enabled")] = utp;
     j[QStringLiteral("peer-port")] = peerPort;
+    j[QStringLiteral("port-forwarding-enabled")] = portForwardingEnabled;
+    j[QStringLiteral("peer-port-random-on-start")] = peerPortRandomOnStart;
+    j[QStringLiteral("peer-port-random-low")] = peerPortRandomLow;
+    j[QStringLiteral("peer-port-random-high")] = peerPortRandomHigh;
+    j[QStringLiteral("encryption")] = encryption;
+    j[QStringLiteral("peer-limit-global")] = peerLimitGlobal;
+    j[QStringLiteral("peer-limit-per-torrent")] = peerLimitPerTorrent;
     j[QStringLiteral("download-dir")] = downloadDir;
     j[QStringLiteral("start-added-torrents")] = startAddedTorrents;
+    j[QStringLiteral("incomplete-dir")] = incompleteDir;
+    j[QStringLiteral("incomplete-dir-enabled")] = incompleteDirEnabled;
+    j[QStringLiteral("rename-partial-files")] = renamePartialFiles;
+    j[QStringLiteral("download-queue-enabled")] = downloadQueueEnabled;
+    j[QStringLiteral("download-queue-size")] = downloadQueueSize;
+    j[QStringLiteral("seed-queue-enabled")] = seedQueueEnabled;
+    j[QStringLiteral("seed-queue-size")] = seedQueueSize;
+    j[QStringLiteral("queue-stalled-enabled")] = queueStalledEnabled;
+    j[QStringLiteral("queue-stalled-minutes")] = queueStalledMinutes;
     j[QStringLiteral("ratio-limit-enabled")] = ratioLimitEnabled;
     j[QStringLiteral("ratio-limit")] = ratioLimit;
     j[QStringLiteral("blocklist-enabled")] = blocklistEnabled;
     j[QStringLiteral("blocklist-url")] = blocklistUrl;
+    j[QStringLiteral("idle-seeding-limit-enabled")] = idleSeedingLimitEnabled;
+    j[QStringLiteral("idle-seeding-limit")] = idleSeedingLimit;
+    if (hasCacheSize)
+        j[QStringLiteral("cache-size-mb")] = cacheSizeMb;
     return j;
 }
 
-namespace {
-QSpinBox* makeKbSpin(QWidget* parent, int value)
+QJsonObject DaemonSettings::changesFrom(const DaemonSettings& base) const
 {
-    auto* s = new QSpinBox(parent);
-    s->setRange(0, 1000000000);
-    s->setSuffix(QStringLiteral(" KB/s"));
-    s->setValue(qMax(0, value));
-    return s;
+    const QJsonObject now = toSessionSetJson();
+    const QJsonObject before = base.toSessionSetJson();
+    QJsonObject result;
+    for (auto it = now.constBegin(); it != now.constEnd(); ++it) {
+        if (before.value(it.key()) != it.value())
+            result.insert(it.key(), it.value());
+    }
+    return result;
 }
-}  // namespace
 
 DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidget* parent)
-    : QDialog(parent)
+    : QDialog(parent), m_initial(DaemonSettings::fromSession(initial))
 {
     setWindowTitle(tr("Daemon options"));
-    resize(610, 460);
-    const DaemonSettings s = DaemonSettings::fromSession(initial);
+    resize(640, 560);
+    const DaemonSettings s = m_initial;
 
     // --- Bandwidth ---
     auto* bw = new QGroupBox(tr("Bandwidth"), this);
@@ -116,6 +211,30 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
     }
     bwForm->addRow(tr("Alt speed (KB/s)"), altRow);
 
+    m_scheduleGroup = new QGroupBox(tr("Alt-speed schedule"), bw);
+    m_scheduleGroup->setObjectName(QStringLiteral("scheduleGroup"));
+    {
+        auto* form = new QFormLayout(m_scheduleGroup);
+        m_altSpeedTimeEnabled = new QCheckBox(tr("Use schedule"), m_scheduleGroup);
+        form->addRow(QString(), m_altSpeedTimeEnabled);
+        m_altSpeedTimeBegin = new QTimeEdit(m_scheduleGroup);
+        m_altSpeedTimeBegin->setDisplayFormat(QStringLiteral("HH:mm"));
+        m_altSpeedTimeEnd = new QTimeEdit(m_scheduleGroup);
+        m_altSpeedTimeEnd->setDisplayFormat(QStringLiteral("HH:mm"));
+        form->addRow(tr("Begin"), m_altSpeedTimeBegin);
+        form->addRow(tr("End"), m_altSpeedTimeEnd);
+        auto* daysRow = new QWidget(m_scheduleGroup);
+        auto* daysLayout = new QHBoxLayout(daysRow);
+        daysLayout->setContentsMargins(0, 0, 0, 0);
+        for (int i = 0; i < 7; ++i) {
+            m_days[i] = new QCheckBox(tr(kDayNames[i]), daysRow);
+            daysLayout->addWidget(m_days[i]);
+        }
+        daysLayout->addStretch(1);
+        form->addRow(tr("Days"), daysRow);
+        bwForm->addRow(m_scheduleGroup);
+    }
+
     // --- Network ---
     auto* net = new QGroupBox(tr("Network"), this);
     auto* netLayout = new QVBoxLayout(net);
@@ -125,13 +244,61 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
     m_utp = new QCheckBox(tr("Enable uTP"), net);
     for (auto* cb : {m_dht, m_pex, m_lpd, m_utp})
         netLayout->addWidget(cb);
-    m_peerPort = new QSpinBox(net);
-    m_peerPort->setRange(1, 65535);
-    auto* portRow = new QHBoxLayout;
-    portRow->addWidget(new QLabel(tr("Incoming peer port"), net));
-    portRow->addWidget(m_peerPort);
-    portRow->addStretch(1);
-    netLayout->addLayout(portRow);
+
+    {
+        auto* encRow = new QHBoxLayout;
+        encRow->addWidget(new QLabel(tr("Encryption"), net));
+        m_encryption = new QComboBox(net);
+        m_encryption->setObjectName(QStringLiteral("encryption"));
+        m_encryption->addItem(tr("Required"), QStringLiteral("required"));
+        m_encryption->addItem(tr("Preferred"), QStringLiteral("preferred"));
+        m_encryption->addItem(tr("Tolerated"), QStringLiteral("tolerated"));
+        encRow->addWidget(m_encryption);
+        encRow->addStretch(1);
+        netLayout->addLayout(encRow);
+    }
+    {
+        auto* peersRow = new QHBoxLayout;
+        m_peerLimitGlobal = makeCountSpin(net, s.peerLimitGlobal, 100000);
+        m_peerLimitGlobal->setObjectName(QStringLiteral("peerLimitGlobal"));
+        m_peerLimitPerTorrent = makeCountSpin(net, s.peerLimitPerTorrent, 100000);
+        m_peerLimitPerTorrent->setObjectName(QStringLiteral("peerLimitPerTorrent"));
+        peersRow->addWidget(new QLabel(tr("Global peer limit"), net));
+        peersRow->addWidget(m_peerLimitGlobal);
+        peersRow->addWidget(new QLabel(tr("Per torrent"), net));
+        peersRow->addWidget(m_peerLimitPerTorrent);
+        peersRow->addStretch(1);
+        netLayout->addLayout(peersRow);
+    }
+    {
+        auto* portRow = new QHBoxLayout;
+        m_peerPort = new QSpinBox(net);
+        m_peerPort->setRange(1, 65535);
+        m_peerPort->setObjectName(QStringLiteral("peerPort"));
+        portRow->addWidget(new QLabel(tr("Incoming peer port"), net));
+        portRow->addWidget(m_peerPort);
+        m_peerPortRandom = new QCheckBox(tr("Random port on start"), net);
+        m_peerPortRandom->setObjectName(QStringLiteral("peerPortRandom"));
+        portRow->addWidget(m_peerPortRandom);
+        portRow->addStretch(1);
+        netLayout->addLayout(portRow);
+    }
+    {
+        auto* randomRow = new QHBoxLayout;
+        m_peerPortRandomLow = makeCountSpin(net, s.peerPortRandomLow, 65535);
+        m_peerPortRandomLow->setObjectName(QStringLiteral("peerPortRandomLow"));
+        m_peerPortRandomHigh = makeCountSpin(net, s.peerPortRandomHigh, 65535);
+        m_peerPortRandomHigh->setObjectName(QStringLiteral("peerPortRandomHigh"));
+        randomRow->addWidget(new QLabel(tr("Random range"), net));
+        randomRow->addWidget(m_peerPortRandomLow);
+        randomRow->addWidget(new QLabel(tr("to"), net));
+        randomRow->addWidget(m_peerPortRandomHigh);
+        randomRow->addStretch(1);
+        netLayout->addLayout(randomRow);
+    }
+    m_portForwarding = new QCheckBox(tr("Enable port forwarding"), net);
+    m_portForwarding->setObjectName(QStringLiteral("portForwarding"));
+    netLayout->addWidget(m_portForwarding);
 
     // --- Download ---
     auto* dl = new QGroupBox(tr("Download"), this);
@@ -140,6 +307,69 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
     dlForm->addRow(tr("Directory"), m_downloadDir);
     m_startAddedTorrents = new QCheckBox(tr("Start added torrents"), dl);
     dlForm->addRow(QString(), m_startAddedTorrents);
+
+    m_incompleteGroup = new QGroupBox(tr("Incomplete files"), dl);
+    m_incompleteGroup->setObjectName(QStringLiteral("incompleteGroup"));
+    {
+        auto* form = new QFormLayout(m_incompleteGroup);
+        m_incompleteDirEnabled = new QCheckBox(tr("Use incomplete folder"), m_incompleteGroup);
+        m_incompleteDirEnabled->setObjectName(QStringLiteral("incompleteDirEnabled"));
+        form->addRow(QString(), m_incompleteDirEnabled);
+        m_incompleteDir = new QLineEdit(m_incompleteGroup);
+        m_incompleteDir->setObjectName(QStringLiteral("incompleteDir"));
+        form->addRow(tr("Incomplete folder"), m_incompleteDir);
+        m_renamePartialFiles = new QCheckBox(tr("Append .part to incomplete files"), m_incompleteGroup);
+        m_renamePartialFiles->setObjectName(QStringLiteral("renamePartialFiles"));
+        form->addRow(QString(), m_renamePartialFiles);
+        dlForm->addRow(m_incompleteGroup);
+    }
+
+    m_queueGroup = new QGroupBox(tr("Queues"), dl);
+    m_queueGroup->setObjectName(QStringLiteral("queueGroup"));
+    {
+        auto* form = new QFormLayout(m_queueGroup);
+        auto* downRow = new QWidget(m_queueGroup);
+        {
+            auto* l = new QHBoxLayout(downRow);
+            l->setContentsMargins(0, 0, 0, 0);
+            m_downloadQueueEnabled = new QCheckBox(tr("Limit download queue"), downRow);
+            m_downloadQueueEnabled->setObjectName(QStringLiteral("downloadQueueEnabled"));
+            m_downloadQueueSize = makeCountSpin(downRow, s.downloadQueueSize, 10000);
+            m_downloadQueueSize->setObjectName(QStringLiteral("downloadQueueSize"));
+            l->addWidget(m_downloadQueueEnabled);
+            l->addWidget(m_downloadQueueSize);
+            l->addStretch(1);
+        }
+        form->addRow(QString(), downRow);
+        auto* seedRow = new QWidget(m_queueGroup);
+        {
+            auto* l = new QHBoxLayout(seedRow);
+            l->setContentsMargins(0, 0, 0, 0);
+            m_seedQueueEnabled = new QCheckBox(tr("Limit seed queue"), seedRow);
+            m_seedQueueEnabled->setObjectName(QStringLiteral("seedQueueEnabled"));
+            m_seedQueueSize = makeCountSpin(seedRow, s.seedQueueSize, 10000);
+            m_seedQueueSize->setObjectName(QStringLiteral("seedQueueSize"));
+            l->addWidget(m_seedQueueEnabled);
+            l->addWidget(m_seedQueueSize);
+            l->addStretch(1);
+        }
+        form->addRow(QString(), seedRow);
+        auto* stalledRow = new QWidget(m_queueGroup);
+        {
+            auto* l = new QHBoxLayout(stalledRow);
+            l->setContentsMargins(0, 0, 0, 0);
+            m_queueStalledEnabled = new QCheckBox(tr("Treat idle torrents as stalled"), stalledRow);
+            m_queueStalledEnabled->setObjectName(QStringLiteral("queueStalledEnabled"));
+            m_queueStalledMinutes = makeCountSpin(stalledRow, s.queueStalledMinutes, 100000);
+            m_queueStalledMinutes->setObjectName(QStringLiteral("queueStalledMinutes"));
+            m_queueStalledMinutes->setSuffix(QStringLiteral(" min"));
+            l->addWidget(m_queueStalledEnabled);
+            l->addWidget(m_queueStalledMinutes);
+            l->addStretch(1);
+        }
+        form->addRow(QString(), stalledRow);
+        dlForm->addRow(m_queueGroup);
+    }
 
     // --- Other ---
     auto* other = new QGroupBox(tr("Other"), this);
@@ -155,6 +385,30 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
     otherForm->addRow(QString(), m_blocklistEnabled);
     m_blocklistUrl = new QLineEdit(other);
     otherForm->addRow(tr("Blocklist URL"), m_blocklistUrl);
+
+    m_idleGroup = new QGroupBox(tr("Idle seeding"), other);
+    m_idleGroup->setObjectName(QStringLiteral("idleGroup"));
+    {
+        auto* form = new QFormLayout(m_idleGroup);
+        m_idleSeedingEnabled = new QCheckBox(tr("Stop seeding when idle"), m_idleGroup);
+        m_idleSeedingEnabled->setObjectName(QStringLiteral("idleSeedingEnabled"));
+        form->addRow(QString(), m_idleSeedingEnabled);
+        m_idleSeedingLimit = makeCountSpin(m_idleGroup, s.idleSeedingLimit, 100000);
+        m_idleSeedingLimit->setObjectName(QStringLiteral("idleSeedingLimit"));
+        m_idleSeedingLimit->setSuffix(QStringLiteral(" min"));
+        form->addRow(tr("Idle limit"), m_idleSeedingLimit);
+        otherForm->addRow(m_idleGroup);
+    }
+    m_cacheGroup = new QGroupBox(tr("Cache"), other);
+    m_cacheGroup->setObjectName(QStringLiteral("cacheGroup"));
+    {
+        auto* form = new QFormLayout(m_cacheGroup);
+        m_cacheSize = makeCountSpin(m_cacheGroup, s.cacheSizeMb, 100000);
+        m_cacheSize->setObjectName(QStringLiteral("cacheSize"));
+        m_cacheSize->setSuffix(QStringLiteral(" MB"));
+        form->addRow(tr("Disk cache size"), m_cacheSize);
+        otherForm->addRow(m_cacheGroup);
+    }
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     auto* root = new QVBoxLayout(this);
@@ -178,16 +432,68 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
     root->addWidget(tabs, 1);
     root->addWidget(buttons);
 
-    connect(m_speedLimitDownEnabled, &QCheckBox::toggled, m_speedLimitDown, &QWidget::setEnabled);
-    connect(m_speedLimitUpEnabled, &QCheckBox::toggled, m_speedLimitUp, &QWidget::setEnabled);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-
-    connect(m_altSpeedEnabled, &QCheckBox::toggled, m_altSpeedDown, &QWidget::setEnabled);
-    connect(m_altSpeedEnabled, &QCheckBox::toggled, m_altSpeedUp, &QWidget::setEnabled);
-    connect(m_ratioLimitEnabled, &QCheckBox::toggled, m_ratioLimit, &QWidget::setEnabled);
-    connect(m_blocklistEnabled, &QCheckBox::toggled, m_blocklistUrl, &QWidget::setEnabled);
+    connect(m_speedLimitDownEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
+    connect(m_speedLimitUpEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
+    connect(m_altSpeedEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
+    connect(m_altSpeedTimeEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
+    connect(m_ratioLimitEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
+    connect(m_blocklistEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
+    connect(m_incompleteDirEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
+    connect(m_downloadQueueEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
+    connect(m_seedQueueEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
+    connect(m_queueStalledEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
+    connect(m_idleSeedingEnabled, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
+    connect(m_peerPortRandom, &QCheckBox::toggled, this, &DaemonOptionsDialog::updateEnabledState);
     setSettings(s);
+    applyFeatureGates();
+}
+
+void DaemonOptionsDialog::applyFeatureGates()
+{
+    const int version = m_initial.rpcVersion;
+    auto gate = [](QWidget* widget, bool allowed, const QString& reason) {
+        if (!widget)
+            return;
+        widget->setEnabled(allowed);
+        widget->setToolTip(allowed ? QString() : reason);
+    };
+    gate(m_scheduleGroup, version >= 5, tr("Requires RPC version 5 or newer."));
+    gate(m_incompleteGroup, version >= 7, tr("Requires RPC version 7 or newer."));
+    gate(m_queueGroup, version >= 14, tr("Requires RPC version 14 or newer."));
+    gate(m_idleGroup, version >= 10, tr("Requires RPC version 10 or newer."));
+    gate(m_cacheGroup, version >= 10 && m_initial.hasCacheSize,
+         m_initial.hasCacheSize ? tr("Requires RPC version 10 or newer.")
+                                : tr("The daemon does not report a cache size setting."));
+    gate(m_encryption, version >= 5, tr("Requires RPC version 5 or newer."));
+    gate(m_peerLimitGlobal, version >= 5, tr("Requires RPC version 5 or newer."));
+    gate(m_peerLimitPerTorrent, version >= 5, tr("Requires RPC version 5 or newer."));
+    gate(m_portForwarding, version >= 5, tr("Requires RPC version 5 or newer."));
+    gate(m_peerPortRandom, version >= 5, tr("Requires RPC version 5 or newer."));
+    gate(m_peerPortRandomLow, version >= 5, tr("Requires RPC version 5 or newer."));
+    gate(m_peerPortRandomHigh, version >= 5, tr("Requires RPC version 5 or newer."));
+}
+
+void DaemonOptionsDialog::updateEnabledState()
+{
+    m_altSpeedDown->setEnabled(m_altSpeedEnabled->isChecked());
+    m_altSpeedUp->setEnabled(m_altSpeedEnabled->isChecked());
+    m_altSpeedTimeBegin->setEnabled(m_altSpeedTimeEnabled->isChecked());
+    m_altSpeedTimeEnd->setEnabled(m_altSpeedTimeEnabled->isChecked());
+    for (auto* day : m_days)
+        day->setEnabled(m_altSpeedTimeEnabled->isChecked());
+    m_ratioLimit->setEnabled(m_ratioLimitEnabled->isChecked());
+    m_blocklistUrl->setEnabled(m_blocklistEnabled->isChecked());
+    m_speedLimitDown->setEnabled(m_speedLimitDownEnabled->isChecked());
+    m_speedLimitUp->setEnabled(m_speedLimitUpEnabled->isChecked());
+    m_incompleteDir->setEnabled(m_incompleteDirEnabled->isChecked());
+    m_downloadQueueSize->setEnabled(m_downloadQueueEnabled->isChecked());
+    m_seedQueueSize->setEnabled(m_seedQueueEnabled->isChecked());
+    m_queueStalledMinutes->setEnabled(m_queueStalledEnabled->isChecked());
+    m_idleSeedingLimit->setEnabled(m_idleSeedingEnabled->isChecked());
+    m_peerPortRandomLow->setEnabled(m_peerPortRandom->isChecked());
+    m_peerPortRandomHigh->setEnabled(m_peerPortRandom->isChecked());
 }
 
 void DaemonOptionsDialog::setSettings(const DaemonSettings& s)
@@ -199,23 +505,44 @@ void DaemonOptionsDialog::setSettings(const DaemonSettings& s)
     m_altSpeedEnabled->setChecked(s.altSpeedEnabled);
     m_altSpeedDown->setValue(qMax(0, s.altSpeedDown));
     m_altSpeedUp->setValue(qMax(0, s.altSpeedUp));
+    m_altSpeedTimeEnabled->setChecked(s.altSpeedTimeEnabled);
+    m_altSpeedTimeBegin->setTime(minutesToTime(s.altSpeedTimeBegin));
+    m_altSpeedTimeEnd->setTime(minutesToTime(s.altSpeedTimeEnd));
+    for (int i = 0; i < 7; ++i)
+        m_days[i]->setChecked((s.altSpeedTimeDay & kDayBits[i]) != 0);
     m_dht->setChecked(s.dht);
     m_pex->setChecked(s.pex);
     m_lpd->setChecked(s.lpd);
     m_utp->setChecked(s.utp);
     m_peerPort->setValue(s.peerPort > 0 ? s.peerPort : 51413);
+    m_portForwarding->setChecked(s.portForwardingEnabled);
+    m_peerPortRandom->setChecked(s.peerPortRandomOnStart);
+    m_peerPortRandomLow->setValue(qMax(0, s.peerPortRandomLow));
+    m_peerPortRandomHigh->setValue(qMax(0, s.peerPortRandomHigh));
+    const int encryptionIndex = m_encryption->findData(s.encryption);
+    m_encryption->setCurrentIndex(encryptionIndex >= 0 ? encryptionIndex
+                                                       : m_encryption->findData(QStringLiteral("preferred")));
+    m_peerLimitGlobal->setValue(qMax(0, s.peerLimitGlobal));
+    m_peerLimitPerTorrent->setValue(qMax(0, s.peerLimitPerTorrent));
     m_downloadDir->setText(s.downloadDir);
     m_startAddedTorrents->setChecked(s.startAddedTorrents);
+    m_incompleteDirEnabled->setChecked(s.incompleteDirEnabled);
+    m_incompleteDir->setText(s.incompleteDir);
+    m_renamePartialFiles->setChecked(s.renamePartialFiles);
+    m_downloadQueueEnabled->setChecked(s.downloadQueueEnabled);
+    m_downloadQueueSize->setValue(qMax(0, s.downloadQueueSize));
+    m_seedQueueEnabled->setChecked(s.seedQueueEnabled);
+    m_seedQueueSize->setValue(qMax(0, s.seedQueueSize));
+    m_queueStalledEnabled->setChecked(s.queueStalledEnabled);
+    m_queueStalledMinutes->setValue(qMax(0, s.queueStalledMinutes));
     m_ratioLimitEnabled->setChecked(s.ratioLimitEnabled);
     m_ratioLimit->setValue(qMax(0.0, s.ratioLimit));
     m_blocklistEnabled->setChecked(s.blocklistEnabled);
     m_blocklistUrl->setText(s.blocklistUrl);
-    m_altSpeedDown->setEnabled(s.altSpeedEnabled);
-    m_altSpeedUp->setEnabled(s.altSpeedEnabled);
-    m_ratioLimit->setEnabled(s.ratioLimitEnabled);
-    m_blocklistUrl->setEnabled(s.blocklistEnabled);
-    m_speedLimitDown->setEnabled(s.speedLimitDownEnabled);
-    m_speedLimitUp->setEnabled(s.speedLimitUpEnabled);
+    m_idleSeedingEnabled->setChecked(s.idleSeedingLimitEnabled);
+    m_idleSeedingLimit->setValue(qMax(0, s.idleSeedingLimit));
+    m_cacheSize->setValue(qMax(0, s.cacheSizeMb));
+    updateEnabledState();
 }
 
 DaemonSettings DaemonOptionsDialog::settings() const
@@ -228,16 +555,44 @@ DaemonSettings DaemonOptionsDialog::settings() const
     d.altSpeedEnabled = m_altSpeedEnabled->isChecked();
     d.altSpeedDown = m_altSpeedDown->value();
     d.altSpeedUp = m_altSpeedUp->value();
+    d.altSpeedTimeEnabled = m_altSpeedTimeEnabled->isChecked();
+    d.altSpeedTimeBegin = timeToMinutes(m_altSpeedTimeBegin->time(), /*endOfDay=*/false);
+    d.altSpeedTimeEnd = timeToMinutes(m_altSpeedTimeEnd->time(), /*endOfDay=*/true);
+    d.altSpeedTimeDay = 0;
+    for (int i = 0; i < 7; ++i)
+        if (m_days[i]->isChecked())
+            d.altSpeedTimeDay |= kDayBits[i];
     d.dht = m_dht->isChecked();
     d.pex = m_pex->isChecked();
     d.lpd = m_lpd->isChecked();
     d.utp = m_utp->isChecked();
     d.peerPort = m_peerPort->value();
+    d.portForwardingEnabled = m_portForwarding->isChecked();
+    d.peerPortRandomOnStart = m_peerPortRandom->isChecked();
+    d.peerPortRandomLow = m_peerPortRandomLow->value();
+    d.peerPortRandomHigh = m_peerPortRandomHigh->value();
+    d.encryption = m_encryption->currentData().toString();
+    d.peerLimitGlobal = m_peerLimitGlobal->value();
+    d.peerLimitPerTorrent = m_peerLimitPerTorrent->value();
     d.downloadDir = m_downloadDir->text().trimmed();
     d.startAddedTorrents = m_startAddedTorrents->isChecked();
+    d.incompleteDir = m_incompleteDir->text().trimmed();
+    d.incompleteDirEnabled = m_incompleteDirEnabled->isChecked();
+    d.renamePartialFiles = m_renamePartialFiles->isChecked();
+    d.downloadQueueEnabled = m_downloadQueueEnabled->isChecked();
+    d.downloadQueueSize = m_downloadQueueSize->value();
+    d.seedQueueEnabled = m_seedQueueEnabled->isChecked();
+    d.seedQueueSize = m_seedQueueSize->value();
+    d.queueStalledEnabled = m_queueStalledEnabled->isChecked();
+    d.queueStalledMinutes = m_queueStalledMinutes->value();
     d.ratioLimitEnabled = m_ratioLimitEnabled->isChecked();
     d.ratioLimit = m_ratioLimit->value();
     d.blocklistEnabled = m_blocklistEnabled->isChecked();
     d.blocklistUrl = m_blocklistUrl->text().trimmed();
+    d.idleSeedingLimitEnabled = m_idleSeedingEnabled->isChecked();
+    d.idleSeedingLimit = m_idleSeedingLimit->value();
+    d.cacheSizeMb = m_cacheSize->value();
+    d.hasCacheSize = m_initial.hasCacheSize;
+    d.rpcVersion = m_initial.rpcVersion;
     return d;
 }

@@ -144,7 +144,7 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
     } else {
         payload.insert("method", rpc.method);
         if (!rpc.arguments.isEmpty())
-            payload.insert("arguments", rpc.arguments);
+            payload.insert("arguments", rpcdialect::legacyParams(rpc.method, rpc.arguments));
     }
 
     QNetworkReply* reply =

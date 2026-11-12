@@ -27,3 +27,4 @@ test_out.txt
 *.ps1
 !tools/package-windows.ps1
 WORKFLOW.archive.md
+PARITY_PLAN.md

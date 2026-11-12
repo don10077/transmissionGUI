@@ -10,10 +10,12 @@ public:
 
     QString targetDir() const;
     bool moveData() const;
+    // Запомнить подтверждённую цель переноса в истории (LastMoveDir).
+    static void rememberDirectory(const QString& dir);
 
 private:
     void onBrowse();
 
-    class QLineEdit* m_path = nullptr;
+    class QComboBox* m_path = nullptr;
     class QCheckBox* m_rename = nullptr;
 };

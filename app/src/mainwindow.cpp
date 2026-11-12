@@ -30,12 +30,14 @@
 #include <QInputDialog>
 #include <QItemSelectionModel>
 #include <QJsonArray>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
 #include <QProgressDialog>
 #include <QPointer>
+#include <QPersistentModelIndex>
 #include <QMimeData>
 #include <QNetworkAccessManager>
 #include <QEventLoop>
@@ -78,6 +80,7 @@
 #include "aboutdialog.h"
 #include "daemonprofile.h"
 #include "optionsdialog.h"
+#include "openpath.h"
 #include "pathmap.h"
 #include "propsdialog.h"
 #include "propsform.h"
@@ -148,6 +151,14 @@ MainWindow::MainWindow(QWidget* parent)
     // W07: интервал обновления из настроек (секунды), по умолчанию 2 (ранее 2000 ms).
     m_refreshTimer.setInterval(QSettings().value("ui/refreshInterval", kRefreshIntervalMs / 1000).toInt() * 1000);
     connect(&m_refreshTimer, &QTimer::timeout, this, &MainWindow::onRefresh);
+
+    // После переноса демон может ответить раньше, чем обновится список.
+    m_moveVerifyTimer.setSingleShot(true);
+    m_moveVerifyTimer.setInterval(250);
+    connect(&m_moveVerifyTimer, &QTimer::timeout, this, [this] {
+        if (m_rpc && m_connected)
+            m_rpc->getTorrents();
+    });
 
     {
         QSettings s;
@@ -261,6 +272,12 @@ void MainWindow::createUi()
     filesView->setColumnWidth(FileTreeModel::Done, 90);
     filesView->setColumnWidth(FileTreeModel::Progress, 70);
     filesView->setColumnWidth(FileTreeModel::Priority, 100);
+    // Восстановить сохранённую раскладку вкладки «Файлы» (порядок/видимость/ширины).
+    const bool filesColumnsSaved =
+        QSettings().contains(QStringLiteral("files/columns/order"));
+    if (filesColumnsSaved)
+        ColumnLayout::fromSettings(FileTreeModel::ColumnCount, QStringLiteral("files/columns"))
+            .applyToView(filesView);
     connect(filesView, &QTreeView::doubleClicked, this, [this](const QModelIndex& index) {
         if (m_fileTree->hasChildren(index.siblingAtColumn(0))) {
             const auto* torrent = m_general->torrent();
@@ -272,18 +289,21 @@ void MainWindow::createUi()
         const auto rows = m_fileTree->sourceRows(index);
         if (!rows.isEmpty()) onFilesDoubleClicked(rows.first());
     });
-    connect(&m_fileModel, &QAbstractItemModel::modelReset, this, [this] {
+    connect(&m_fileModel, &QAbstractItemModel::modelReset, this, [this, filesColumnsSaved] {
         const bool first = m_fileTree->rowCount() == 0;
         const QByteArray header = m_filesView->header()->saveState();
         m_fileTree->setFiles(m_fileModel.files());
         m_filesView->header()->restoreState(header);
         if (first) {
-            m_filesView->setColumnWidth(FileTreeModel::Want, 36);
-            m_filesView->setColumnWidth(FileTreeModel::Name, 350);
-            m_filesView->setColumnWidth(FileTreeModel::Size, 90);
-            m_filesView->setColumnWidth(FileTreeModel::Done, 90);
-            m_filesView->setColumnWidth(FileTreeModel::Progress, 70);
-            m_filesView->setColumnWidth(FileTreeModel::Priority, 100);
+            // Без сохранённой раскладки — ширины по умолчанию; сохранённые не перетираем.
+            if (!filesColumnsSaved) {
+                m_filesView->setColumnWidth(FileTreeModel::Want, 36);
+                m_filesView->setColumnWidth(FileTreeModel::Name, 350);
+                m_filesView->setColumnWidth(FileTreeModel::Size, 90);
+                m_filesView->setColumnWidth(FileTreeModel::Done, 90);
+                m_filesView->setColumnWidth(FileTreeModel::Progress, 70);
+                m_filesView->setColumnWidth(FileTreeModel::Priority, 100);
+            }
             m_filesView->expandToDepth(0);
         }
     });
@@ -319,6 +339,7 @@ void MainWindow::createUi()
     m_peersView = peersView; // для периодического обновления вкладки (см. refreshFilesDetails)
 
     auto* trackersView = makeTable(&m_trackerModel);
+    m_trackersView = trackersView;
     trackersView->setObjectName(QStringLiteral("trackersView"));
     trackersView->hideColumn(TrackerListModel::ColTier);
     trackersView->hideColumn(TrackerListModel::ColLeechers);
@@ -330,10 +351,22 @@ void MainWindow::createUi()
         trackersView->horizontalHeader()->visualIndex(TrackerListModel::ColLastResult), 1);
     trackersView->horizontalHeader()->moveSection(
         trackersView->horizontalHeader()->visualIndex(TrackerListModel::ColUpdate), 2);
+    // Восстановить сохранённую раскладку вкладки «Трекеры».
+    if (QSettings().contains(QStringLiteral("trackers/columns/order")))
+        ColumnLayout::fromSettings(TrackerListModel::ColumnCount, QStringLiteral("trackers/columns"))
+            .applyToView(trackersView);
     // Контекстное меню вкладки «Трекеры» (референс — pmTrackers): Add/Edit/Remove.
     trackersView->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(trackersView, &QWidget::customContextMenuRequested,
             this, &MainWindow::onTrackersContextMenu);
+    connect(trackersView, &QTableView::doubleClicked, this, [this](const QModelIndex& index) {
+        const auto& trackers = m_trackerModel.trackers();
+        if (index.isValid() && index.row() < trackers.size()) {
+            const auto tracker = trackers.at(index.row());
+            onEditTracker(tracker.id, tracker.announce);
+        }
+    });
+    trackersView->installEventFilter(this);
 
     // Нижний уровень: вкладки выбранного торрента.
     m_general = new PropsForm(this);
@@ -938,6 +971,8 @@ void MainWindow::refreshFilesDetails()
         m_rpc->getTorrentDetails(m_currentId);
     if (m_peersView && m_tabs->currentWidget() == m_peersView)
         m_rpc->getPeers(m_currentId);
+    if (m_trackersView && m_tabs->currentWidget() == m_trackersView)
+        m_rpc->getTrackers(m_currentId);
 }
 
 void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
@@ -998,8 +1033,11 @@ void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
     m_currentId = nextId;
     m_refreshing = false;
 
-    if (nextId != prevId)
+    if (nextId != prevId) {
         m_fileModel.setFiles({});
+        m_peerModel.setPeers({});
+        m_trackerModel.setTrackers({});
+    }
 
     // Панель «General» подтягивается к актуальному состоянию выбранного.
     if (nextId >= 0) {
@@ -1040,6 +1078,7 @@ void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
     m_view->doItemsLayout();
     m_view->verticalScrollBar()->setValue(prevScroll);
     updateSelectionActions();
+    checkPendingMove();
 }
 
 int MainWindow::proxyRowForId(int id) const
@@ -1189,35 +1228,67 @@ QVector<int> MainWindow::selectedTorrentIds() const
         if (!ids.contains(t.id))
             ids.push_back(t.id);
     }
+    if (ids.isEmpty()) {
+        const auto current = m_proxy.mapToSource(m_view->currentIndex());
+        if (current.isValid())
+            ids.append(m_model.torrentAt(current.row()).id);
+    }
     return ids;
+}
+
+/** Обновляет список и нужные детали после успешного ответа того же соединения. */
+tgui::RpcClient::RequestCallback MainWindow::afterTorrentChange(const QString& method,
+                                                                RefreshAfter refresh, int id,
+                                                                const QString& successMessage)
+{
+    return [this, rpc = QPointer(m_rpc.get()), method, refresh, id, successMessage]
+           (const tgui::JsonRpcResult& result) {
+        if (!rpc || rpc != m_rpc.get())
+            return;
+        if (result.ok && !successMessage.isEmpty())
+            statusBar()->showMessage(successMessage, 3000);
+        else
+            onRequestCompleted(method, result.ok, result.error, result.arguments);
+        if (!result.ok)
+            return;
+        rpc->getTorrents();
+        if (id != m_currentId)
+            return;
+        if (refresh == RefreshAfter::Files || refresh == RefreshAfter::Properties)
+            rpc->getTorrentDetails(id);
+        if (refresh == RefreshAfter::Trackers || refresh == RefreshAfter::Properties)
+            rpc->getTrackers(id);
+    };
+}
+
+/** Отправляет весь выбор одним RPC с обновлением списка по подтверждению. */
+void MainWindow::runTorrentAction(const QString& method, const QVector<int>& ids,
+                                  const QJsonObject& params)
+{
+    if (m_rpc && m_connected && !ids.isEmpty())
+        m_rpc->torrentAction(method, ids, params, afterTorrentChange(method, RefreshAfter::List));
 }
 
 void MainWindow::onStartSelected()
 {
-    if (!m_rpc)
-        return;
-    for (int id : selectedTorrentIds())
-        m_rpc->startTorrent(id);
+    runTorrentAction("torrent-start", selectedTorrentIds());
 }
 
 void MainWindow::onStopSelected()
 {
-    if (!m_rpc)
-        return;
-    for (int id : selectedTorrentIds())
-        m_rpc->stopTorrent(id);
+    runTorrentAction("torrent-stop", selectedTorrentIds());
 }
 
 void MainWindow::onStartAll()
 {
     if (m_rpc)
-        m_rpc->startAll();
+        m_rpc->startAll(false, afterTorrentChange("torrent-start", RefreshAfter::List));
 }
 
 void MainWindow::onStopAll()
 {
     if (m_rpc)
-        m_rpc->stopAll();
+        m_rpc->stopAll(afterTorrentChange("torrent-stop", RefreshAfter::List));
 }
 
 void MainWindow::onRemoveSelected()
@@ -1237,10 +1308,8 @@ void MainWindow::onRemoveSelected()
     const auto* remove = box.addButton(tr("Remove"), QMessageBox::AcceptRole);
     box.setDefaultButton(QMessageBox::Cancel);
     box.exec();
-    if (rpc && box.clickedButton() == remove) {
-        for (int id : ids)
-            rpc->removeTorrent(id);
-    }
+    if (rpc && box.clickedButton() == remove)
+        runTorrentAction("torrent-remove", ids);
 }
 
 void MainWindow::updateStatusBarTotals()
@@ -1262,18 +1331,23 @@ void MainWindow::updateStatusBarTotals()
 
 void MainWindow::onShowProperties()
 {
+    const auto ids = selectedTorrentIds();
+    if (!ids.isEmpty())
+        showProperties(ids.first(), 0);
+}
+
+/** Открывает свойства конкретного торрента на указанной вкладке. */
+void MainWindow::showProperties(int id, int page)
+{
     if (!m_rpc)
         return;
-    const auto ids = selectedTorrentIds();
-    if (ids.isEmpty())
-        return;
-    const int id = ids.first();
     for (const auto& t : m_model.torrents()) {
         if (t.id == id) {
             const QPointer<tgui::RpcClient> rpc(m_rpc.get());
-            PropsDialog dlg(t, this, rpc->rpcVersion());
+            PropsDialog dlg(t, this, rpc->rpcVersion(), page);
             if (dlg.exec() == QDialog::Accepted && rpc && !dlg.changes().isEmpty())
-                rpc->setTorrent(id, dlg.changes());
+                rpc->torrentAction("torrent-set", {id}, dlg.changes(),
+                                   afterTorrentChange("torrent-set", RefreshAfter::Properties, id));
             return;
         }
     }
@@ -1281,29 +1355,43 @@ void MainWindow::onShowProperties()
 
 void MainWindow::onMoveSelected()
 {
-    if (!m_rpc)
+    if (!m_rpc || !m_connected)
         return;
     const auto ids = selectedTorrentIds();
-    if (ids.size() != 1) {
-        if (!ids.isEmpty())
-            QMessageBox::warning(this, tr("Move"),
-                                 tr("Only one selected torrent can be moved."));
+    if (ids.isEmpty())
         return;
-    }
-    const tgui::Torrent* found = nullptr;
-    for (const auto& t : m_model.torrents())
-        if (t.id == ids.first()) {
-            found = &t;
-            break;
-        }
+    const tgui::Torrent* found = torrentById(ids.first());
     if (!found)
         return;
 
     MoveDialog dlg(found->downloadDir.value_or(QString()), this);
+    if (ids.size() > 1)
+        dlg.setWindowTitle(tr("Move torrents - %1 selected").arg(ids.size()));
     if (dlg.exec() != QDialog::Accepted)
         return;
 
-    m_rpc->setLocation(ids.first(), dlg.targetDir(), dlg.moveData());
+    const QString target = dlg.targetDir();
+    const bool moveData = dlg.moveData();
+    if (target.isEmpty())
+        return;
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    rpc->setLocation(ids, target, moveData,
+                     [this, rpc, ids, target](const tgui::JsonRpcResult& result) {
+        if (!rpc || rpc != m_rpc.get())
+            return;
+        if (!result.ok) {
+            onRequestCompleted(QStringLiteral("torrent-set-location"), false, result.error,
+                               result.arguments);
+            return;
+        }
+        MoveDialog::rememberDirectory(target);
+        statusBar()->showMessage(tr("Move started: %1").arg(target), 4000);
+        // Демон не возвращает новый путь в ответе — проверяем его в списке.
+        m_movePendingIds = ids;
+        m_movePendingTarget = target;
+        m_moveVerifyAttempts = 0;
+        rpc->getTorrents();
+    });
 }
 
 void MainWindow::onAbout()
@@ -1347,6 +1435,15 @@ void MainWindow::onContextMenu(const QPoint& pos)
 
     const auto selectedIds = selectedTorrentIds();
     const bool hasSel = m_connected && !selectedIds.isEmpty();
+    const auto connectSelectionAction = [this, rpc = QPointer(m_rpc.get()), selectedIds]
+                                       (QAction* action, auto handler) {
+        connect(action, &QAction::triggered, this, [this, rpc, selectedIds, handler] {
+            const auto current = selectedTorrentIds();
+            if (rpc && rpc == m_rpc.get() &&
+                std::is_permutation(current.cbegin(), current.cend(), selectedIds.cbegin(), selectedIds.cend()))
+                (this->*handler)();
+        });
+    };
     using tgui::theme::Icon;
     auto stdIcon = [this](QStyle::StandardPixmap sp) { return style()->standardIcon(sp); };
 
@@ -1354,31 +1451,31 @@ void MainWindow::onContextMenu(const QPoint& pos)
     auto* actOpen = menu->addAction(tgui::theme::icon(Icon::Folder), tr("Open folder containing object"));
     actOpen->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Return));
     actOpen->setEnabled(hasSel);
-    QObject::connect(actOpen, &QAction::triggered, this, &MainWindow::onOpenFolder);
+    connectSelectionAction(actOpen, &MainWindow::onOpenFolder);
     menu->addSeparator();
 
     auto* actStart = menu->addAction(tgui::theme::icon(Icon::Start), tr("Start"));
     actStart->setShortcut(QKeySequence(Qt::Key_F3));
     actStart->setEnabled(hasSel);
-    QObject::connect(actStart, &QAction::triggered, this, &MainWindow::onStartSelected);
+    connectSelectionAction(actStart, &MainWindow::onStartSelected);
     auto* actForce = menu->addAction(stdIcon(QStyle::SP_MediaPlay), tr("Force start"));
     actForce->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F3));
     actForce->setEnabled(hasSel);
-    QObject::connect(actForce, &QAction::triggered, this, &MainWindow::onStartForceSelected);
+    connectSelectionAction(actForce, &MainWindow::onStartForceSelected);
     auto* actStop = menu->addAction(tgui::theme::icon(Icon::Pause), tr("Pause"));
     actStop->setShortcut(QKeySequence(Qt::Key_F4));
     actStop->setEnabled(hasSel);
-    QObject::connect(actStop, &QAction::triggered, this, &MainWindow::onStopSelected);
+    connectSelectionAction(actStop, &MainWindow::onStopSelected);
     menu->addSeparator();
 
     auto* actRemove = menu->addAction(tgui::theme::icon(Icon::Remove), tr("Remove…"));
     actRemove->setShortcut(QKeySequence(Qt::Key_Delete));
     actRemove->setEnabled(hasSel);
-    QObject::connect(actRemove, &QAction::triggered, this, &MainWindow::onRemoveSelected);
+    connectSelectionAction(actRemove, &MainWindow::onRemoveSelected);
     auto* actRemoveData = menu->addAction(tr("Remove with data…"));
     actRemoveData->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_Delete));
     actRemoveData->setEnabled(hasSel);
-    QObject::connect(actRemoveData, &QAction::triggered, this, &MainWindow::onRemoveWithDataSelected);
+    connectSelectionAction(actRemoveData, &MainWindow::onRemoveWithDataSelected);
     menu->addSeparator();
 
     auto* mPriority = menu->addMenu(tr("Priority"));
@@ -1386,9 +1483,9 @@ void MainWindow::onContextMenu(const QPoint& pos)
     auto* priHigh = mPriority->addAction(tr("High"));
     auto* priNormal = mPriority->addAction(tr("Normal"));
     auto* priLow = mPriority->addAction(tr("Low"));
-    QObject::connect(priHigh, &QAction::triggered, this, &MainWindow::onPriorityHigh);
-    QObject::connect(priNormal, &QAction::triggered, this, &MainWindow::onPriorityNormal);
-    QObject::connect(priLow, &QAction::triggered, this, &MainWindow::onPriorityLow);
+    connectSelectionAction(priHigh, &MainWindow::onPriorityHigh);
+    connectSelectionAction(priNormal, &MainWindow::onPriorityNormal);
+    connectSelectionAction(priLow, &MainWindow::onPriorityLow);
 
     auto* mQueue = menu->addMenu(tr("Queue"));
     mQueue->setEnabled(hasSel);
@@ -1396,38 +1493,38 @@ void MainWindow::onContextMenu(const QPoint& pos)
     auto* qUp = mQueue->addAction(tr("Move up"));
     auto* qDown = mQueue->addAction(tr("Move down"));
     auto* qBottom = mQueue->addAction(tr("Move to bottom"));
-    QObject::connect(qTop, &QAction::triggered, this, &MainWindow::onQueueTop);
-    QObject::connect(qUp, &QAction::triggered, this, &MainWindow::onQueueUp);
-    QObject::connect(qDown, &QAction::triggered, this, &MainWindow::onQueueDown);
-    QObject::connect(qBottom, &QAction::triggered, this, &MainWindow::onQueueBottom);
+    connectSelectionAction(qTop, &MainWindow::onQueueTop);
+    connectSelectionAction(qUp, &MainWindow::onQueueUp);
+    connectSelectionAction(qDown, &MainWindow::onQueueDown);
+    connectSelectionAction(qBottom, &MainWindow::onQueueBottom);
     menu->addSeparator();
 
     auto* actAnnounce = menu->addAction(tr("Announce (get more peers)"));
     actAnnounce->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
     actAnnounce->setEnabled(hasSel);
-    QObject::connect(actAnnounce, &QAction::triggered, this, &MainWindow::onReannounceSelected);
+    connectSelectionAction(actAnnounce, &MainWindow::onReannounceSelected);
     auto* actVerify = menu->addAction(tr("Verify…"));
     actVerify->setEnabled(hasSel);
-    QObject::connect(actVerify, &QAction::triggered, this, &MainWindow::onVerifySelected);
+    connectSelectionAction(actVerify, &MainWindow::onVerifySelected);
     menu->addSeparator();
 
     auto* actCopyMagnet = menu->addAction(tr("Copy magnet link"));
     actCopyMagnet->setEnabled(hasSel);
-    QObject::connect(actCopyMagnet, &QAction::triggered, this, &MainWindow::onCopyMagnet);
+    connectSelectionAction(actCopyMagnet, &MainWindow::onCopyMagnet);
     auto* actMove = menu->addAction(tgui::theme::icon(Icon::Move), tr("Set location…"));
     actMove->setShortcut(QKeySequence(Qt::Key_F6));
     actMove->setEnabled(hasSel);
-    QObject::connect(actMove, &QAction::triggered, this, &MainWindow::onMoveSelected);
+    connectSelectionAction(actMove, &MainWindow::onMoveSelected);
     auto* actRename = menu->addAction(tr("Rename…"));
     actRename->setShortcut(QKeySequence(Qt::Key_F2));
     actRename->setEnabled(hasSel);
-    QObject::connect(actRename, &QAction::triggered, this, &MainWindow::onRenameSelected);
+    connectSelectionAction(actRename, &MainWindow::onRenameSelected);
     menu->addSeparator();
 
     auto* actProperties = menu->addAction(tgui::theme::icon(Icon::Properties), tr("Properties…"));
     actProperties->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Return));
     actProperties->setEnabled(hasSel);
-    QObject::connect(actProperties, &QAction::triggered, this, &MainWindow::onShowProperties);
+    connectSelectionAction(actProperties, &MainWindow::onShowProperties);
     menu->addSeparator();
 
     if (!m_labels.isEmpty()) {
@@ -1441,7 +1538,8 @@ void MainWindow::onContextMenu(const QPoint& pos)
                 title = tr("Label: %1").arg(names.replace('&', "&&"));
             }
         }
-        auto* labelAction = menu->addAction(title, this, &MainWindow::onSetLabels);
+        auto* labelAction = menu->addAction(title);
+        connectSelectionAction(labelAction, &MainWindow::onSetLabels);
         labelAction->setEnabled(m_actChooseLabel->isEnabled());
     }
     auto* actSetupColumns = menu->addAction(tr("Setup columns…"));
@@ -1943,15 +2041,7 @@ void MainWindow::onOpenFolder()
     const auto ids = selectedTorrentIds();
     if (ids.size() != 1)
         return;
-    for (const auto& t : m_model.torrents()) {
-        if (t.id == ids.first()) {
-            const QString dir = t.downloadDir.value_or(QString());
-            if (dir.isEmpty())
-                return;
-            QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
-            return;
-        }
-    }
+    openTorrentObject(ids.first(), /*containingFolder=*/true);
 }
 
 // Двойной клик по строке во вкладке «Файлы» (референс: lvFilesDblClick → acOpenFile):
@@ -1984,32 +2074,137 @@ void MainWindow::onFilesDoubleClicked(int row)
 }
 
 // Двойной клик по строке списка торрентов (референс: gTorrentsDblClick):
-// открыть файл (однофайловый) / папку торрента; fallback — каталог загрузки.
+// завершённый торрент с существующим объектом — открыть его файл/папку,
+// иначе — свойства торрента.
 void MainWindow::onTorrentsDoubleClicked()
 {
     if (m_currentId < 0)
         return;
-    const tgui::Torrent* t = nullptr;
-    for (const auto& x : m_model.torrents()) {
-        if (x.id == m_currentId) {
-            t = &x;
+    const tgui::Torrent* t = torrentById(m_currentId);
+    if (!t)
+        return;
+    // Готовый торрент (leftUntilDone == 0) — открыть его файл/папку;
+    // не готовый — свойства (в образце файл ещё не скачан, запускать нечего).
+    const bool finished = t->leftUntilDone.has_value() && t->leftUntilDone.value() <= 0.0
+                          && (t->sizeWhenDone.value_or(0.0) > 0.0);
+    if (finished)
+        openTorrentObject(m_currentId, /*containingFolder=*/false);
+    else
+        showProperties(m_currentId, 0);
+}
+
+/** Открывает файл/папку торрента, вычисляя путь из списка файлов и downloadDir. */
+void MainWindow::openTorrentObject(int id, bool containingFolder)
+{
+    const tgui::Torrent* torrent = torrentById(id);
+    if (!torrent)
+        return;
+
+    // Без соединения (например, в тестах) — путь по имени торрента.
+    const auto openFromName = [this, torrent, containingFolder] {
+        const QString dir = torrent->downloadDir.value_or(QString());
+        if (dir.isEmpty())
+            return;
+        const QString name = torrent->name.value_or(QString());
+        if (name.isEmpty())
+            openLocalPath(dir, /*selectFile=*/false);
+        else
+            openLocalPath(dir + QStringLiteral("/") + name, containingFolder);
+    };
+    if (!m_rpc || !m_connected) {
+        openFromName();
+        return;
+    }
+
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    rpc->getTorrentDetails(id, [this, rpc, id, containingFolder]
+                           (const std::optional<tgui::TorrentDetails>& details) {
+        if (!rpc || rpc != m_rpc.get())
+            return;
+        const tgui::Torrent* current = torrentById(id);
+        if (!current)
+            return;
+        if (!details) {
+            if (!containingFolder)
+                showProperties(id, 0);
+            return;
+        }
+        bool selectFile = false;
+        QString rel = tgui::torrentOpenRelativePath(details->files, containingFolder, &selectFile);
+        if (rel.isEmpty())
+            rel = current->name.value_or(QString());
+        const QString dir = details->downloadDir.isEmpty()
+                                ? current->downloadDir.value_or(QString())
+                                : details->downloadDir;
+        if (dir.isEmpty())
+            return;
+        const QString path = rel.isEmpty() ? dir : dir + QStringLiteral("/") + rel;
+        // Как в образце: двойной клик открывает только существующий объект,
+        // иначе показывает свойства.
+        if (!containingFolder && !QFileInfo::exists(mappedLocalPath(path))) {
+            showProperties(id, 0);
+            return;
+        }
+        openLocalPath(path, selectFile);
+    });
+}
+
+const tgui::Torrent* MainWindow::torrentById(int id) const
+{
+    for (const auto& torrent : m_model.torrents())
+        if (torrent.id == id)
+            return &torrent;
+    return nullptr;
+}
+
+QString MainWindow::mappedLocalPath(const QString& remotePath) const
+{
+    return tgui::mapRemoteToLocal(remotePath,
+                                  QSettings().value(QStringLiteral("paths/mappings")).toStringList());
+}
+
+/** Сверяет downloadDir выбранных торрентов с целью переноса после ответа демона. */
+void MainWindow::checkPendingMove()
+{
+    if (m_movePendingIds.isEmpty())
+        return;
+    const auto normalize = [](const QString& path) {
+        QString value = QDir::fromNativeSeparators(path.trimmed());
+        while (value.size() > 1 && value.endsWith(QLatin1Char('/')))
+            value.chop(1);
+#ifdef Q_OS_WIN
+        return value.toLower();
+#else
+        return value;
+#endif
+    };
+    const QString target = normalize(m_movePendingTarget);
+    bool confirmed = true;
+    for (const int id : m_movePendingIds) {
+        const tgui::Torrent* torrent = torrentById(id);
+        if (!torrent || normalize(torrent->downloadDir.value_or(QString())) != target) {
+            confirmed = false;
             break;
         }
     }
-    if (!t)
+    if (confirmed) {
+        statusBar()->showMessage(tr("Move completed: %1").arg(m_movePendingTarget), 5000);
+        m_movePendingIds.clear();
+        m_movePendingTarget.clear();
+        m_moveVerifyAttempts = 0;
         return;
-    const QString dir = t->downloadDir.value_or(QString());
-    if (dir.isEmpty())
+    }
+    // Даём демону несколько циклов на обновление пути (образец ждёт до 20 с).
+    if (++m_moveVerifyAttempts >= 20) {
+        statusBar()->showMessage(
+            tr("Move finished, but the daemon still reports another folder."), 8000);
+        m_movePendingIds.clear();
+        m_movePendingTarget.clear();
+        m_moveVerifyAttempts = 0;
         return;
-    const QString name = t->name.value_or(QString());
-    // Готовый торрент (leftUntilDone == 0) — открыть его файл/папку;
-    // не готовый — просто каталог (файл ещё не скачан, запускать нечего).
-    const bool finished = t->leftUntilDone.has_value() && t->leftUntilDone.value() <= 0.0
-                          && (t->sizeWhenDone.value_or(0.0) > 0.0);
-    if (finished && !name.isEmpty())
-        openLocalPath(dir + QStringLiteral("/") + name, /*selectFile=*/false);
-    else
-        openLocalPath(dir, /*selectFile=*/false);
+    }
+    if (m_rpc && m_connected && !m_moveVerifyTimer.isActive())
+        m_moveVerifyTimer.start();
 }
 
 // Открыть локальный путь: каталог — в проводнике; файл — по умолчанию запустить;
@@ -2063,19 +2258,18 @@ void MainWindow::onRemoveWithDataSelected()
     const auto ids = selectedTorrentIds();
     if (ids.isEmpty())
         return;
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
     auto* box = new QMessageBox(this);
     box->setWindowTitle(tr("Remove with data"));
     box->setIcon(QMessageBox::Warning);
     box->setText(tr("Remove the selected torrent(s) AND delete their downloaded data files?"));
     box->setInformativeText(tr("This cannot be undone."));
     box->setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+    box->setDefaultButton(QMessageBox::No);
     const int r = box->exec();
     box->deleteLater();
-    if (r != QMessageBox::Yes)
-        return;
-    for (int id : ids)
-        m_rpc->removeTorrent(id, true);
-    m_rpc->getTorrents();
+    if (rpc && r == QMessageBox::Yes)
+        runTorrentAction("torrent-remove", ids, {{"delete-local-data", true}});
 }
 
 void MainWindow::onVerifySelected()
@@ -2083,75 +2277,45 @@ void MainWindow::onVerifySelected()
     const auto ids = selectedTorrentIds();
     if (ids.isEmpty() || !m_rpc || !m_connected)
         return;
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
     const auto res = QMessageBox::question(
         this, tr("Verify"),
         ids.size() == 1
             ? tr("Torrent verification may take a long time.\nAre you sure to start verification?")
             : tr("Torrent verification may take a long time.\nAre you sure to start verification of %1 torrents?")
                   .arg(ids.size()));
-    if (res != QMessageBox::Yes)
-        return;
-    for (int id : ids)
-        m_rpc->verify(id);
+    if (rpc && res == QMessageBox::Yes)
+        runTorrentAction("torrent-verify", ids);
 }
 
 void MainWindow::onReannounceSelected()
 {
-    const auto ids = selectedTorrentIds();
-    if (ids.isEmpty() || !m_rpc || !m_connected)
-        return;
-    for (int id : ids)
-        m_rpc->reannounce(id);
+    runTorrentAction("torrent-reannounce", selectedTorrentIds());
 }
 
 void MainWindow::onQueueTop()
 {
-    const auto ids = selectedTorrentIds();
-    if (ids.isEmpty() || !m_rpc || !m_connected)
-        return;
-    for (int id : ids)
-        m_rpc->queueMoveTop(id);
-    m_rpc->getTorrents();
+    runTorrentAction("queue-move-top", selectedTorrentIds());
 }
 
 void MainWindow::onQueueUp()
 {
-    const auto ids = selectedTorrentIds();
-    if (ids.isEmpty() || !m_rpc || !m_connected)
-        return;
-    for (int id : ids)
-        m_rpc->queueMoveUp(id);
-    m_rpc->getTorrents();
+    runTorrentAction("queue-move-up", selectedTorrentIds());
 }
 
 void MainWindow::onQueueDown()
 {
-    const auto ids = selectedTorrentIds();
-    if (ids.isEmpty() || !m_rpc || !m_connected)
-        return;
-    for (int id : ids)
-        m_rpc->queueMoveDown(id);
-    m_rpc->getTorrents();
+    runTorrentAction("queue-move-down", selectedTorrentIds());
 }
 
 void MainWindow::onQueueBottom()
 {
-    const auto ids = selectedTorrentIds();
-    if (ids.isEmpty() || !m_rpc || !m_connected)
-        return;
-    for (int id : ids)
-        m_rpc->queueMoveBottom(id);
-    m_rpc->getTorrents();
+    runTorrentAction("queue-move-bottom", selectedTorrentIds());
 }
 
 void MainWindow::onStartForceSelected()
 {
-    const auto ids = selectedTorrentIds();
-    if (ids.isEmpty() || !m_rpc || !m_connected)
-        return;
-    for (int id : ids)
-        m_rpc->startTorrent(id, true); // torrent-start-now
-    m_rpc->getTorrents();
+    runTorrentAction("torrent-start-now", selectedTorrentIds());
 }
 
 void MainWindow::onAddFromLink()
@@ -2350,6 +2514,7 @@ void MainWindow::onRenameSelected()
         }
     if (!found || !found->name.has_value())
         return;
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
     const QString currentName = found->name.value();
     if (currentName.isEmpty())
         return;
@@ -2358,11 +2523,10 @@ void MainWindow::onRenameSelected()
         this, tr("Rename"), tr("New name:"),
         QLineEdit::Normal, currentName, &ok);
     const QString trimmed = newName.trimmed();
-    if (!ok || trimmed.isEmpty() || trimmed == currentName)
+    if (!ok || !rpc || trimmed.isEmpty() || trimmed == currentName)
         return;
-    // path = корень (текущее имя), name = новое имя (torrent-rename-path).
-    m_rpc->renamePath(id, currentName, trimmed);
-    m_rpc->getTorrents();
+    rpc->renamePath(id, currentName, trimmed,
+                    afterTorrentChange("torrent-rename-path", RefreshAfter::Properties, id));
 }
 
 void MainWindow::onHome()
@@ -2382,32 +2546,17 @@ void MainWindow::onCheckUpdate()
 
 void MainWindow::onPriorityHigh()
 {
-    const auto ids = selectedTorrentIds();
-    if (ids.isEmpty() || !m_rpc || !m_connected)
-        return;
-    for (int id : ids)
-        m_rpc->setPriority(id, 1);
-    m_rpc->getTorrents();
+    runTorrentAction("torrent-set", selectedTorrentIds(), {{"bandwidthPriority", 1}});
 }
 
 void MainWindow::onPriorityNormal()
 {
-    const auto ids = selectedTorrentIds();
-    if (ids.isEmpty() || !m_rpc || !m_connected)
-        return;
-    for (int id : ids)
-        m_rpc->setPriority(id, 0);
-    m_rpc->getTorrents();
+    runTorrentAction("torrent-set", selectedTorrentIds(), {{"bandwidthPriority", 0}});
 }
 
 void MainWindow::onPriorityLow()
 {
-    const auto ids = selectedTorrentIds();
-    if (ids.isEmpty() || !m_rpc || !m_connected)
-        return;
-    for (int id : ids)
-        m_rpc->setPriority(id, -1);
-    m_rpc->getTorrents();
+    runTorrentAction("torrent-set", selectedTorrentIds(), {{"bandwidthPriority", -1}});
 }
 
 void MainWindow::onPortTest()
@@ -2500,7 +2649,12 @@ void MainWindow::onDaemonOptions()
     DaemonOptionsDialog dlg(m_rpc->sessionInfo(), this);
     if (dlg.exec() != QDialog::Accepted)
         return;
-    const QJsonObject params = dlg.sessionSet();
+    // Отправляем только изменённые поля: не перезаписываем чужие/неподдерживаемые.
+    const QJsonObject params = dlg.changedSessionSet();
+    if (params.isEmpty()) {
+        statusBar()->showMessage(tr("No changes to apply."), 3000);
+        return;
+    }
     m_rpc->setSession(params); // фидбек — через onRequestCompleted (status bar)
     statusBar()->showMessage(tr("Applying daemon options…"), 3000);
 }
@@ -2573,6 +2727,8 @@ void MainWindow::onSelectionChanged()
     }
     m_currentId = id;
     m_fileModel.setFiles({});
+    m_peerModel.setPeers({});
+    m_trackerModel.setTrackers({});
     // «General» обновляем из модели сразу — до ответа RPC.
     if (id >= 0) {
         for (const auto& t : m_model.torrents()) {
@@ -2606,16 +2762,20 @@ void MainWindow::onFilesContextMenu(const QPoint& pos)
     auto* view = qobject_cast<QTreeView*>(sender());
     if (!view || !view->selectionModel())
         return;
+    const auto hit = view->indexAt(pos);
+    if (hit.isValid() && !view->selectionModel()->isSelected(hit))
+        view->selectionModel()->setCurrentIndex(hit, QItemSelectionModel::ClearAndSelect |
+                                                     QItemSelectionModel::Rows);
     const auto& files = m_fileModel.files();
-    const QModelIndexList selected = view->selectionModel()->selectedRows();
+    auto selected = view->selectionModel()->selectedRows();
+    if (selected.isEmpty() && view->currentIndex().isValid())
+        selected.append(view->currentIndex());
 
     // Активный узел (первая выделенная строка либо текущая) — для Open/Rename/CopyPath.
     // Опора на колонку Want (якорь дерева): там хранится поддерево.
-    QModelIndex active;
+    QPersistentModelIndex active;
     if (!selected.isEmpty())
         active = selected.first().siblingAtColumn(FileTreeModel::Want);
-    else if (view->currentIndex().isValid())
-        active = view->currentIndex().siblingAtColumn(FileTreeModel::Want);
 
     // Файлы для приоритета/skip: вся выделенная область (папки — все вложенные файлы).
     QVector<int> fileIds;
@@ -2652,15 +2812,30 @@ void MainWindow::onFilesContextMenu(const QPoint& pos)
     auto* aCols = menu->addAction(tr("Setup columns..."));
 
     const QPoint global = view->mapToGlobal(pos);
-    QObject::connect(aOpen, &QAction::triggered, this, [this, active] { onFilesOpen(active); });
-    QObject::connect(aOpenFolder, &QAction::triggered, this, [this, active] { onFilesOpenFolder(active); });
-    QObject::connect(aRename, &QAction::triggered, this, [this, active] { onFilesRename(active); });
-    QObject::connect(aCopyPath, &QAction::triggered, this, [this, active] { onFilesCopyPath(active); });
-    QObject::connect(aHigh, &QAction::triggered, this, [this, fileIds] { onFilePriority(fileIds, 1); });
-    QObject::connect(aNormal, &QAction::triggered, this, [this, fileIds] { onFilePriority(fileIds, 0); });
-    QObject::connect(aLow, &QAction::triggered, this, [this, fileIds] { onFilePriority(fileIds, -1); });
-    QObject::connect(aSkip, &QAction::triggered, this, [this, id = m_currentId, fileIds] {
-        if (id == m_currentId)
+    const auto isCurrent = [this, rpc = QPointer(m_rpc.get()), id = m_currentId] {
+        return rpc && rpc == m_rpc.get() && id == m_currentId;
+    };
+    const auto connectFileAction = [this, active, isCurrent](QAction* action, auto handler) {
+        connect(action, &QAction::triggered, this, [this, active, isCurrent, handler] {
+            if (isCurrent() && active.isValid())
+                (this->*handler)(active);
+        });
+    };
+    connectFileAction(aOpen, &MainWindow::onFilesOpen);
+    connectFileAction(aOpenFolder, &MainWindow::onFilesOpenFolder);
+    connectFileAction(aRename, &MainWindow::onFilesRename);
+    connectFileAction(aCopyPath, &MainWindow::onFilesCopyPath);
+    const auto connectPriority = [this, fileIds, isCurrent](QAction* action, int priority) {
+        connect(action, &QAction::triggered, this, [this, fileIds, isCurrent, priority] {
+            if (isCurrent())
+                onFilePriority(fileIds, priority);
+        });
+    };
+    connectPriority(aHigh, 1);
+    connectPriority(aNormal, 0);
+    connectPriority(aLow, -1);
+    connect(aSkip, &QAction::triggered, this, [this, fileIds, isCurrent] {
+        if (isCurrent())
             setFilesDownload(fileIds, false);
     });
     QObject::connect(aCols, &QAction::triggered, this, [this, view] {
@@ -2754,8 +2929,8 @@ void MainWindow::onFilePriority(const QVector<int>& fileIds, int priority)
 {
     if (!m_rpc || m_currentId < 0 || fileIds.isEmpty())
         return;
-    m_rpc->setFilePriority(m_currentId, fileIds, priority);
-    m_rpc->getTorrentDetails(m_currentId); // перечитать детали (приоритет/статус)
+    m_rpc->setFilePriority(m_currentId, fileIds, priority,
+                           afterTorrentChange("torrent-set", RefreshAfter::Files, m_currentId));
 }
 
 /** Изменяет выбор указанных файлов и обновляет вкладку после ответа демона. */
@@ -2763,18 +2938,12 @@ void MainWindow::setFilesDownload(const QVector<int>& fileIds, bool wanted)
 {
     if (!m_rpc || m_currentId < 0 || fileIds.isEmpty())
         return;
-    const int id = m_currentId;
-    m_rpc->setFilesWanted(id, wanted ? fileIds : QVector<int>{},
-                          wanted ? QVector<int>{} : fileIds,
-        [this, id, wanted](const tgui::JsonRpcResult& r) {
-            if (!m_rpc || id != m_currentId)
-                return;
-            if (r.ok)
-                statusBar()->showMessage(wanted ? tr("Marked for download") : tr("Marked to skip"), 3000);
-            else
-                onRequestCompleted(QStringLiteral("torrent-set"), false, r.error, r.arguments);
-            m_rpc->getTorrentDetails(id);
-        });
+    auto completed = afterTorrentChange("torrent-set", RefreshAfter::Files, m_currentId,
+                                        wanted ? tr("Marked for download") : tr("Marked to skip"));
+    if (wanted)
+        m_rpc->setFilePriority(m_currentId, fileIds, 0, std::move(completed));
+    else
+        m_rpc->setFilesWanted(m_currentId, {}, fileIds, std::move(completed));
 }
 
 // Чекбокс Want (файл/папка) → files-wanted / files-unwanted для затронутого поддерева.
@@ -2785,7 +2954,7 @@ void MainWindow::onFilesWantToggled(const QVector<int>& rows, bool wanted)
     const auto& files = m_fileModel.files();
     QVector<int> ids;
     for (int r : rows)
-        if (r >= 0 && r < files.size())
+        if (r >= 0 && r < files.size() && files.at(r).wanted != wanted)
             ids.append(files.at(r).index);
     setFilesDownload(ids, wanted);
 }
@@ -2849,31 +3018,22 @@ void MainWindow::onFilesRename(const QModelIndex& index)
 {
     if (!m_rpc || m_currentId < 0 || !index.isValid())
         return;
-    if (m_fileTree->isFolder(index)) {
-        statusBar()->showMessage(tr("Rename folders is not supported"), 3000);
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    const int id = m_currentId;
+    const QString path = index.data(FileTreeModel::PathRole).toString();
+    if (path.isEmpty())
+        return;
+    const QString base = path.section(QLatin1Char('/'), -1);
+    bool ok = false;
+    const auto newName = QInputDialog::getText(this, tr("Rename"), tr("New name:"),
+                                               QLineEdit::Normal, base, &ok).trimmed();
+    if (!ok || !rpc || newName.isEmpty() || newName == base)
+        return;
+    if (newName == "." || newName == ".." || newName.contains('/') || newName.contains('\\')) {
+        QMessageBox::warning(this, tr("Rename"), tr("Specify a valid file or folder name."));
         return;
     }
-    const auto rows = m_fileTree->sourceRows(index);
-    if (rows.isEmpty())
-        return;
-    const auto& files = m_fileModel.files();
-    const int row = rows.first();
-    if (row < 0 || row >= files.size())
-        return;
-    const QString rel = files.at(row).name;
-    const QString base = QFileInfo(rel).fileName();
-    bool ok = false;
-    const QString newName = QInputDialog::getText(this, tr("Rename"), tr("New name:"),
-                                                  QLineEdit::Normal, base, &ok);
-    if (!ok || newName.trimmed().isEmpty() || newName == base)
-        return;
-    // Родитель в рамках относительного пути («dir/sub» или корень).
-    const QString dir = QFileInfo(rel).path();
-    const QString newRel = (dir.isEmpty() || dir == QStringLiteral("."))
-                               ? newName
-                               : dir + QStringLiteral("/") + newName;
-    m_rpc->renamePath(m_currentId, rel, newRel);
-    m_rpc->getTorrentDetails(m_currentId);
+    rpc->renamePath(id, path, newName, afterTorrentChange("torrent-rename-path", RefreshAfter::Files, id));
 }
 
 void MainWindow::onTrackersContextMenu(const QPoint& pos)
@@ -2883,6 +3043,10 @@ void MainWindow::onTrackersContextMenu(const QPoint& pos)
     auto* view = qobject_cast<QTableView*>(sender());
     if (!view || !view->selectionModel())
         return;
+    const auto hit = view->indexAt(pos);
+    if (hit.isValid() && !view->selectionModel()->isSelected(hit))
+        view->selectionModel()->setCurrentIndex(hit, QItemSelectionModel::ClearAndSelect |
+                                                     QItemSelectionModel::Rows);
     const auto selected = view->selectionModel()->selectedRows();
     const auto& trackers = m_trackerModel.trackers();
     bool hasSel = false;
@@ -2891,8 +3055,8 @@ void MainWindow::onTrackersContextMenu(const QPoint& pos)
     if (!selected.isEmpty()) {
         const int row = selected.first().row();
         if (row >= 0 && row < trackers.size()) {
-            hasSel = true;
             trackerId = trackers.at(row).id;
+            hasSel = trackerId >= 0;
             announce = trackers.at(row).announce;
         }
     }
@@ -2901,67 +3065,124 @@ void MainWindow::onTrackersContextMenu(const QPoint& pos)
     auto* aAdd = menu->addAction(tr("Add tracker…"));
     auto* aEdit = menu->addAction(tr("Edit tracker…"));
     auto* aRemove = menu->addAction(tr("Remove tracker…"));
+    auto* aAdvanced = menu->addAction(tr("Edit tracker list…"));
+    menu->addSeparator();
+    auto* aColumns = menu->addAction(tr("Setup columns…"));
     aEdit->setEnabled(hasSel);
     aRemove->setEnabled(hasSel);
 
     const QPoint global = view->mapToGlobal(pos);
-    QObject::connect(aAdd, &QAction::triggered, this, [this] { onAddTracker(); });
-    QObject::connect(aEdit, &QAction::triggered, this,
-                     [this, trackerId, announce] { onEditTracker(trackerId, announce); });
-    QObject::connect(aRemove, &QAction::triggered, this,
-                     [this, trackerId, announce] { onRemoveTracker(trackerId, announce); });
+    const auto isCurrent = [this, rpc = QPointer(m_rpc.get()), id = m_currentId] {
+        return rpc && rpc == m_rpc.get() && id == m_currentId;
+    };
+    connect(aAdd, &QAction::triggered, this, [this, isCurrent] {
+        if (isCurrent())
+            onAddTracker();
+    });
+    connect(aEdit, &QAction::triggered, this, [this, trackerId, announce, isCurrent] {
+        if (isCurrent())
+            onEditTracker(trackerId, announce);
+    });
+    connect(aRemove, &QAction::triggered, this, [this, trackerId, announce, isCurrent] {
+        if (isCurrent())
+            onRemoveTracker(trackerId, announce);
+    });
+    connect(aAdvanced, &QAction::triggered, this, [this, isCurrent, id = m_currentId] {
+        if (isCurrent())
+            showProperties(id, 1);
+    });
+    connect(aColumns, &QAction::triggered, this, [this, view] {
+        const int count = TrackerListModel::ColumnCount;
+        QStringList titles;
+        for (int i = 0; i < count; ++i)
+            titles << view->model()->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
+        const ColumnLayout cur = ColumnLayout::fromView(view, count);
+        ColSetupDialog dlg(cur, titles, this);
+        if (dlg.exec() != QDialog::Accepted)
+            return;
+        const ColumnLayout nl = dlg.layout();
+        nl.applyToView(view);
+        nl.saveToSettings(QStringLiteral("trackers/columns"));
+        statusBar()->showMessage(tr("Column layout updated."), 3000);
+    });
     menu->exec(global);
     menu->deleteLater();
+}
+
+/** Обрабатывает Delete в таблице трекеров до глобальной команды удаления торрента. */
+bool MainWindow::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == m_trackersView &&
+        (event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress)) {
+        const auto* key = static_cast<QKeyEvent*>(event);
+        if (key->key() == Qt::Key_Delete) {
+            event->accept();
+            if (event->type() == QEvent::KeyPress && key->modifiers() == Qt::NoModifier &&
+                !key->isAutoRepeat()) {
+                const auto index = m_trackersView->currentIndex();
+                const auto& trackers = m_trackerModel.trackers();
+                if (index.isValid() && index.row() < trackers.size()) {
+                    const auto tracker = trackers.at(index.row());
+                    onRemoveTracker(tracker.id, tracker.announce);
+                }
+            }
+            return true;
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
 }
 
 void MainWindow::onAddTracker()
 {
     if (!m_rpc || m_currentId < 0)
         return;
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    const int id = m_currentId;
     bool ok = false;
     const QString url = QInputDialog::getText(
                            this, tr("Add tracker"), tr("Tracker URL:"),
                            QLineEdit::Normal, QString(), &ok)
                            .trimmed();
-    if (!ok)
+    if (!ok || !rpc)
         return;
     if (url.isEmpty()) {
         QMessageBox::warning(this, tr("Add tracker"), tr("No tracker URL was specified."));
         return;
     }
-    m_rpc->addTracker(m_currentId, url);
-    m_rpc->getTrackers(m_currentId); // обновить список
+    rpc->addTracker(id, url, afterTorrentChange("torrent-set", RefreshAfter::Trackers, id));
 }
 
 void MainWindow::onEditTracker(int trackerId, const QString& announce)
 {
     if (!m_rpc || m_currentId < 0 || trackerId < 0)
         return;
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    const int id = m_currentId;
     bool ok = false;
     const QString url = QInputDialog::getText(
                            this, tr("Edit tracker"), tr("New tracker URL:"),
                            QLineEdit::Normal, announce, &ok)
                            .trimmed();
-    if (!ok)
+    if (!ok || !rpc)
         return;
     if (url.isEmpty()) {
         QMessageBox::warning(this, tr("Edit tracker"), tr("No tracker URL was specified."));
         return;
     }
-    m_rpc->replaceTracker(m_currentId, trackerId, url);
-    m_rpc->getTrackers(m_currentId);
+    rpc->replaceTracker(id, trackerId, url, afterTorrentChange("torrent-set", RefreshAfter::Trackers, id));
 }
 
 void MainWindow::onRemoveTracker(int trackerId, const QString& announce)
 {
     if (!m_rpc || m_currentId < 0 || trackerId < 0)
         return;
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    const int id = m_currentId;
     const auto ret = QMessageBox::question(
         this, tr("Remove tracker"), tr("Remove tracker “%1”?").arg(announce));
-    if (ret != QMessageBox::Yes)
+    if (ret != QMessageBox::Yes || !rpc)
         return;
-    m_rpc->removeTracker(m_currentId, trackerId);
-    m_rpc->getTrackers(m_currentId);
+    rpc->removeTracker(id, trackerId, afterTorrentChange("torrent-set", RefreshAfter::Trackers, id));
 }
 
 void MainWindow::finishAdd()

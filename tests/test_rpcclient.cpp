@@ -137,6 +137,32 @@ TEST_F(RpcClientTest, ConnectFailure)
     EXPECT_FALSE(client->isConnected());
 }
 
+TEST_F(RpcClientTest, DelayedListCannotOverwriteNewerSnapshot)
+{
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[{"id":1,"name":"old"}]}})", {}, 180});
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[{"id":1,"name":"new"}]}})", {}});
+
+    QEventLoop loop;
+    QStringList names;
+    QObject::connect(client.get(), &RpcClient::torrentsReceived, &loop, [&](const QVector<Torrent>& torrents) {
+        if (!torrents.isEmpty())
+            names.append(torrents.first().name.value_or(QString{}));
+    });
+    QTimer dispatch;
+    QObject::connect(&dispatch, &QTimer::timeout, &loop, [&] {
+        if (server.requestCount() != 1)
+            return;
+        dispatch.stop();
+        client->getTorrents();
+    });
+    dispatch.start(1);
+    QTimer::singleShot(500, &loop, &QEventLoop::quit);
+    client->getTorrents();
+    loop.exec();
+    EXPECT_EQ(server.requestCount(), 2);
+    EXPECT_EQ(names, QStringList{"new"});
+}
+
 TEST_F(RpcClientTest, GetTorrentsRpc18FieldsAndTable)
 {
     connectWith(18);
@@ -1376,6 +1402,35 @@ TEST_F(RpcClientTest, MoveUsesSetLocationWithExplicitMoveFlag)
         EXPECT_EQ(request.arguments.value("move").toBool(), move);
         EXPECT_EQ(request.arguments.value("ids").toArray().first().toInt(), 42);
     }
+}
+
+TEST_F(RpcClientTest, MoveBatchSendsAllIdsInOneRequest)
+{
+    connectWith(14);
+    server.enqueue({});
+    QEventLoop loop;
+    bool completed = false;
+    const auto connection = QObject::connect(client.get(), &RpcClient::requestCompleted,
+        [&](const QString& method, bool ok, const QString&, const QJsonObject&) {
+            if (method != "torrent-set-location") return;
+            completed = ok; loop.quit();
+        });
+    QTimer timer;
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    timer.setSingleShot(true); timer.start(2500);
+    client->setLocation({7, 9, 11}, "/server/target", true);
+    loop.exec();
+    QObject::disconnect(connection);
+    ASSERT_TRUE(completed);
+    const auto request = server.requests().last();
+    EXPECT_EQ(request.rpcMethod, QStringLiteral("torrent-set-location"));
+    EXPECT_EQ(request.arguments.value("location").toString(), QStringLiteral("/server/target"));
+    EXPECT_TRUE(request.arguments.value("move").toBool());
+    const auto ids = request.arguments.value("ids").toArray();
+    ASSERT_EQ(ids.size(), 3);
+    EXPECT_EQ(ids.at(0).toInt(), 7);
+    EXPECT_EQ(ids.at(1).toInt(), 9);
+    EXPECT_EQ(ids.at(2).toInt(), 11);
 }
 
 TEST_F(RpcClientTest, AddTorrentRepairsMetadataInMemory)

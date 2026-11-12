@@ -47,6 +47,24 @@ QJsonObject modernParams(const QString& method, const QJsonObject& params)
     return result;
 }
 
+/** Преобразует параметры Tr5-стиля обратно в имена legacy RPC (Tr4). */
+QJsonObject legacyParams(const QString& method, const QJsonObject& params)
+{
+    if (method != QLatin1String("session-set"))
+        return params;
+    QJsonObject result;
+    for (auto it = params.constBegin(); it != params.constEnd(); ++it) {
+        QString key = it.key();
+        // В legacy RPC ratio называется camelCase, а не kebab-case.
+        if (key == QLatin1String("ratio-limit"))
+            key = QStringLiteral("seedRatioLimit");
+        else if (key == QLatin1String("ratio-limit-enabled"))
+            key = QStringLiteral("seedRatioLimited");
+        result.insert(key, it.value());
+    }
+    return result;
+}
+
 namespace {
 
 /** Имена, которые читают модели приложения. Написание Tr4 сверено с api-compat.cc Transmission. */
@@ -61,19 +79,26 @@ const QHash<QString, QString>& legacyKeys()
             "clientName", "corruptEver", "cumulative-stats", "current-stats", "dateCreated",
             "delete-local-data", "dht-enabled", "doneDate", "download-queue-enabled",
             "download-queue-size", "downloadLimit", "downloadLimited", "downloadSpeed",
-            "downloadedBytes", "downloadedEver", "errorString", "fileStats", "files-unwanted",
+            "downloadedBytes", "downloadedEver", "encryption", "errorString", "fileStats",
+            "files-unwanted",
             "files-wanted", "filesAdded", "flagStr", "hasAnnounced", "hashString", "haveUnchecked",
-            "haveValid", "honorsSessionLimits", "isEncrypted", "isFinished", "isIncoming", "isPrivate",
+            "haveValid", "honorsSessionLimits", "idle-seeding-limit", "idle-seeding-limit-enabled",
+            "incomplete-dir", "incomplete-dir-enabled",
+            "isEncrypted", "isFinished", "isIncoming", "isPrivate",
             "isStalled", "isUTP", "lastAnnounceResult", "lastAnnounceSucceeded", "lastAnnounceTime",
             "lastScrapeResult", "lastScrapeSucceeded", "lastScrapeTime", "leecherCount",
             "leftUntilDone", "lpd-enabled", "magnetLink", "maxConnectedPeers",
             "metadataPercentComplete", "nextAnnounceTime", "pausedTorrentCount", "peerIsChoked",
             "peer-limit", "peer-limit-global", "peer-limit-per-torrent", "peer-port",
+            "peer-port-random-high", "peer-port-random-low", "peer-port-random-on-start",
             "peersGettingFromUs", "peersSendingToUs", "pex-enabled", "pieceCount", "pieceSize",
             "port-forwarding-enabled", "port-is-open", "priority-high", "priority-low",
-            "priority-normal", "queuePosition", "rateDownload", "rateToClient", "rateToPeer",
-            "rateUpload", "recheckProgress", "rpc-version", "rpc-version-minimum",
+            "priority-normal", "queue-stalled-enabled", "queue-stalled-minutes", "queuePosition",
+            "rateDownload", "rateToClient", "rateToPeer",
+            "rateUpload", "recheckProgress", "rename-partial-files", "rpc-version",
+            "rpc-version-minimum",
             "rpc-version-semver", "secondsActive", "secondsDownloading", "secondsSeeding",
+            "seed-queue-enabled", "seed-queue-size",
             "seedIdleLimit", "seedIdleMode", "seedRatioLimit", "seedRatioLimited", "seedRatioMode",
             "seederCount", "size-bytes", "sizeWhenDone", "speed-limit-down",
             "speed-limit-down-enabled", "speed-limit-up", "speed-limit-up-enabled",

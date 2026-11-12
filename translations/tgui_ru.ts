@@ -393,6 +393,46 @@
       <source>Blocklist URL</source>
       <translation>URL блэклиста</translation>
     </message>
+    <message><source>Alt-speed schedule</source><translation>Расписание альт. скорости</translation></message>
+    <message><source>Use schedule</source><translation>Использовать расписание</translation></message>
+    <message><source>Begin</source><translation>Начало</translation></message>
+    <message><source>End</source><translation>Конец</translation></message>
+    <message><source>Days</source><translation>Дни</translation></message>
+    <message><source>Mon</source><translation>Пн</translation></message>
+    <message><source>Tue</source><translation>Вт</translation></message>
+    <message><source>Wed</source><translation>Ср</translation></message>
+    <message><source>Thu</source><translation>Чт</translation></message>
+    <message><source>Fri</source><translation>Пт</translation></message>
+    <message><source>Sat</source><translation>Сб</translation></message>
+    <message><source>Sun</source><translation>Вс</translation></message>
+    <message><source>Encryption</source><translation>Шифрование</translation></message>
+    <message><source>Required</source><translation>Обязательно</translation></message>
+    <message><source>Preferred</source><translation>Предпочтительно</translation></message>
+    <message><source>Tolerated</source><translation>Допускается</translation></message>
+    <message><source>Global peer limit</source><translation>Общий лимит пиров</translation></message>
+    <message><source>Per torrent</source><translation>На торрент</translation></message>
+    <message><source>Random port on start</source><translation>Случайный порт при запуске</translation></message>
+    <message><source>Random range</source><translation>Диапазон</translation></message>
+    <message><source>to</source><translation>до</translation></message>
+    <message><source>Enable port forwarding</source><translation>Включить проброс портов</translation></message>
+    <message><source>Incomplete files</source><translation>Незавершённые файлы</translation></message>
+    <message><source>Use incomplete folder</source><translation>Использовать папку незавершённых</translation></message>
+    <message><source>Incomplete folder</source><translation>Папка незавершённых</translation></message>
+    <message><source>Append .part to incomplete files</source><translation>Добавлять .part к незавершённым файлам</translation></message>
+    <message><source>Queues</source><translation>Очереди</translation></message>
+    <message><source>Limit download queue</source><translation>Ограничить очередь загрузки</translation></message>
+    <message><source>Limit seed queue</source><translation>Ограничить очередь раздачи</translation></message>
+    <message><source>Treat idle torrents as stalled</source><translation>Считать простаивающие торренты приостановленными</translation></message>
+    <message><source>Idle seeding</source><translation>Простой раздачи</translation></message>
+    <message><source>Stop seeding when idle</source><translation>Останавливать раздачу при простое</translation></message>
+    <message><source>Idle limit</source><translation>Лимит простоя</translation></message>
+    <message><source>Cache</source><translation>Кеш</translation></message>
+    <message><source>Disk cache size</source><translation>Размер дискового кеша</translation></message>
+    <message><source>Requires RPC version 5 or newer.</source><translation>Требуется RPC версии 5 или новее.</translation></message>
+    <message><source>Requires RPC version 7 or newer.</source><translation>Требуется RPC версии 7 или новее.</translation></message>
+    <message><source>Requires RPC version 10 or newer.</source><translation>Требуется RPC версии 10 или новее.</translation></message>
+    <message><source>Requires RPC version 14 or newer.</source><translation>Требуется RPC версии 14 или новее.</translation></message>
+    <message><source>The daemon does not report a cache size setting.</source><translation>Демон не сообщает настройку размера кеша.</translation></message>
   </context>
   <context>
     <name>FileSelectDialog</name>
@@ -723,6 +763,14 @@
       <translation>Удалить трекер…</translation>
     </message>
     <message>
+      <source>Edit tracker list…</source>
+      <translation>Редактировать список трекеров…</translation>
+    </message>
+    <message>
+      <source>Specify a valid file or folder name.</source>
+      <translation>Укажите допустимое имя файла или папки.</translation>
+    </message>
+    <message>
       <location filename="../app/src/mainwindow.cpp" line="2176" />
       <location filename="../app/src/mainwindow.cpp" line="2182" />
       <source>Add tracker</source>
@@ -902,9 +950,20 @@ Reason: %2</source>
       <translation>Переместить</translation>
     </message>
     <message>
-      <location filename="../app/src/mainwindow.cpp" line="1019" />
-      <source>Only one selected torrent can be moved.</source>
-      <translation>Можно перемещать только один выбранный торрент.</translation>
+      <source>Move torrents - %1 selected</source>
+      <translation>Переместить торренты — выбрано: %1</translation>
+    </message>
+    <message>
+      <source>Move started: %1</source>
+      <translation>Перенос начат: %1</translation>
+    </message>
+    <message>
+      <source>Move completed: %1</source>
+      <translation>Перенос завершён: %1</translation>
+    </message>
+    <message>
+      <source>Move finished, but the daemon still reports another folder.</source>
+      <translation>Перенос выполнен, но демон всё ещё сообщает другой каталог.</translation>
     </message>
     <message>
       <source>&lt;b&gt;transmissionGUI&lt;/b&gt; %1&lt;br/&gt;GUI client for the Transmission daemon (C++/Qt 6).&lt;br/&gt;&lt;br/&gt;License: GPL v3&lt;br/&gt;Mail: &lt;a href="mailto:don10077@mail.ru"&gt;don10077@mail.ru&lt;/a&gt;</source>
@@ -1572,6 +1631,10 @@ Download this database now?</source>
       <location filename="../app/src/mainwindow.cpp" line="1948" />
       <source>Applying daemon options…</source>
       <translation>Применение параметров демона…</translation>
+    </message>
+    <message>
+      <source>No changes to apply.</source>
+      <translation>Нет изменений для применения.</translation>
     </message>
     <message>
       <location filename="../app/src/mainwindow.cpp" line="1896" />

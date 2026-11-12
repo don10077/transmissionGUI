@@ -419,10 +419,46 @@ bool parseSessionInfo(const QJsonObject& j, SessionInfo& out)
     out.startAddedTorrents = j.contains("start-added-torrents")
                                  ? j.value("start-added-torrents").toBool()
                                  : true;
-    out.queueEnabled = j.value("queue-enabled").toBool();
-    out.queueSize = j.value("queue-size").toInt();
-    out.ratioLimit = j.value("ratio-limit").toDouble();
-    out.ratioLimitEnabled = j.value("ratio-limit-enabled").toBool();
+    // Очереди: новые имена download-queue-*, старые queue-* оставлены для совместимости.
+    out.downloadQueueEnabled = j.value("download-queue-enabled")
+                                   .toBool(j.value("queue-enabled").toBool());
+    out.downloadQueueSize = j.value("download-queue-size").toInt(j.value("queue-size").toInt());
+    out.seedQueueEnabled = j.value("seed-queue-enabled").toBool();
+    out.seedQueueSize = j.value("seed-queue-size").toInt();
+    out.queueStalledEnabled = j.value("queue-stalled-enabled").toBool();
+    out.queueStalledMinutes = j.value("queue-stalled-minutes").toInt();
+    out.queueEnabled = out.downloadQueueEnabled;
+    out.queueSize = out.downloadQueueSize;
+    // Неоконченные загрузки и .part.
+    out.incompleteDir = j.value("incomplete-dir").toString();
+    out.incompleteDirEnabled = j.value("incomplete-dir-enabled").toBool();
+    out.renamePartialFiles = j.value("rename-partial-files").toBool();
+    // Простой раздачи.
+    out.idleSeedingLimitEnabled = j.value("idle-seeding-limit-enabled").toBool();
+    out.idleSeedingLimit = j.value("idle-seeding-limit").toInt();
+    // Пиры, шифрование, порты.
+    out.encryption = j.value("encryption").toString();
+    if (out.encryption == QLatin1String("allowed"))
+        out.encryption = QStringLiteral("tolerated"); // имя legacy-диалекта
+    out.peerLimitGlobal = j.value("peer-limit-global").toInt();
+    out.peerLimitPerTorrent = j.value("peer-limit-per-torrent").toInt();
+    out.portForwardingEnabled = j.value("port-forwarding-enabled").toBool();
+    out.peerPortRandomOnStart = j.value("peer-port-random-on-start").toBool();
+    out.peerPortRandomLow = j.value("peer-port-random-low").toInt();
+    out.peerPortRandomHigh = j.value("peer-port-random-high").toInt();
+    // Кеш: показываем только если демон вернул поле.
+    out.hasCacheSize = j.contains("cache-size-mb");
+    out.cacheSizeMb = j.value("cache-size-mb").toInt();
+    // Ratio: legacy RPC отдаёт seedRatioLimit/seedRatioLimited,
+    // современный — ratio-limit/ratio-limit-enabled (после нормализации).
+    if (j.contains("ratio-limit"))
+        out.ratioLimit = j.value("ratio-limit").toDouble();
+    else
+        out.ratioLimit = j.value("seedRatioLimit").toDouble();
+    if (j.contains("ratio-limit-enabled"))
+        out.ratioLimitEnabled = j.value("ratio-limit-enabled").toBool();
+    else
+        out.ratioLimitEnabled = j.value("seedRatioLimited").toBool();
     out.raw = j;
     return true;
 }

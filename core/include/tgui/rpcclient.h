@@ -73,8 +73,11 @@ public:
     // --- Действия с торрентами ---
     void startTorrent(int id, bool force = false); // torrent-start / torrent-start-now
     void stopTorrent(int id);
-    void startAll(bool force = false);              // без ids — все торренты
-    void stopAll();
+    /** Отправляет одну команду для указанных торрентов. Пустой выбор пропускается. */
+    void torrentAction(const QString& method, const QVector<int>& ids,
+                       const QJsonObject& params = {}, RequestCallback callback = {});
+    void startAll(bool force = false, RequestCallback callback = {}); // без ids — все торренты
+    void stopAll(RequestCallback callback = {});
     void removeTorrent(int id, bool deleteLocalData = false, RequestCallback callback = {});
     void reannounce(int id);
     void verify(int id);
@@ -85,8 +88,11 @@ public:
     void queueMoveBottom(int id);
     void setStarted(int id, bool started);
     void setSequential(int id, bool enabled); // sequential_download, требует rpc >= 18
-    void renamePath(int id, const QString& path, const QString& newName); // torrent-rename-path, требует rpc >= 15
+    void renamePath(int id, const QString& path, const QString& newName, RequestCallback callback = {});
     void setLocation(int id, const QString& path, bool moveData);
+    // Пакетный перенос: один torrent-set-location для всех ID (RPC ≥ 6).
+    void setLocation(const QVector<int>& ids, const QString& path, bool moveData,
+                     RequestCallback callback = {});
     void setTorrent(int id, const QJsonObject& params); // общий torrent-set
     void setLabels(int id, const QStringList& labels);  // требует rpc >= 16
     /** Заменяет имя метки у торрентов текущего демона, сохраняя их остальные метки. */
@@ -94,11 +100,11 @@ public:
     void setPriority(int id, int priority);             // -1 / 0 / 1 (весь торрент)
     void setFilesWanted(int id, const QVector<int>& wanted, const QVector<int>& unwanted, RequestCallback callback = {});
     // Per-file приоритет (legacy): files-wanted + priority-{low|normal|high}.
-    void setFilePriority(int id, const QVector<int>& files, int priority); // -1 / 0 / +1
+    void setFilePriority(int id, const QVector<int>& files, int priority, RequestCallback callback = {});
     // Трекеры (legacy): trackerAdd / trackerRemove / trackerReplace; требует RPC >= 10.
-    void addTracker(int id, const QString& url);
-    void removeTracker(int id, int trackerId);
-    void replaceTracker(int id, int trackerId, const QString& newUrl);
+    void addTracker(int id, const QString& url, RequestCallback callback = {});
+    void removeTracker(int id, int trackerId, RequestCallback callback = {});
+    void replaceTracker(int id, int trackerId, const QString& newUrl, RequestCallback callback = {});
     void addTorrent(const AddTorrent& params, AddCallback callback = {});
     void updateDuplicateTrackers(int id, const QString& magnet, const QByteArray& metainfo,
                                  TrackerUpdateCallback callback, const QString& expectedHash = {});
@@ -137,11 +143,17 @@ private:
     void request(const QString& method, const QJsonObject& arguments);
     void requestReport(const QString& method, const QJsonObject& arguments,
                        RequestCallback callback = {});
+    void reportResult(const QString& method, const JsonRpcResult& result,
+                      const RequestCallback& callback);
     void applyRequests(QList<QPair<QString, QJsonObject>> requests, RequestCallback callback);
     void torrentIds(QJsonObject& args, int id) const;
     static QString describeError(const JsonRpcResult& r);
 
     JsonRpcClient m_rpc;
+    quint64 m_readSequence = 0;
+    quint64 m_listApplied = 0;
+    quint64 m_filesApplied = 0;
+    quint64 m_trackersApplied = 0;
     Options m_options;
     bool m_connected = false;
     int m_rpcVersion = 0;

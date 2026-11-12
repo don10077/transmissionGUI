@@ -152,6 +152,7 @@ protected:
     void changeEvent(QEvent* event) override;
 
 private:
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void createUi();
     void createActions();
     void createMenus();
@@ -165,7 +166,14 @@ private:
     // папка → открыть; по строке списка торрентов → открыть его файл/папку.
     void onFilesDoubleClicked(int row);
     void onTorrentsDoubleClicked();
+    // Открыть объект торрента по списку файлов (аналог OpenCurrentTorrent).
+    // containingFolder — открыть каталог, содержащий файл/папку торрента.
+    void openTorrentObject(int id, bool containingFolder);
     void openLocalPath(const QString& path, bool selectFile);
+    QString mappedLocalPath(const QString& remotePath) const;
+    const tgui::Torrent* torrentById(int id) const;
+    // Проверка подтверждённого torrent-set-location: демон должен сообщить новый путь.
+    void checkPendingMove();
     void setConnectedUi(bool connected);
     void setConnectionState(const QString& text, const QColor& color);
     void updateStatusBarTotals();
@@ -186,6 +194,13 @@ private:
                               const QJsonObject& duplicate, const QByteArray& metainfo);
     void finishAdd();
     QVector<int> selectedTorrentIds() const;
+    enum class RefreshAfter { List, Files, Trackers, Properties };
+    tgui::RpcClient::RequestCallback afterTorrentChange(const QString& method,
+                                                        RefreshAfter refresh, int id = -1,
+                                                        const QString& successMessage = {});
+    void runTorrentAction(const QString& method, const QVector<int>& ids,
+                          const QJsonObject& params = {});
+    void showProperties(int id, int page);
     static void loadSettings(tgui::RpcClient::Options& opts);
     static void saveSettings(const tgui::RpcClient::Options& opts);
 
@@ -207,6 +222,11 @@ private:
     TrackerListModel m_trackerModel;
     tgui::GeoIpDb m_geoip; // GeoIP Country Edition (W11b)
     QTimer m_refreshTimer;
+    // Ожидание подтверждённого нового downloadDir после переноса.
+    QVector<int> m_movePendingIds;
+    QString m_movePendingTarget;
+    int m_moveVerifyAttempts = 0;
+    QTimer m_moveVerifyTimer;
 
     QTabWidget* m_tabs = nullptr;
     PropsForm* m_general = nullptr;
@@ -215,6 +235,7 @@ private:
     QTreeView* m_view = nullptr;
     QTreeView* m_filesView = nullptr;
     QTableView* m_peersView = nullptr;
+    QTableView* m_trackersView = nullptr;
     FileTreeModel* m_fileTree = nullptr;
     QToolBar* m_toolBar = nullptr;
     // Кнопка подключения-дропдаун (аналог OLD tbConnect, tbsDropDown).

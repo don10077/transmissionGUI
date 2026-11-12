@@ -215,6 +215,54 @@ TEST_F(JsonRpcTest, ArgumentsPassed)
     EXPECT_EQ(req.arguments.value("path").toString(), "/downloads");
 }
 
+TEST_F(JsonRpcTest, LegacySessionSetUsesSeedRatioKeys)
+{
+    tgui::JsonRpcClient client(server.url());
+    const tgui::JsonRpcResult r = client.callSync(
+        "session-set",
+        {{"ratio-limit", 2.5}, {"ratio-limit-enabled", true}, {"download-queue-size", 4}},
+        std::chrono::seconds(5));
+    ASSERT_TRUE(r.ok) << r.error;
+
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "session-set");
+    EXPECT_EQ(req.arguments.value("seedRatioLimit").toDouble(), 2.5);
+    EXPECT_TRUE(req.arguments.value("seedRatioLimited").toBool());
+    EXPECT_EQ(req.arguments.value("download-queue-size").toInt(), 4);
+    EXPECT_FALSE(req.arguments.contains("ratio-limit"));
+}
+
+TEST_F(JsonRpcTest, ModernSessionSetUsesModernKeys)
+{
+    server.enqueue({200, R"({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid Request"}})", {}});
+    server.enqueue({200, R"({"jsonrpc":"2.0","id":1,"result":{"rpc_version":19}})", {}});
+    server.enqueue({200, R"({"jsonrpc":"2.0","id":2,"result":{}})", {}});
+
+    tgui::JsonRpcClient client(server.url());
+    ASSERT_TRUE(client.callSync("session-get", {}, std::chrono::seconds(5)).ok);
+    const tgui::JsonRpcResult r = client.callSync(
+        "session-set",
+        {{"ratio-limit", 2.5},
+         {"ratio-limit-enabled", true},
+         {"download-queue-size", 4},
+         {"incomplete-dir", "/inc"},
+         {"cache-size-mb", 64},
+         {"encryption", "tolerated"}},
+        std::chrono::seconds(5));
+    ASSERT_TRUE(r.ok) << r.error;
+
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "session_set");
+    const auto params = req.json.value("params").toObject();
+    EXPECT_EQ(params.value("seed_ratio_limit").toDouble(), 2.5);
+    EXPECT_TRUE(params.value("seed_ratio_limited").toBool());
+    EXPECT_EQ(params.value("download_queue_size").toInt(), 4);
+    EXPECT_EQ(params.value("incomplete_dir").toString(), "/inc");
+    EXPECT_EQ(params.value("cache_size_mib").toInt(), 64);
+    EXPECT_EQ(params.value("encryption").toString(), "allowed");
+    EXPECT_FALSE(params.contains("ratio_limit"));
+}
+
 TEST_F(JsonRpcTest, MovedPermanentRedirectToWeb)
 {
     // 301: Location «/web/» → путь обрезается до «/» + «rpc».

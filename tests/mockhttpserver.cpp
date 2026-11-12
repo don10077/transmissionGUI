@@ -3,6 +3,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTcpSocket>
+#include <QPointer>
+#include <QTimer>
 
 MockRpcServer::MockRpcServer(QObject* parent)
     : QTcpServer(parent)
@@ -173,7 +175,14 @@ void MockRpcServer::dispatch(QTcpSocket* socket,
     if (!have)
         response = Response{500, "{\"result\": \"failure\", \"error\": \"no response queued\"}", {}};
 
-    sendResponse(socket, response.code, response.body, response.headers);
+    if (response.delayMs > 0) {
+        QTimer::singleShot(response.delayMs, this, [this, socket = QPointer(socket), response] {
+            if (socket)
+                sendResponse(socket, response.code, response.body, response.headers);
+        });
+    } else {
+        sendResponse(socket, response.code, response.body, response.headers);
+    }
 }
 
 void MockRpcServer::sendResponse(QTcpSocket* socket, int code, const QByteArray& body,

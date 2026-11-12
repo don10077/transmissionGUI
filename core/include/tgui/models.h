@@ -177,8 +177,34 @@ struct SessionInfo {
     bool utpEnabled = false;
     int peerPort = 0;
     bool startAddedTorrents = true;
+    // Очереди (RPC >= 14).
+    bool downloadQueueEnabled = false;
+    int downloadQueueSize = 0;
+    bool seedQueueEnabled = false;
+    int seedQueueSize = 0;
+    bool queueStalledEnabled = false;
+    int queueStalledMinutes = 0;
+    // Совместимость: старые поля обозначают очередь загрузки.
     bool queueEnabled = false;
     int queueSize = 0;
+    // Неоконченные загрузки (RPC >= 7/8).
+    QString incompleteDir;
+    bool incompleteDirEnabled = false;
+    bool renamePartialFiles = false;
+    // Простой раздачи (RPC >= 10).
+    bool idleSeedingLimitEnabled = false;
+    int idleSeedingLimit = 0; // минуты
+    // Пиры, шифрование и порты.
+    QString encryption; // "required" | "preferred" | "tolerated"
+    int peerLimitGlobal = 0;
+    int peerLimitPerTorrent = 0;
+    bool portForwardingEnabled = false;
+    bool peerPortRandomOnStart = false;
+    int peerPortRandomLow = 0;
+    int peerPortRandomHigh = 0;
+    // Кеш (RPC >= 10; отсутствует у части сборок демона).
+    int cacheSizeMb = 0;
+    bool hasCacheSize = false;
     double ratioLimit = 0.0;
     bool ratioLimitEnabled = false;
 

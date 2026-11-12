@@ -96,12 +96,19 @@ void RpcClient::requestReport(const QString& method, const QJsonObject& argument
             if (!callback)
                 return;
         }
-        if (callback) {
-            callback(r);
-            return;
-        }
-        emit requestCompleted(method, r.ok, r.ok ? QString() : describeError(r), r.arguments);
+        reportResult(method, r, callback);
     });
+}
+
+/** Передаёт результат либо вызывающему обработчику, либо обычному сигналу RPC. */
+void RpcClient::reportResult(const QString& method, const JsonRpcResult& result,
+                             const RequestCallback& callback)
+{
+    if (callback)
+        callback(result);
+    else
+        emit requestCompleted(method, result.ok, result.ok ? QString() : describeError(result),
+                              result.arguments);
 }
 
 void RpcClient::torrentIds(QJsonObject& args, int id) const
@@ -161,7 +168,10 @@ void RpcClient::getTorrents(const QStringList& extraFields)
     if (m_rpcVersion >= 16)
         args.insert("format", "table");
 
-    m_rpc.call("torrent-get", args, [this](const JsonRpcResult& r) {
+    const auto sequence = ++m_readSequence;
+    m_rpc.call("torrent-get", args, [this, sequence](const JsonRpcResult& r) {
+        if (sequence < m_listApplied)
+            return;
         if (!r.ok) {
             emit readError("torrent-get", describeError(r));
             return;
@@ -172,6 +182,7 @@ void RpcClient::getTorrents(const QStringList& extraFields)
             torrents = parseTorrentsTable(r.arguments); // format=table
         else
             torrents = parseTorrents(arr);
+        m_listApplied = sequence;
         emit torrentsReceived(torrents);
     });
 }
@@ -188,7 +199,10 @@ void RpcClient::getTorrentDetails(int id, DetailsCallback callback)
     if (m_rpcVersion >= 16)
         args.insert("format", "table");
 
-    m_rpc.call("torrent-get", args, [this, id, callback = std::move(callback)](const JsonRpcResult& r) {
+    const auto sequence = ++m_readSequence;
+    m_rpc.call("torrent-get", args, [this, id, callback = std::move(callback), sequence](const JsonRpcResult& r) {
+        if (!callback && sequence < m_filesApplied)
+            return;
         if (!r.ok) {
             emit readError("torrent-get", describeError(r));
             if (callback)
@@ -229,8 +243,10 @@ void RpcClient::getTorrentDetails(int id, DetailsCallback callback)
                            details.pieceCount);
         if (callback)
             callback(details);
-        else
+        else {
+            m_filesApplied = sequence;
             emit torrentDetailsReceived(details);
+        }
     });
 }
 
@@ -262,7 +278,10 @@ void RpcClient::getTrackers(int id)
     args.insert("fields",
                 toJsonArray({"id", "trackers", "trackerStats", "nextAnnounceTime"}));
 
-    m_rpc.call("torrent-get", args, [this, id](const JsonRpcResult& r) {
+    const auto sequence = ++m_readSequence;
+    m_rpc.call("torrent-get", args, [this, id, sequence](const JsonRpcResult& r) {
+        if (sequence < m_trackersApplied)
+            return;
         if (!r.ok) {
             emit readError("torrent-get", describeError(r));
             return;
@@ -272,6 +291,7 @@ void RpcClient::getTrackers(int id)
         if (!arr.isEmpty() && arr.first().isObject())
             trackers = parseTrackerStats(
                 arr.first().toObject().value("trackerStats").toArray());
+        m_trackersApplied = sequence;
         emit trackersReceived(id, trackers);
     });
 }
@@ -323,15 +343,28 @@ void RpcClient::stopTorrent(int id)
     requestReport("torrent-stop", args);
 }
 
-void RpcClient::startAll(bool force)
+void RpcClient::torrentAction(const QString& method, const QVector<int>& ids,
+                              const QJsonObject& params, RequestCallback callback)
 {
-    // Без ids → все торренты.
-    requestReport(force ? "torrent-start-now" : "torrent-start", QJsonObject{});
+    if (ids.isEmpty())
+        return;
+    QJsonArray torrentIds;
+    for (const int id : ids)
+        torrentIds.append(id);
+    auto args = params;
+    args.insert("ids", torrentIds);
+    requestReport(method, args, std::move(callback));
 }
 
-void RpcClient::stopAll()
+void RpcClient::startAll(bool force, RequestCallback callback)
 {
-    requestReport("torrent-stop", QJsonObject{});
+    // Без ids → все торренты.
+    requestReport(force ? "torrent-start-now" : "torrent-start", QJsonObject{}, std::move(callback));
+}
+
+void RpcClient::stopAll(RequestCallback callback)
+{
+    requestReport("torrent-stop", QJsonObject{}, std::move(callback));
 }
 
 void RpcClient::removeTorrent(int id, bool deleteLocalData, RequestCallback callback)
@@ -408,31 +441,44 @@ void RpcClient::setSequential(int id, bool enabled)
     requestReport("torrent-set", args);
 }
 
-void RpcClient::renamePath(int id, const QString& path, const QString& newName)
+void RpcClient::renamePath(int id, const QString& path, const QString& newName, RequestCallback callback)
 {
     // torrent-rename-path доступен с RPC 15 (Transmission 2.84+).
     if (!supports(15)) {
-        emit requestCompleted("torrent-rename-path", false,
-                              QStringLiteral("rename path requires Transmission RPC version 15 or newer"),
-                              QJsonObject{});
+        JsonRpcResult result;
+        result.error = QStringLiteral("rename path requires Transmission RPC version 15 or newer");
+        reportResult("torrent-rename-path", result, callback);
         return;
     }
     QJsonObject args;
     torrentIds(args, id);
     args.insert("path", path);
     args.insert("name", newName);
-    requestReport("torrent-rename-path", args);
+    requestReport("torrent-rename-path", args, std::move(callback));
 }
 
 void RpcClient::setLocation(int id, const QString& path, bool moveData)
 {
+    setLocation(QVector<int>{id}, path, moveData);
+}
+
+void RpcClient::setLocation(const QVector<int>& ids, const QString& path, bool moveData,
+                            RequestCallback callback)
+{
     if (!supports(6)) {
-        emit requestCompleted("torrent-set-location", false, QStringLiteral("RPC 6 or newer is required."), {});
+        const QString error = QStringLiteral("RPC 6 or newer is required.");
+        if (callback) {
+            JsonRpcResult result;
+            result.ok = false;
+            result.error = error;
+            callback(result);
+        } else {
+            emit requestCompleted("torrent-set-location", false, error, {});
+        }
         return;
     }
-    QJsonObject args{{"location", path}, {"move", moveData}};
-    torrentIds(args, id);
-    requestReport("torrent-set-location", args);
+    torrentAction("torrent-set-location", ids,
+                  QJsonObject{{"location", path}, {"move", moveData}}, std::move(callback));
 }
 
 void RpcClient::setTorrent(int id, const QJsonObject& params)
@@ -539,15 +585,14 @@ void RpcClient::setFilesWanted(int id, const QVector<int>& wanted, const QVector
     requestReport("torrent-set", args, std::move(callback));
 }
 
-void RpcClient::setFilePriority(int id, const QVector<int>& files, int priority)
+void RpcClient::setFilePriority(int id, const QVector<int>& files, int priority, RequestCallback callback)
 {
     // Per-file приоритет (legacy-протокол): files-wanted + priority-{low|normal|high}
     // (массив индексов файлов). Гейт как в образце — RPC >= 5.
     if (!supports(5)) {
-        emit requestCompleted(
-            "torrent-set", false,
-            QStringLiteral("file priority requires Transmission RPC version 5 or newer"),
-            QJsonObject{});
+        JsonRpcResult result;
+        result.error = QStringLiteral("file priority requires Transmission RPC version 5 or newer");
+        reportResult("torrent-set", result, callback);
         return;
     }
     if (files.isEmpty())
@@ -562,17 +607,16 @@ void RpcClient::setFilePriority(int id, const QVector<int>& files, int priority)
                         : priority > 0 ? QStringLiteral("priority-high")
                                       : QStringLiteral("priority-normal");
     args.insert(key, f);
-    requestReport("torrent-set", args);
+    requestReport("torrent-set", args, std::move(callback));
 }
 
-void RpcClient::addTracker(int id, const QString& url)
+void RpcClient::addTracker(int id, const QString& url, RequestCallback callback)
 {
     // Трекеры требуют RPC >= 10 (как в образце).
     if (!supports(10)) {
-        emit requestCompleted(
-            "torrent-set", false,
-            QStringLiteral("tracker management requires Transmission RPC version 10 or newer"),
-            QJsonObject{});
+        JsonRpcResult result;
+        result.error = QStringLiteral("tracker management requires Transmission RPC version 10 or newer");
+        reportResult("torrent-set", result, callback);
         return;
     }
     if (url.trimmed().isEmpty())
@@ -582,16 +626,15 @@ void RpcClient::addTracker(int id, const QString& url)
     QJsonArray a;
     a.append(url);
     args.insert("trackerAdd", a);
-    requestReport("torrent-set", args);
+    requestReport("torrent-set", args, std::move(callback));
 }
 
-void RpcClient::removeTracker(int id, int trackerId)
+void RpcClient::removeTracker(int id, int trackerId, RequestCallback callback)
 {
     if (!supports(10)) {
-        emit requestCompleted(
-            "torrent-set", false,
-            QStringLiteral("tracker management requires Transmission RPC version 10 or newer"),
-            QJsonObject{});
+        JsonRpcResult result;
+        result.error = QStringLiteral("tracker management requires Transmission RPC version 10 or newer");
+        reportResult("torrent-set", result, callback);
         return;
     }
     QJsonObject args;
@@ -599,16 +642,15 @@ void RpcClient::removeTracker(int id, int trackerId)
     QJsonArray a;
     a.append(trackerId);
     args.insert("trackerRemove", a);
-    requestReport("torrent-set", args);
+    requestReport("torrent-set", args, std::move(callback));
 }
 
-void RpcClient::replaceTracker(int id, int trackerId, const QString& newUrl)
+void RpcClient::replaceTracker(int id, int trackerId, const QString& newUrl, RequestCallback callback)
 {
     if (!supports(10)) {
-        emit requestCompleted(
-            "torrent-set", false,
-            QStringLiteral("tracker management requires Transmission RPC version 10 or newer"),
-            QJsonObject{});
+        JsonRpcResult result;
+        result.error = QStringLiteral("tracker management requires Transmission RPC version 10 or newer");
+        reportResult("torrent-set", result, callback);
         return;
     }
     if (newUrl.trimmed().isEmpty())
@@ -619,7 +661,7 @@ void RpcClient::replaceTracker(int id, int trackerId, const QString& newUrl)
     a.append(trackerId);
     a.append(newUrl);
     args.insert("trackerReplace", a);
-    requestReport("torrent-set", args);
+    requestReport("torrent-set", args, std::move(callback));
 }
 
 void RpcClient::addTorrent(const AddTorrent& params, AddCallback callback)

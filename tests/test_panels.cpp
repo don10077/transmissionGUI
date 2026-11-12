@@ -2,15 +2,20 @@
 // главного окна (грид сверху, вкладки снизу — раскладка по референсу,
 // см. WORKFLOW.md).
 #include <gtest/gtest.h>
+#include <algorithm>
 
 #include <QApplication>
 #include <QToolButton>
 #include <QAction>
 #include <QClipboard>
+#include <QComboBox>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QStatusBar>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QDir>
@@ -838,6 +843,112 @@ TEST(TorrentInteraction, DoubleClickOpensCompletedFileAndFolder)
     EXPECT_EQ(QDir::cleanPath(capture.urls.last().toLocalFile()), directory.filePath("release"));
 }
 
+TEST(TorrentInteraction, DoubleClickUsesFileListForRenamedRoot)
+{
+    QTemporaryDir directory;
+    ASSERT_TRUE(directory.isValid());
+    ASSERT_TRUE(QDir(directory.path()).mkdir("Renamed Root"));
+    for (const QString& name : {QStringLiteral("renamed.mkv"), QStringLiteral("subtitle.srt")}) {
+        QFile file(directory.filePath(QStringLiteral("Renamed Root/") + name));
+        ASSERT_TRUE(file.open(QIODevice::WriteOnly));
+        file.close();
+    }
+
+    LocalOpenCapture capture;
+    QDesktopServices::setUrlHandler("file", &capture, "open");
+    struct ResetHandler { ~ResetHandler() { QDesktopServices::unsetUrlHandler("file"); } } reset;
+    QCoreApplication::setOrganizationName("tgui-test");
+    QCoreApplication::setApplicationName("tgui-test");
+    QSettings settings;
+    const QVariant oldProfile = settings.value("daemons/current");
+    settings.remove("daemons/current");
+    const QVariant oldMappings = settings.value("paths/mappings");
+    settings.setValue("paths/mappings", QStringList{});
+
+    MockRpcServer server;
+    ASSERT_NE(server.start(), 0);
+    const QString body = QStringLiteral(
+        R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","torrents":[{"id":300,"name":"Renamed Root","downloadDir":"%1","status":0,"sizeWhenDone":1024,"leftUntilDone":0,"files":[{"name":"Renamed Root/renamed.mkv","length":1024,"completed":1},{"name":"Renamed Root/subtitle.srt","length":32,"completed":1}]}]}})")
+        .arg(QString(directory.path()).replace('\\', '/'));
+    server.setDefault({200, body.toUtf8(), {}});
+
+    MainWindow window;
+    RpcClient::Options options;
+    options.url = server.url();
+    window.setAutoConnect(options);
+    ASSERT_TRUE(waitForSettings([&] { return window.currentId() == 300; }));
+    auto* view = window.torrentView();
+    ASSERT_TRUE(QMetaObject::invokeMethod(view, "doubleClicked", Qt::DirectConnection,
+                Q_ARG(QModelIndex, view->model()->index(0, 0))));
+    ASSERT_TRUE(waitForSettings([&] { return !capture.urls.isEmpty(); }));
+    EXPECT_EQ(QDir::cleanPath(capture.urls.last().toLocalFile()),
+              directory.filePath("Renamed Root"));
+
+    if (oldMappings.isValid())
+        settings.setValue("paths/mappings", oldMappings);
+    else
+        settings.remove("paths/mappings");
+    if (oldProfile.isValid())
+        settings.setValue("daemons/current", oldProfile);
+    else
+        settings.remove("daemons/current");
+}
+
+TEST(DetailTabs, FilesAndTrackersColumnsRestore)
+{
+    QCoreApplication::setOrganizationName("tgui-test");
+    QCoreApplication::setApplicationName("tgui-test");
+    QSettings settings;
+    const QVariant oldProfile = settings.value("daemons/current");
+    settings.remove("daemons/current");
+    const QStringList filesKeys = {
+        QStringLiteral("files/columns/order"), QStringLiteral("files/columns/visible"),
+        QStringLiteral("files/columns/width_0"), QStringLiteral("files/columns/width_1")};
+    const QStringList trackerKeys = {
+        QStringLiteral("trackers/columns/order"), QStringLiteral("trackers/columns/visible"),
+        QStringLiteral("trackers/columns/width_0")};
+    QHash<QString, QVariant> saved;
+    for (const auto& key : filesKeys + trackerKeys) {
+        saved.insert(key, settings.value(key));
+        settings.remove(key);
+    }
+    settings.setValue(QStringLiteral("files/columns/order"),
+                      QStringList{"1", "0", "2", "3", "4", "5"});
+    settings.setValue(QStringLiteral("files/columns/visible"),
+                      QStringList{"1", "1", "1", "1", "1", "1"});
+    settings.setValue(QStringLiteral("files/columns/width_0"), 222);
+    settings.setValue(QStringLiteral("files/columns/width_1"), 333);
+    settings.setValue(QStringLiteral("trackers/columns/order"),
+                      QStringList{"2", "0", "4", "5", "1", "3"});
+    settings.setValue(QStringLiteral("trackers/columns/visible"),
+                      QStringList{"1", "0", "1", "0", "1", "1"});
+    settings.setValue(QStringLiteral("trackers/columns/width_0"), 444);
+
+    MainWindow window;
+    auto* filesView = window.findChild<QTreeView*>(QStringLiteral("filesView"));
+    auto* trackersView = window.findChild<QTableView*>(QStringLiteral("trackersView"));
+    ASSERT_NE(filesView, nullptr);
+    ASSERT_NE(trackersView, nullptr);
+    EXPECT_EQ(filesView->header()->logicalIndex(0), FileTreeModel::Name);
+    EXPECT_EQ(filesView->columnWidth(FileTreeModel::Want), 222);
+    EXPECT_EQ(filesView->columnWidth(FileTreeModel::Name), 333);
+    EXPECT_EQ(trackersView->horizontalHeader()->logicalIndex(0), TrackerListModel::ColSeeders);
+    EXPECT_TRUE(trackersView->isColumnHidden(TrackerListModel::ColTier));
+    EXPECT_TRUE(trackersView->isColumnHidden(TrackerListModel::ColLeechers));
+    EXPECT_EQ(trackersView->columnWidth(TrackerListModel::ColAnnounce), 444);
+
+    for (auto it = saved.constBegin(); it != saved.constEnd(); ++it) {
+        if (it.value().isValid())
+            settings.setValue(it.key(), it.value());
+        else
+            settings.remove(it.key());
+    }
+    if (oldProfile.isValid())
+        settings.setValue("daemons/current", oldProfile);
+    else
+        settings.remove("daemons/current");
+}
+
 TEST(TorrentInteraction, StatusDistinguishesSeedingAndPauseAndSeedQueue)
 {
     EXPECT_EQ(TorrentModel::statusText(6, true), QStringLiteral("Seeding"));
@@ -1076,6 +1187,197 @@ TEST(ToolbarVariantB, LayoutAvailabilityAndSavedStyle)
     EXPECT_EQ(restored.findChild<QToolBar*>("mainToolBar")->toolButtonStyle(),Qt::ToolButtonIconOnly);
     if(previous.isValid())settings.setValue("ui/toolbarButtonStyle",previous);else settings.remove("ui/toolbarButtonStyle");
     if(oldProfile.isValid())settings.setValue("daemons/current",oldProfile);
+}
+
+TEST(TorrentActions, QueueSelectionIsBatchedAndRefreshWaitsForSuccess)
+{
+    QCoreApplication::setOrganizationName("tgui-test");
+    QCoreApplication::setApplicationName("tgui-test");
+    QSettings settings;
+    const auto oldProfile = settings.value("daemons/current");
+    const auto oldAutoRefresh = settings.value("ui/autoRefresh");
+    settings.remove("daemons/current");
+    settings.setValue("ui/autoRefresh", false);
+
+    MockRpcServer server;
+    ASSERT_NE(server.start(), 0);
+    server.setDefault({200, R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","torrents":[
+        {"id":8,"name":"A","queuePosition":1},{"id":9,"name":"B","queuePosition":2},
+        {"id":10,"name":"C","queuePosition":3}]}})", {}});
+    MainWindow window;
+    RpcClient::Options options;
+    options.url = server.url();
+    window.setAutoConnect(options);
+    ASSERT_TRUE(waitForSettings([&] { return window.torrentView()->model()->rowCount() == 3; }));
+    window.torrentView()->selectAll();
+    ASSERT_EQ(window.torrentView()->selectionModel()->selectedRows().size(), 3);
+
+    const auto listReads = [&] {
+        const auto requests = server.requests();
+        return std::count_if(requests.cbegin(), requests.cend(), [](const auto& request) {
+            return request.rpcMethod == "torrent-get" && !request.arguments.contains("ids");
+        });
+    };
+    const auto queueWrites = [&] {
+        QList<MockRpcServer::RecordedRequest> writes;
+        for (const auto& request : server.requests())
+            if (request.rpcMethod.startsWith("queue-move"))
+                writes.append(request);
+        return writes;
+    };
+    // Дожидаемся стартовых запросов, чтобы ответы очереди обслуживали только команды.
+    ASSERT_TRUE(waitForSettings([&] { return server.requestCount() >= 6; }));
+    const auto before = listReads();
+    server.enqueue({200, R"({"result":"success","arguments":{}})", {}, 250});
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onQueueUp", Qt::DirectConnection));
+    ASSERT_TRUE(waitForSettings([&] { return !queueWrites().isEmpty(); }));
+    EXPECT_EQ(listReads(), before);
+    const auto firstWrite = queueWrites().first();
+    EXPECT_EQ(firstWrite.rpcMethod, QStringLiteral("queue-move-up"));
+    const auto ids = firstWrite.arguments.value("ids").toArray();
+    EXPECT_EQ(ids.size(), 3);
+    for (const int id : {8, 9, 10})
+        EXPECT_TRUE(ids.contains(id));
+    ASSERT_TRUE(waitForSettings([&] { return listReads() == before + 1; }));
+    EXPECT_EQ(queueWrites().size(), 1);
+
+    server.enqueue({200, R"({"result":"queue error"})", {}});
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onQueueDown", Qt::DirectConnection));
+    ASSERT_TRUE(waitForSettings([&] { return window.statusBar()->currentMessage().contains("queue error"); }));
+    EXPECT_EQ(queueWrites().size(), 2);
+    EXPECT_EQ(listReads(), before + 1);
+
+    if (oldProfile.isValid()) settings.setValue("daemons/current", oldProfile);
+    else settings.remove("daemons/current");
+    if (oldAutoRefresh.isValid()) settings.setValue("ui/autoRefresh", oldAutoRefresh);
+    else settings.remove("ui/autoRefresh");
+}
+
+TEST(TorrentActions, MoveSendsBatchAndVerifiesNewPath)
+{
+    QCoreApplication::setOrganizationName("tgui-test");
+    QCoreApplication::setApplicationName("tgui-test");
+    QSettings settings;
+    const auto oldProfile = settings.value("daemons/current");
+    const auto oldAutoRefresh = settings.value("ui/autoRefresh");
+    const auto oldMoveDirs = settings.value("paths/moveDirs");
+    settings.remove("daemons/current");
+    settings.setValue("ui/autoRefresh", false);
+    settings.remove("paths/moveDirs");
+
+    MockRpcServer server;
+    ASSERT_NE(server.start(), 0);
+    const auto data = [](const QString& dir) {
+        const QString body = QStringLiteral(
+            R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","torrents":[{"id":8,"name":"A","downloadDir":"%1"},{"id":9,"name":"B","downloadDir":"%1"},{"id":10,"name":"C","downloadDir":"%1"}]}})")
+            .arg(dir);
+        return body.toUtf8();
+    };
+    server.setDefault({200, data(QStringLiteral("/server/old")), {}});
+    MainWindow window;
+    RpcClient::Options options;
+    options.url = server.url();
+    window.setAutoConnect(options);
+    ASSERT_TRUE(waitForSettings([&] { return window.torrentView()->model()->rowCount() == 3; }));
+    window.torrentView()->selectAll();
+    ASSERT_EQ(window.torrentView()->selectionModel()->selectedRows().size(), 3);
+    ASSERT_TRUE(waitForSettings([&] { return server.requestCount() >= 6; }));
+
+    server.setDefault({200, data(QStringLiteral("/server/target")), {}});
+    bool accepted = false;
+    QTimer::singleShot(0, [&] {
+        auto* dialog = qobject_cast<MoveDialog*>(QApplication::activeModalWidget());
+        if (!dialog)
+            return;
+        if (auto* combo = dialog->findChild<QComboBox*>())
+            combo->setCurrentText(QStringLiteral("/server/target"));
+        accepted = true;
+        dialog->accept();
+    });
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onMoveSelected", Qt::DirectConnection));
+    ASSERT_TRUE(accepted);
+
+    const auto moveRequests = [&] {
+        QList<MockRpcServer::RecordedRequest> writes;
+        for (const auto& request : server.requests())
+            if (request.rpcMethod == QLatin1String("torrent-set-location"))
+                writes.append(request);
+        return writes;
+    };
+    ASSERT_TRUE(waitForSettings([&] { return !moveRequests().isEmpty(); }));
+    const auto write = moveRequests().first();
+    EXPECT_EQ(write.arguments.value("location").toString(), QStringLiteral("/server/target"));
+    EXPECT_TRUE(write.arguments.value("move").toBool());
+    const auto ids = write.arguments.value("ids").toArray();
+    ASSERT_EQ(ids.size(), 3);
+    for (const int id : {8, 9, 10})
+        EXPECT_TRUE(ids.contains(id));
+    EXPECT_TRUE(waitForSettings([&] {
+        return window.statusBar()->currentMessage().contains("Move completed");
+    }));
+    EXPECT_EQ(QSettings().value("paths/moveDirs").toStringList().first(),
+              QStringLiteral("/server/target"));
+
+    if (oldProfile.isValid()) settings.setValue("daemons/current", oldProfile);
+    else settings.remove("daemons/current");
+    if (oldAutoRefresh.isValid()) settings.setValue("ui/autoRefresh", oldAutoRefresh);
+    else settings.remove("ui/autoRefresh");
+    if (oldMoveDirs.isValid()) settings.setValue("paths/moveDirs", oldMoveDirs);
+    else settings.remove("paths/moveDirs");
+}
+
+TEST(TorrentActions, ConfirmedRemovalCannotRetargetAnotherDaemon)
+{
+    QCoreApplication::setOrganizationName("tgui-test");
+    QCoreApplication::setApplicationName("tgui-test");
+    QSettings settings;
+    const auto oldProfile = settings.value("daemons/current");
+    settings.remove("daemons/current");
+    MockRpcServer first;
+    MockRpcServer second;
+    ASSERT_NE(first.start(), 0);
+    ASSERT_NE(second.start(), 0);
+    const MockRpcServer::Response data{200,
+        R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","torrents":[{"id":8,"name":"A"},{"id":9,"name":"B"}]}})",
+        {}};
+    first.setDefault(data);
+    second.setDefault(data);
+    MainWindow window;
+    RpcClient::Options options;
+    options.url = first.url();
+    window.setAutoConnect(options);
+    ASSERT_TRUE(waitForSettings([&] { return window.currentId() >= 0; }));
+
+    QVector<tgui::TrackerStat> trackers(1);
+    trackers.first().id = 7;
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onTrackersReceived", Qt::DirectConnection,
+                                         Q_ARG(int, window.currentId()),
+                                         Q_ARG(QVector<tgui::TrackerStat>, trackers)));
+    ASSERT_EQ(window.trackerModel().rowCount(), 1);
+    auto* view = window.torrentView();
+    const auto next = view->model()->index(1, 0);
+    view->selectionModel()->setCurrentIndex(next, QItemSelectionModel::ClearAndSelect |
+                                                 QItemSelectionModel::Rows);
+    EXPECT_EQ(window.trackerModel().rowCount(), 0);
+
+    bool confirmed = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        if (!box)
+            return;
+        EXPECT_TRUE(QMetaObject::invokeMethod(&window, "onDisconnect", Qt::DirectConnection));
+        options.url = second.url();
+        window.setAutoConnect(options);
+        confirmed = true;
+        box->done(QMessageBox::Yes);
+    });
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRemoveWithDataSelected", Qt::DirectConnection));
+    ASSERT_TRUE(confirmed);
+    ASSERT_TRUE(waitForSettings([&] { return window.currentId() >= 0 && second.requestCount() >= 6; }));
+    for (const auto& request : first.requests() + second.requests())
+        EXPECT_NE(request.rpcMethod, QStringLiteral("torrent-remove"));
+    if (oldProfile.isValid()) settings.setValue("daemons/current", oldProfile);
+    else settings.remove("daemons/current");
 }
 
 TEST(W04Context, AltSpeedF8ChooseLabelF7AndContextMenuItems)
