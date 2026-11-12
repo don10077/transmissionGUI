@@ -41,6 +41,8 @@ private:
     QLineEdit* m_user = nullptr;
     QLineEdit* m_pass = nullptr;
     QCheckBox* m_ignoreSsl = nullptr;
+    QLineEdit* m_clientCertificatePath = nullptr;
+    QLineEdit* m_clientKeyPath = nullptr;
     QCheckBox* m_useProxy = nullptr;
     QLineEdit* m_proxyHost = nullptr;
     QSpinBox* m_proxyPort = nullptr;

@@ -9,6 +9,29 @@
 
 namespace tgui {
 
+namespace {
+/** Отделяет временные сетевые ошибки от неверных настроек RPC и ошибок TLS. */
+bool retryableConnectionError(const JsonRpcResult& result)
+{
+    if (result.httpCode == 502 || result.httpCode == 503 || result.httpCode == 504)
+        return true;
+    switch (result.networkError) {
+    case QNetworkReply::ConnectionRefusedError:
+    case QNetworkReply::RemoteHostClosedError:
+    case QNetworkReply::HostNotFoundError:
+    case QNetworkReply::TimeoutError:
+    case QNetworkReply::OperationCanceledError: // Таймаут передачи в Qt.
+    case QNetworkReply::TemporaryNetworkFailureError:
+    case QNetworkReply::NetworkSessionFailedError:
+    case QNetworkReply::ProxyConnectionClosedError:
+    case QNetworkReply::ProxyTimeoutError:
+        return true;
+    default:
+        return false;
+    }
+}
+}
+
 RpcClient::RpcClient(const Options& options, QObject* parent)
     : QObject(parent)
     , m_rpc(options.url, options.rpcPath)
@@ -39,16 +62,82 @@ void RpcClient::disconnectFromDaemon()
     m_sessionInfo = SessionInfo{};
 }
 
+/** Загружает клиентские учётные данные перед отправкой первого HTTPS-запроса. */
+bool RpcClient::configureClientTls()
+{
+    const auto& certPath = m_options.clientCertificatePath;
+    const auto& keyPath = m_options.clientKeyPath;
+    if (certPath.isEmpty() && keyPath.isEmpty())
+        return true;
+    const auto fail = [this](const QString& error) {
+        emit connectionFailed(error);
+        return false;
+    };
+    if (m_options.url.scheme() != QLatin1String("https") || m_options.ignoreSslErrors)
+        return fail(tr("A client certificate requires HTTPS with server certificate verification."));
+
+    const bool pkcs12 = certPath.endsWith(".p12", Qt::CaseInsensitive) ||
+                        certPath.endsWith(".pfx", Qt::CaseInsensitive);
+    if (certPath.isEmpty() || pkcs12 != keyPath.isEmpty())
+        return fail(tr("Choose a certificate and private key, or a single PKCS#12 file."));
+
+    QFile certFile(certPath);
+    if (!certFile.open(QIODevice::ReadOnly))
+        return fail(tr("Could not read the client certificate file: %1").arg(certPath));
+
+    QList<QSslCertificate> chain;
+    QSslKey key;
+    const auto passphrase = m_options.clientKeyPassphrase.value_or(QByteArray());
+    if (pkcs12) {
+        QSslCertificate leaf;
+        if (!QSslCertificate::importPkcs12(&certFile, &key, &leaf, &chain, passphrase) ||
+            leaf.isNull() || key.isNull()) {
+            if (!m_options.clientKeyPassphrase) {
+                emit clientTlsPassphraseRequired();
+                return false;
+            }
+            return fail(tr("Could not open the PKCS#12 file. Check the file and its passphrase."));
+        }
+        chain.prepend(leaf);
+    } else {
+        const auto certificates = certFile.readAll();
+        chain = QSslCertificate::fromData(certificates, QSsl::Pem);
+        if (chain.isEmpty())
+            chain = QSslCertificate::fromData(certificates, QSsl::Der);
+        if (chain.isEmpty())
+            return fail(tr("The client certificate file contains no valid certificate."));
+
+        QFile keyFile(keyPath);
+        if (!keyFile.open(QIODevice::ReadOnly))
+            return fail(tr("Could not read the client private key file: %1").arg(keyPath));
+        const auto keyData = keyFile.readAll();
+        if (!m_options.clientKeyPassphrase &&
+            (keyData.contains("BEGIN ENCRYPTED PRIVATE KEY") || keyData.contains("Proc-Type: 4,ENCRYPTED"))) {
+            emit clientTlsPassphraseRequired();
+            return false;
+        }
+        for (const auto algorithm : {QSsl::Rsa, QSsl::Ec, QSsl::Dsa}) {
+            key = QSslKey(keyData, algorithm, QSsl::Pem, QSsl::PrivateKey, passphrase);
+            if (!key.isNull())
+                break;
+        }
+        if (key.isNull())
+            return fail(tr("Could not load the PEM private key. Check the file and its passphrase."));
+    }
+    m_rpc.setClientIdentity(chain, key);
+    return true;
+}
+
 void RpcClient::connectToDaemon()
 {
     disconnectFromDaemon();
-    m_rpc.call("session-get", QJsonObject{}, [this](const JsonRpcResult& r) {
+    m_connectionProblemReported = false;
+    if (!configureClientTls())
+        return;
+    call("session-get", QJsonObject{}, [this](const JsonRpcResult& r) {
         if (!r.ok) {
-            if (r.httpCode == 401) {
-                emit authenticationFailed(describeError(r));
-                return;
-            }
-            emit connectionFailed(describeError(r));
+            if (!m_connectionProblemReported)
+                emit connectionFailed(describeError(r));
             return;
         }
         if (!parseSessionInfo(r.arguments, m_sessionInfo)) {
@@ -61,8 +150,10 @@ void RpcClient::connectToDaemon()
         auto finish = [this] { emit connected(m_sessionInfo); };
         // При rpc >= 15 → free-space для download-dir.
         if (m_rpcVersion >= 15 && !m_sessionInfo.downloadDir.isEmpty()) {
-            m_rpc.call("free-space", QJsonObject{{"path", m_sessionInfo.downloadDir}},
+            call("free-space", QJsonObject{{"path", m_sessionInfo.downloadDir}},
                        [this, finish](const JsonRpcResult& fs) {
+                           if (m_connectionProblemReported)
+                               return;
                            if (fs.ok)
                                m_sessionInfo.downloadDirFreeSpace = static_cast<qint64>(
                                    fs.arguments.value("size-bytes").toDouble());
@@ -74,28 +165,43 @@ void RpcClient::connectToDaemon()
     });
 }
 
+/** Сообщает о сбое соединения один раз для всех параллельных запросов этого клиента. */
+void RpcClient::call(const QString& method, const QJsonObject& arguments, JsonRpcClient::Callback callback)
+{
+    m_rpc.call(method, arguments, [this, callback = std::move(callback)](const JsonRpcResult& result) {
+        if (!result.ok && !m_connectionProblemReported) {
+            if (result.httpCode == 401) {
+                m_connectionProblemReported = true;
+                m_connected = false;
+                emit authenticationFailed(describeError(result));
+            } else if (retryableConnectionError(result)) {
+                m_connectionProblemReported = true;
+                m_connected = false;
+                emit connectionInterrupted(describeError(result));
+            } else if (m_connected && result.networkError == QNetworkReply::SslHandshakeFailedError) {
+                m_connectionProblemReported = true;
+                m_connected = false;
+                emit connectionFailed(describeError(result));
+            }
+        }
+        callback(result);
+    });
+}
+
 void RpcClient::request(const QString& method, const QJsonObject& arguments)
 {
-    m_rpc.call(method, arguments, [this, method](const JsonRpcResult& r) {
-        if (!r.ok) {
-            if (r.httpCode == 401) {
-                emit authenticationFailed(describeError(r));
-                return;
-            }
+    call(method, arguments, [this, method](const JsonRpcResult& r) {
+        if (!r.ok && r.httpCode != 401)
             emit readError(method, describeError(r));
-        }
     });
 }
 
 void RpcClient::requestReport(const QString& method, const QJsonObject& arguments,
                               RequestCallback callback)
 {
-    m_rpc.call(method, arguments, [this, method, callback = std::move(callback)](const JsonRpcResult& r) {
-        if (!r.ok && r.httpCode == 401) {
-            emit authenticationFailed(describeError(r));
-            if (!callback)
-                return;
-        }
+    call(method, arguments, [this, method, callback = std::move(callback)](const JsonRpcResult& r) {
+        if (!r.ok && r.httpCode == 401 && !callback)
+            return;
         reportResult(method, r, callback);
     });
 }
@@ -169,7 +275,7 @@ void RpcClient::getTorrents(const QStringList& extraFields)
         args.insert("format", "table");
 
     const auto sequence = ++m_readSequence;
-    m_rpc.call("torrent-get", args, [this, sequence](const JsonRpcResult& r) {
+    call("torrent-get", args, [this, sequence](const JsonRpcResult& r) {
         if (sequence < m_listApplied)
             return;
         if (!r.ok) {
@@ -200,7 +306,7 @@ void RpcClient::getTorrentDetails(int id, DetailsCallback callback)
         args.insert("format", "table");
 
     const auto sequence = ++m_readSequence;
-    m_rpc.call("torrent-get", args, [this, id, callback = std::move(callback), sequence](const JsonRpcResult& r) {
+    call("torrent-get", args, [this, id, callback = std::move(callback), sequence](const JsonRpcResult& r) {
         if (!callback && sequence < m_filesApplied)
             return;
         if (!r.ok) {
@@ -257,7 +363,7 @@ void RpcClient::getPeers(int id)
     torrentIds(args, id);
     args.insert("fields", toJsonArray({"peers"}));
 
-    m_rpc.call("torrent-get", args, [this, id](const JsonRpcResult& r) {
+    call("torrent-get", args, [this, id](const JsonRpcResult& r) {
         if (!r.ok) {
             emit readError("torrent-get", describeError(r));
             return;
@@ -279,7 +385,7 @@ void RpcClient::getTrackers(int id)
                 toJsonArray({"id", "trackers", "trackerStats", "nextAnnounceTime"}));
 
     const auto sequence = ++m_readSequence;
-    m_rpc.call("torrent-get", args, [this, id, sequence](const JsonRpcResult& r) {
+    call("torrent-get", args, [this, id, sequence](const JsonRpcResult& r) {
         if (sequence < m_trackersApplied)
             return;
         if (!r.ok) {
@@ -299,7 +405,7 @@ void RpcClient::getTrackers(int id)
 void RpcClient::getSessionStats()
 {
     // session-stats.
-    m_rpc.call("session-stats", QJsonObject{}, [this](const JsonRpcResult& r) {
+    call("session-stats", QJsonObject{}, [this](const JsonRpcResult& r) {
         if (!r.ok) {
             emit readError("session-stats", describeError(r));
             return;
@@ -315,7 +421,7 @@ void RpcClient::getSessionStats()
 
 void RpcClient::getFreeSpace(const QString& path)
 {
-    m_rpc.call("free-space", QJsonObject{{"path", path}}, [this, path](const JsonRpcResult& r) {
+    call("free-space", QJsonObject{{"path", path}}, [this, path](const JsonRpcResult& r) {
         if (!r.ok) {
             emit readError("free-space", describeError(r));
             return;
@@ -944,7 +1050,7 @@ void RpcClient::updateBlocklist()
 namespace tgui {
 void RpcClient::getSession()
 {
-    m_rpc.call("session-get", QJsonObject{}, [this](const JsonRpcResult& result) {
+    call("session-get", QJsonObject{}, [this](const JsonRpcResult& result) {
         SessionInfo info;
         if (!result.ok || !parseSessionInfo(result.arguments, info)) {
             emit readError("session-get", result.ok ? QStringLiteral("Invalid server response.") : describeError(result));

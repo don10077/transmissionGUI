@@ -18,6 +18,8 @@ struct DaemonProfile {
     QString username;
     QString password;
     bool ignoreSslErrors = false;
+    QString clientCertificatePath;
+    QString clientKeyPath;
     // Прокси (HTTP или SOCKS5).
     bool useProxy = false;
     bool useSocks = false;

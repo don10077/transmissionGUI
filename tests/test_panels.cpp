@@ -11,9 +11,11 @@
 #include <QClipboard>
 #include <QComboBox>
 #include <QDropEvent>
+#include <QEventLoop>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMessageBox>
 #include <QMimeData>
 #include <QScopeGuard>
@@ -30,6 +32,8 @@
 #include <QWheelEvent>
 
 #include "mainwindow.h"
+#include "connectdialog.h"
+#include "daemonprofile.h"
 #include "externalopen.h"
 #include "fileselectdialog.h"
 #include "filterpanel.h"
@@ -786,8 +790,10 @@ INSTANTIATE_TEST_SUITE_P(AddSettings, TorrentAddOutcome,
                     AddScenario::SkipAndDelete, AddScenario::Cancel, AddScenario::Duplicate,
                     AddScenario::ChangedSource));
 
-class AutomaticAddSources : public testing::Test {
+class MockDaemonWindow : public testing::Test {
 protected:
+    inline static const MockRpcServer::Response healthy{200,
+        R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","download-dir":"/default","torrents":[]}})", {}};
     void SetUp() override
     {
         for (const QString& key : {QStringLiteral("daemons/current"), QStringLiteral("ui/autoRefresh"),
@@ -799,7 +805,7 @@ protected:
         settings.setValue(OptionsDialog::clipboardLinksKey, false);
         settings.remove(OptionsDialog::watchFolderKey);
         ASSERT_NE(server.start(), 0);
-        server.setDefault({200, R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","download-dir":"/default","torrents":[]}})", {}});
+        server.setDefault(healthy);
     }
 
     void TearDown() override
@@ -832,6 +838,8 @@ protected:
     MockRpcServer server;
     QHash<QString, QVariant> saved;
 };
+
+using AutomaticAddSources = MockDaemonWindow;
 
 TEST_F(AutomaticAddSources, ClipboardOptInAndNormalizesRepeatedLinks)
 {
@@ -947,6 +955,113 @@ TEST_F(AutomaticAddSources, ExternalOpenForwardsUnicodeFileAndMagnetBeforeConnec
     ASSERT_EQ(result.size(), 2);
     EXPECT_EQ(result.first().value("metainfo").toString(), QString::fromLatin1(QByteArray("de").toBase64()));
     EXPECT_EQ(result.last().value("filename").toString(), magnet);
+}
+
+class ConnectionRecovery : public MockDaemonWindow {
+protected:
+    static void processFor(int milliseconds)
+    {
+        QEventLoop loop;
+        QTimer::singleShot(milliseconds, &loop, &QEventLoop::quit);
+        loop.exec();
+    }
+
+    static bool waitingForRetry(MainWindow& window, int seconds)
+    {
+        return window.statusBar()->currentMessage().contains(QString("Retrying in %1 s").arg(seconds));
+    }
+};
+
+TEST_F(ConnectionRecovery, TimeoutAndTransportLossRecoverWithBackoff)
+{
+    auto slow = healthy;
+    slow.delayMs = 400;
+    server.enqueue(slow);
+    server.enqueue({503, "Service temporarily unavailable", {}});
+    RpcClient::Options options;
+    options.url = server.url();
+    options.timeoutMs = 120;
+    MainWindow window(nullptr, options);
+    ASSERT_TRUE(waitForSettings([&] { return waitingForRetry(window, 1); }));
+    ASSERT_TRUE(waitForSettings([&] { return waitingForRetry(window, 2); }));
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow() && server.requestCount() >= 5; }));
+
+    const int before = server.requestCount();
+    server.setDefault({0, {}, {}});
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRefresh", Qt::DirectConnection));
+    ASSERT_TRUE(waitForSettings([&] { return waitingForRetry(window, 1); }));
+    EXPECT_FALSE(window.isConnectedNow());
+    EXPECT_GT(server.requestCount(), before);
+    server.setDefault(healthy);
+    EXPECT_TRUE(waitForSettings([&] { return window.isConnectedNow(); }));
+}
+
+TEST_F(ConnectionRecovery, DisconnectAndProfileSwitchCancelPendingRetry)
+{
+    server.setDefault({503, "Service temporarily unavailable", {}});
+    RpcClient::Options options;
+    options.url = server.url();
+    MainWindow window(nullptr, options);
+    auto* disconnect = window.findChild<QAction*>("disconnectAction");
+    ASSERT_NE(disconnect, nullptr);
+    ASSERT_TRUE(waitForSettings([&] { return waitingForRetry(window, 1); }));
+    ASSERT_TRUE(disconnect->isEnabled());
+    disconnect->trigger();
+    const int before = server.requestCount();
+    processFor(1200);
+    EXPECT_EQ(server.requestCount(), before);
+    EXPECT_FALSE(disconnect->isEnabled());
+
+    window.setAutoConnect(options);
+    ASSERT_TRUE(waitForSettings([&] { return waitingForRetry(window, 1); }));
+    MockRpcServer second;
+    ASSERT_NE(second.start(), 0);
+    second.setDefault(healthy);
+    ProfileStore profiles;
+    DaemonProfile target;
+    target.name = QStringLiteral("recovery-target");
+    target.host = second.url().host();
+    target.port = second.url().port();
+    profiles.add(target.name);
+    profiles.save(target);
+    const auto cleanup = qScopeGuard([&] { profiles.remove(target.name); });
+    auto* connectButton = window.findChild<QToolButton*>("connectButton");
+    ASSERT_NE(connectButton, nullptr);
+    auto* menu = connectButton->menu();
+    ASSERT_NE(menu, nullptr);
+    ASSERT_TRUE(QMetaObject::invokeMethod(menu, "aboutToShow", Qt::DirectConnection));
+    const auto actions = menu->actions();
+    const auto targetAction = std::find_if(actions.cbegin(), actions.cend(),
+        [&](const auto* action) { return action->text() == target.name; });
+    ASSERT_NE(targetAction, actions.cend());
+    (*targetAction)->trigger();
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow() && second.requestCount() >= 3; }));
+    const int beforeSwitchRetry = server.requestCount();
+    processFor(1200);
+    EXPECT_EQ(server.requestCount(), beforeSwitchRetry);
+    EXPECT_TRUE(window.isConnectedNow());
+}
+
+TEST_F(ConnectionRecovery, Parallel401ShowsOnePromptAndCancelStops)
+{
+    MainWindow window;
+    ASSERT_NO_FATAL_FAILURE(connectWindow(window));
+    const int before = server.requestCount();
+    server.requireAuthorization("Basic dGVzdDp0ZXN0");
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRefresh", Qt::DirectConnection));
+    ASSERT_TRUE(waitForSettings([&] {
+        return window.findChild<ConnectDialog*>() && server.requestCount() >= before + 2;
+    }));
+    processFor(50);
+    const auto dialogs = window.findChildren<ConnectDialog*>();
+    ASSERT_EQ(dialogs.size(), 1);
+    EXPECT_FALSE(window.isConnectedNow());
+    dialogs.first()->reject();
+    const int requests = server.requestCount();
+    processFor(1200);
+    EXPECT_EQ(server.requestCount(), requests);
+    EXPECT_FALSE(window.isConnectedNow());
+    EXPECT_TRUE(window.findChildren<ConnectDialog*>().isEmpty());
 }
 
 TEST(SettingsFixes, CompletionNotificationIsTransitionAndPreferenceGated)
@@ -1461,7 +1576,6 @@ TEST(AutoSequential, MetadataFileCountManualOverrideAndCapabilities)
 
 
 #include <QToolBar>
-#include <QMenu>
 #include <QTranslator>
 
 TEST(ToolbarVariantB, LayoutAvailabilityAndSavedStyle)

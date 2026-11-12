@@ -24,6 +24,10 @@ tgui::RpcClient::Options DaemonProfile::toOptions() const
     o.username = username;
     o.password = password;
     o.ignoreSslErrors = ignoreSslErrors;
+    if (useSsl) {
+        o.clientCertificatePath = clientCertificatePath;
+        o.clientKeyPath = clientKeyPath;
+    }
     if (useProxy && !proxyHost.isEmpty()) {
         o.proxy = useSocks
                       ? QNetworkProxy(QNetworkProxy::Socks5Proxy, proxyHost, proxyPort, proxyUser, proxyPass)
@@ -78,6 +82,8 @@ DaemonProfile ProfileStore::profile(const QString& name) const
     p.username = s.value(base + "/username").toString();
     p.password = s.value(base + "/password").toString();
     p.ignoreSslErrors = s.value(base + "/ignoreSsl", false).toBool();
+    p.clientCertificatePath = s.value(base + "/clientCertificatePath").toString();
+    p.clientKeyPath = s.value(base + "/clientKeyPath").toString();
     p.useProxy = s.value(base + "/useProxy", false).toBool();
     p.useSocks = s.value(base + "/useSocks", false).toBool();
     p.proxyHost = s.value(base + "/proxyHost").toString();
@@ -98,6 +104,8 @@ void ProfileStore::save(const DaemonProfile& p)
     s.setValue(base + "/username", p.username);
     s.setValue(base + "/password", p.password);
     s.setValue(base + "/ignoreSsl", p.ignoreSslErrors);
+    s.setValue(base + "/clientCertificatePath", p.clientCertificatePath);
+    s.setValue(base + "/clientKeyPath", p.clientKeyPath);
     s.setValue(base + "/useProxy", p.useProxy);
     s.setValue(base + "/useSocks", p.useSocks);
     s.setValue(base + "/proxyHost", p.proxyHost);

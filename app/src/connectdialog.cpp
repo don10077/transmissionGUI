@@ -7,6 +7,7 @@
 
 ConnectDialog::ConnectDialog(const tgui::RpcClient::Options& initial, QWidget* parent)
     : QDialog(parent)
+    , m_initial(initial)
 {
     setWindowTitle(tr("Connect to daemon"));
 
@@ -19,6 +20,10 @@ ConnectDialog::ConnectDialog(const tgui::RpcClient::Options& initial, QWidget* p
     m_pass->setEchoMode(QLineEdit::Password);
     m_ignoreSsl = new QCheckBox(tr("Ignore certificate errors"), this);
     m_ignoreSsl->setChecked(initial.ignoreSslErrors);
+    if (!initial.clientCertificatePath.isEmpty()) {
+        m_url->setReadOnly(true);
+        m_ignoreSsl->setEnabled(false);
+    }
 
     auto* form = new QFormLayout(this);
     form->addRow(tr("Address"), m_url);
@@ -38,12 +43,11 @@ ConnectDialog::ConnectDialog(const tgui::RpcClient::Options& initial, QWidget* p
 
 tgui::RpcClient::Options ConnectDialog::options() const
 {
-    tgui::RpcClient::Options opts;
+    auto opts = m_initial;
     QString url = m_url->text().trimmed();
     if (!url.isEmpty() && !url.startsWith("http://") && !url.startsWith("https://"))
         url = QStringLiteral("http://") + url;
-    if (!url.isEmpty())
-        opts.url = QUrl(url);
+    opts.url = QUrl(url);
     opts.rpcPath = m_path->text().trimmed();
     opts.username = m_user->text().trimmed();
     opts.password = m_pass->text();

@@ -8,6 +8,7 @@
 #include <QTimer>
 #include <QEvent>
 #include <memory>
+#include <optional>
 
 #include "tgui/rpcclient.h"
 #include "tgui/geoip.h"
@@ -79,6 +80,7 @@ private slots:
     void onConnected(const tgui::SessionInfo& info);
     void onConnectionFailed(const QString& error);
     void onAuthenticationFailed(const QString& error);
+    void onClientTlsPassphraseRequired();
     void onTorrentsReceived(const QVector<tgui::Torrent>& torrents);
     void onTorrentDetailsReceived(const tgui::TorrentDetails& details);
     void onPeersReceived(int id, const QVector<tgui::Peer>& peers);
@@ -164,7 +166,10 @@ private:
     void createTray();
     bool ensureFlagImages(bool allowDownload);
     static QPixmap makeTrayIcon();
-    void startConnect(const tgui::RpcClient::Options& opts);
+    void startConnect(const tgui::RpcClient::Options& opts, bool retry = false);
+    void suspendConnection();
+    void clearConnection();
+    void handleConnectionError(const QString& error, bool retry);
     void maybeAutoConnect();
     void switchToProfile(const QString& name);
     // Двойной клик (референс: lvFilesDblClick / gTorrentsDblClick): файл → запустить,
@@ -214,6 +219,9 @@ private:
 
     std::unique_ptr<tgui::RpcClient> m_rpc;
     bool m_connected = false;
+    QTimer m_reconnectTimer;
+    std::optional<tgui::RpcClient::Options> m_reconnectOptions;
+    int m_reconnectDelayMs = 1000;
 
     // Параметры автоподключения (из командной строки).
     tgui::RpcClient::Options m_autoConnectOpts;

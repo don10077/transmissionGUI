@@ -190,6 +190,10 @@ void MockRpcServer::sendResponse(QTcpSocket* socket, int code, const QByteArray&
 {
     if (socket == nullptr)
         return;
+    if (code == 0) {
+        socket->abort();
+        return;
+    }
 
     const char* reason = "OK";
     if (code == 401)

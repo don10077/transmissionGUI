@@ -16,6 +16,7 @@ public:
     tgui::RpcClient::Options options() const;
 
 private:
+    tgui::RpcClient::Options m_initial;
     QLineEdit* m_url;
     QLineEdit* m_path;
     QLineEdit* m_user;

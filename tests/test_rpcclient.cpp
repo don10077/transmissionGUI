@@ -4,6 +4,8 @@
 #include <QDir>
 #include <QEventLoop>
 #include <QFile>
+#include <QSslSocket>
+#include <QTcpSocket>
 #include <QTimer>
 #include <QTemporaryFile>
 
@@ -135,6 +137,60 @@ TEST_F(RpcClientTest, ConnectFailure)
     EXPECT_TRUE(failed);
     EXPECT_EQ(error, "bad request");
     EXPECT_FALSE(client->isConnected());
+}
+
+TEST_F(RpcClientTest, TlsHandshakeFailureIsNotRetryable)
+{
+    if (!QSslSocket::supportsSsl())
+        GTEST_SKIP() << "TLS backend unavailable";
+    QTcpServer endpoint;
+    ASSERT_TRUE(endpoint.listen(QHostAddress::LocalHost));
+    QObject::connect(&endpoint, &QTcpServer::newConnection, &endpoint, [&] {
+        auto* socket = endpoint.nextPendingConnection();
+        QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket] {
+            socket->readAll();
+            // TLS fatal alert: handshake_failure.
+            socket->write(QByteArray::fromHex("15030300020228"));
+            socket->disconnectFromHost();
+        });
+    });
+    RpcClient::Options options;
+    options.url = QUrl(QString("https://127.0.0.1:%1").arg(endpoint.serverPort()));
+    options.timeoutMs = 1000;
+    RpcClient tlsClient(options);
+    QEventLoop loop;
+    bool permanentFailure = false;
+    bool interrupted = false;
+    QObject::connect(&tlsClient, &RpcClient::connectionFailed, &loop, [&](const QString&) {
+        permanentFailure = true;
+        loop.quit();
+    });
+    QObject::connect(&tlsClient, &RpcClient::connectionInterrupted, &loop, [&](const QString&) {
+        interrupted = true;
+        loop.quit();
+    });
+    QTimer::singleShot(2000, &loop, &QEventLoop::quit);
+    tlsClient.connectToDaemon();
+    loop.exec();
+    EXPECT_TRUE(permanentFailure);
+    EXPECT_FALSE(interrupted);
+}
+
+TEST_F(RpcClientTest, ClientIdentityWithDisabledServerVerificationFailsBeforeRequest)
+{
+    RpcClient::Options options;
+    options.url = server.url();
+    options.url.setScheme("https");
+    options.ignoreSslErrors = true;
+    options.clientCertificatePath = "client.p12";
+    RpcClient tlsClient(options);
+    QString error;
+    QObject::connect(&tlsClient, &RpcClient::connectionFailed, &tlsClient,
+                     [&](const QString& message) { error = message; });
+    tlsClient.connectToDaemon();
+    EXPECT_TRUE(error.contains("server certificate verification"));
+    EXPECT_EQ(server.requestCount(), 0);
+    EXPECT_FALSE(tlsClient.isConnected());
 }
 
 TEST_F(RpcClientTest, DelayedListCannotOverwriteNewerSnapshot)

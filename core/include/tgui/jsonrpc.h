@@ -8,6 +8,9 @@
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QNetworkProxy>
+#include <QNetworkReply>
+#include <QSslCertificate>
+#include <QSslKey>
 #include <QString>
 #include <QUrl>
 
@@ -19,6 +22,7 @@ constexpr const char* kDefaultRpcPath = "/transmission/rpc";
 struct JsonRpcResult {
     bool ok = false;
     int httpCode = 0; // 0 — соединения не было (сеть/TLS/таймаут)
+    QNetworkReply::NetworkError networkError = QNetworkReply::NoError;
     QString status;   // legacy result или сообщение ошибки JSON-RPC 2.0
     QString error;    // человекочитаемая ошибка (транспортная или RPC), пусто при ok
     QJsonObject body; // разобранный ответ
@@ -44,6 +48,7 @@ public:
 
     // Игнорировать ошибки TLS-сертификата (self-signed).
     void setIgnoreSslErrors(bool ignore);
+    void setClientIdentity(const QList<QSslCertificate>& chain, const QSslKey& key);
 
     // HTTP/SOCKS5-прокси (QNetworkProxy::NoProxy — выключить).
     void setProxy(const QNetworkProxy& proxy);
@@ -81,6 +86,8 @@ private:
     QString m_sessionId; // x-transmission-session-id
     std::chrono::milliseconds m_timeout = std::chrono::seconds(30);
     bool m_ignoreSslErrors = false;
+    QList<QSslCertificate> m_clientChain;
+    QSslKey m_clientKey;
     bool m_modern = false;
     qint64 m_nextId = 0;
 };

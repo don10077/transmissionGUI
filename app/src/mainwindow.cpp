@@ -171,6 +171,11 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
     // W07: интервал обновления из настроек (секунды), по умолчанию 2 (ранее 2000 ms).
     m_refreshTimer.setInterval(QSettings().value("ui/refreshInterval", kRefreshIntervalMs / 1000).toInt() * 1000);
     connect(&m_refreshTimer, &QTimer::timeout, this, &MainWindow::onRefresh);
+    m_reconnectTimer.setSingleShot(true);
+    connect(&m_reconnectTimer, &QTimer::timeout, this, [this] {
+        if (m_reconnectOptions)
+            startConnect(*std::exchange(m_reconnectOptions, std::nullopt), true);
+    });
     connect(QApplication::clipboard(), &QClipboard::dataChanged, this, &MainWindow::onClipboardChanged);
     m_watchTimer.setInterval(1000);
     connect(&m_watchTimer, &QTimer::timeout, this, &MainWindow::scanWatchFolder);
@@ -483,6 +488,7 @@ void MainWindow::createActions()
     connect(m_actConnect, &QAction::triggered, this, &MainWindow::onConnect);
 
     m_actDisconnect = new QAction(tr("Disconnect from Transmission"), this);
+    m_actDisconnect->setObjectName(QStringLiteral("disconnectAction"));
     m_actDisconnect->setIcon(tgui::theme::icon(Icon::Disconnect));
     m_actDisconnect->setToolTip(tr("Disconnect from Transmission"));
     connect(m_actDisconnect, &QAction::triggered, this, &MainWindow::onDisconnect);
@@ -735,7 +741,7 @@ void MainWindow::createActions()
 void MainWindow::setConnectedUi(bool on)
 {
     m_filterPanel->setEnabledUi(on);
-    m_actConnect->setEnabled(!on);
+    m_actConnect->setEnabled(!on && !m_rpc);
     // Подпись кнопки — как в OLD (tbConnect.Caption): «Connect to
     // Transmission» при отключении, имя активного профиля при подключении.
     // Сама кнопка-дропдаун остаётся активной всегда (переключение профилей).
@@ -755,7 +761,7 @@ void MainWindow::setConnectedUi(bool on)
         m_connectButton->style()->unpolish(m_connectButton);
         m_connectButton->style()->polish(m_connectButton);
     }
-    m_actDisconnect->setEnabled(on);
+    m_actDisconnect->setEnabled(m_rpc || m_reconnectOptions.has_value());
     m_actAdd->setEnabled(on);
     m_actAddLink->setEnabled(on);
     m_actRefresh->setEnabled(on);
@@ -797,6 +803,12 @@ void MainWindow::updateLabelUi()
 
 void MainWindow::onConnect()
 {
+    if (m_reconnectOptions) {
+        startConnect(*std::exchange(m_reconnectOptions, std::nullopt));
+        return;
+    }
+    if (m_rpc && !m_connected)
+        return;
     // Единая модель (по OLD): «Connect» подключает к активному серверу (профилю).
     // Серверов нет — открыть управление, чтобы добавить (сначала задают в
     // «Manage connections…», затем переключаются из подменю «Connect to Transmission»).
@@ -808,8 +820,12 @@ void MainWindow::onConnect()
     onConnectionOptions();
 }
 
-void MainWindow::startConnect(const tgui::RpcClient::Options& opts)
+void MainWindow::startConnect(const tgui::RpcClient::Options& opts, bool retry)
 {
+    m_reconnectTimer.stop();
+    m_reconnectOptions.reset();
+    if (!retry)
+        m_reconnectDelayMs = 1000;
     m_watchTimer.stop();
     m_watchCandidates.clear();
     m_addQueue.clear();
@@ -826,8 +842,12 @@ void MainWindow::startConnect(const tgui::RpcClient::Options& opts)
     });
     connect(m_rpc.get(), &tgui::RpcClient::connectionFailed, this,
             &MainWindow::onConnectionFailed);
+    connect(m_rpc.get(), &tgui::RpcClient::connectionInterrupted, this,
+            [this](const QString& error) { handleConnectionError(error, true); });
     connect(m_rpc.get(), &tgui::RpcClient::authenticationFailed, this,
             &MainWindow::onAuthenticationFailed);
+    connect(m_rpc.get(), &tgui::RpcClient::clientTlsPassphraseRequired, this,
+            &MainWindow::onClientTlsPassphraseRequired);
     connect(m_rpc.get(), &tgui::RpcClient::torrentsReceived, this,
             &MainWindow::onTorrentsReceived);
     connect(m_rpc.get(), &tgui::RpcClient::torrentDetailsReceived, this,
@@ -843,6 +863,7 @@ void MainWindow::startConnect(const tgui::RpcClient::Options& opts)
             &MainWindow::onRequestCompleted);
 
     statusBar()->showMessage(tr("Connecting to %1…").arg(opts.url.toString()), 5000);
+    setConnectedUi(false);
     setConnectionState(tr("Connecting…"), tgui::theme::color::accent);
     m_rpc->connectToDaemon();
 }
@@ -918,10 +939,32 @@ void MainWindow::maybeAutoConnect()
 
 void MainWindow::onDisconnect()
 {
+    m_reconnectTimer.stop();
+    m_reconnectOptions.reset();
+    m_reconnectDelayMs = 1000;
+    clearConnection();
+    setConnectionState(tr("Disconnected"), tgui::theme::color::textFaint);
+    statusBar()->showMessage(tr("Disconnected"), 5000);
+}
+
+/** Блокирует действия на старом соединении до завершения его обработчиков. */
+void MainWindow::suspendConnection()
+{
     m_refreshTimer.stop();
     m_watchTimer.stop();
-    m_watchCandidates.clear();
+    m_moveVerifyTimer.stop();
     m_connected = false;
+    setConnectedUi(false);
+}
+
+/** Удаляет клиент и данные, привязанные к его сессии. */
+void MainWindow::clearConnection()
+{
+    suspendConnection();
+    m_watchCandidates.clear();
+    m_movePendingIds.clear();
+    m_movePendingTarget.clear();
+    m_moveVerifyAttempts = 0;
     m_addQueue.clear();
     m_addingTorrent = false;
     m_addSelectionId = -1;
@@ -935,15 +978,14 @@ void MainWindow::onDisconnect()
     m_statsForm->clear();
     m_currentId = -1;
     setConnectedUi(false);
-    setConnectionState(tr("Disconnected"), tgui::theme::color::textFaint);
     m_daemonLabel->clear();
     m_speedLabel->clear();
     m_countLabel->clear();
-    statusBar()->showMessage(tr("Disconnected"), 5000);
 }
 
 void MainWindow::onConnected(const tgui::SessionInfo& info)
 {
+    m_reconnectDelayMs = 1000;
     m_connected = true;
     m_sessionInfo = info;
     {
@@ -969,53 +1011,93 @@ void MainWindow::onConnected(const tgui::SessionInfo& info)
 
 void MainWindow::onConnectionFailed(const QString& error)
 {
-    m_refreshTimer.stop();
-    m_watchTimer.stop();
-    m_watchCandidates.clear();
-    m_connected = false;
-    setConnectedUi(false);
-    setConnectionState(tr("Connection failed"), tgui::theme::color::red);
-    m_daemonLabel->clear();
-    m_speedLabel->clear();
-    m_countLabel->clear();
-    const QString url = m_rpc ? m_rpc->options().url.toString() : QString();
-    // Отложенная очистка: destroy-им клиента после завершения цепочки сигналов.
-    QTimer::singleShot(0, this, [this, error, url] {
-        m_rpc.reset();
-        m_model.setTorrents({});
-        m_general->clear();
-        m_statsForm->clear();
-        QMessageBox::critical(this, tr("Connection failed"),
-                              tr("Address: %1\n\nReason: %2").arg(url, error));
+    handleConnectionError(error, false);
+}
+
+/** Планирует новую сессию после временного сбоя или показывает постоянную ошибку. */
+void MainWindow::handleConnectionError(const QString& error, bool retry)
+{
+    suspendConnection();
+    const QPointer<tgui::RpcClient> failed(m_rpc.get());
+    QTimer::singleShot(0, this, [this, failed, error, retry] {
+        if (!failed || failed != m_rpc.get())
+            return;
+        const auto opts = failed->options();
+        clearConnection();
+        if (retry) {
+            m_reconnectOptions = opts;
+            const int delay = m_reconnectDelayMs;
+            m_reconnectDelayMs = std::min(delay * 2, 60000);
+            m_reconnectTimer.start(delay);
+            setConnectedUi(false);
+            setConnectionState(tr("Reconnecting…"), tgui::theme::color::accent);
+            statusBar()->showMessage(tr("Retrying in %1 s: %2").arg(delay / 1000).arg(error), delay);
+            return;
+        }
+        m_reconnectDelayMs = 1000;
+        setConnectionState(tr("Connection failed"), tgui::theme::color::red);
         statusBar()->showMessage(tr("Disconnected"), 5000);
+        QMessageBox::critical(this, tr("Connection failed"),
+                              tr("Address: %1\n\nReason: %2").arg(opts.url.toDisplayString(QUrl::RemoveUserInfo), error));
     });
 }
 
 void MainWindow::onAuthenticationFailed(const QString& error)
 {
     Q_UNUSED(error);
-    m_refreshTimer.stop();
-    m_connected = false;
-    setConnectedUi(false);
+    suspendConnection();
     setConnectionState(tr("Authentication required"), tgui::theme::color::red);
     // Откладываем: даём развернуться стеку сигнала, чтобы безопасно показать
     // диалог повторной авторизации и переподключиться (старый клиент уничтожится).
-    QTimer::singleShot(0, this, [this] {
-        if (!m_rpc)
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    QTimer::singleShot(0, this, [this, rpc] {
+        if (!rpc || rpc != m_rpc.get())
             return;
-        const auto opts = m_rpc->options();
-        ConnectDialog dlg(opts, this);
-        if (dlg.exec() != QDialog::Accepted) {
-            onConnectionFailed(tr("Authentication failed (HTTP 401). Rejected by user."));
+        auto* dialog = new ConnectDialog(rpc->options(), this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        connect(rpc.data(), &QObject::destroyed, dialog, &QDialog::reject);
+        connect(dialog, &QDialog::finished, this, [this, rpc, dialog](int result) {
+            if (!rpc || rpc != m_rpc.get())
+                return;
+            if (result != QDialog::Accepted || dialog->options().url.isEmpty()) {
+                onDisconnect();
+                return;
+            }
+            const auto opts = dialog->options();
+            saveSettings(opts);
+            startConnect(opts);
+        });
+        dialog->open();
+    });
+}
+
+/** Запрашивает пароль файла ключа и повторяет подключение с тем же профилем. */
+void MainWindow::onClientTlsPassphraseRequired()
+{
+    suspendConnection();
+    setConnectionState(tr("Authentication required"), tgui::theme::color::red);
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    QTimer::singleShot(0, this, [this, rpc] {
+        if (!rpc || rpc != m_rpc.get())
             return;
-        }
-        const auto newOpts = dlg.options();
-        if (newOpts.url.isEmpty()) {
-            onConnectionFailed(tr("Authentication failed (HTTP 401)."));
-            return;
-        }
-        saveSettings(newOpts);
-        startConnect(newOpts); // повторное подключение с новыми учётными данными
+        auto* dialog = new QInputDialog(this);
+        dialog->setWindowTitle(tr("Client TLS passphrase"));
+        dialog->setLabelText(tr("Passphrase for the client certificate or key:"));
+        dialog->setTextEchoMode(QLineEdit::Password);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        connect(rpc.data(), &QObject::destroyed, dialog, &QDialog::reject);
+        connect(dialog, &QDialog::finished, this, [this, rpc, dialog](int result) {
+            if (!rpc || rpc != m_rpc.get())
+                return;
+            if (result != QDialog::Accepted) {
+                onDisconnect();
+                return;
+            }
+            auto opts = rpc->options();
+            opts.clientKeyPassphrase = dialog->textValue().toUtf8();
+            startConnect(opts);
+        });
+        dialog->open();
     });
 }
 
@@ -1294,7 +1376,7 @@ void MainWindow::onRequestCompleted(const QString& method, bool ok, const QStrin
     Q_UNUSED(arguments);
     if (ok && method == QLatin1String("torrent-set-location") && m_rpc)
         m_rpc->getTorrents();
-    if (method == QLatin1String("session-set") && m_rpc)
+    if (method == QLatin1String("session-set") && m_rpc && m_connected)
         m_rpc->getSession(); // Refresh on success and roll back the toggle on failure.
     if (ok)
         statusBar()->showMessage(tr("\"%1\" done").arg(method), 5000);
@@ -1846,7 +1928,7 @@ void MainWindow::addNextTorrent()
             return;
         }
         rpc->getTorrentDetails(id, [this, rpc, id, start, params, skipDialog, sourceBytes, fromWatchFolder](const auto& details) {
-            if (!rpc || rpc != m_rpc.get())
+            if (!rpc || rpc != m_rpc.get() || !m_connected)
                 return;
             const auto remove = [this, rpc, id] {
                 rpc->removeTorrent(id, false, [this, rpc](const tgui::JsonRpcResult& result) {
@@ -2889,7 +2971,9 @@ void MainWindow::switchToProfile(const QString& name)
         const auto& active = m_rpc->options();
         if (active.url == opts.url && active.rpcPath == opts.rpcPath &&
             active.username == opts.username && active.password == opts.password &&
-            active.ignoreSslErrors == opts.ignoreSslErrors && active.proxy == opts.proxy) {
+            active.ignoreSslErrors == opts.ignoreSslErrors && active.proxy == opts.proxy &&
+            active.clientCertificatePath == opts.clientCertificatePath &&
+            active.clientKeyPath == opts.clientKeyPath) {
             store.setCurrent(name);
             setConnectedUi(true); // Renaming does not require reconnecting.
             return;

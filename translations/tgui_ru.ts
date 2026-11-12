@@ -91,6 +91,15 @@
   </context>
   <context>
     <name>ConnOptionsDialog</name>
+    <message><source>Client TLS</source><translation>Клиентский TLS</translation></message>
+    <message><source>Client certificate</source><translation>Клиентский сертификат</translation></message>
+    <message><source>Client private key</source><translation>Закрытый ключ клиента</translation></message>
+    <message><source>Browse…</source><translation>Обзор…</translation></message>
+    <message><source>Certificates (*.pem *.crt *.cer *.p12 *.pfx);;All files (*)</source><translation>Сертификаты (*.pem *.crt *.cer *.p12 *.pfx);;Все файлы (*)</translation></message>
+    <message><source>PEM private keys (*.pem *.key);;All files (*)</source><translation>Закрытые ключи PEM (*.pem *.key);;Все файлы (*)</translation></message>
+    <message><source>Choose a certificate and PEM private key, or choose a PKCS#12 file as the certificate and leave the key field empty.</source><translation>Выберите сертификат и закрытый ключ PEM. Для контейнера PKCS#12 укажите его в поле сертификата и оставьте поле ключа пустым.</translation></message>
+    <message><source>Client TLS passphrase</source><translation>Пароль клиентского TLS</translation></message>
+    <message><source>Passphrase for the client certificate or key:</source><translation>Пароль клиентского сертификата или ключа:</translation></message>
     <message><source>Transmission</source><translation>Transmission</translation></message>
     <message>
       <location filename="../app/src/connoptionsdialog.cpp" line="77" />
@@ -587,6 +596,10 @@
   </context>
   <context>
     <name>MainWindow</name>
+    <message><source>Client TLS passphrase</source><translation>Пароль клиентского TLS</translation></message>
+    <message><source>Passphrase for the client certificate or key:</source><translation>Пароль клиентского сертификата или ключа:</translation></message>
+    <message><source>Reconnecting…</source><translation>Переподключение…</translation></message>
+    <message><source>Retrying in %1 s: %2</source><translation>Повторное подключение через %1 с: %2</translation></message>
     <message><source>Corrupted torrent file</source><translation>Повреждённый торрент-файл</translation></message>
     <message><source>The file appears to be corrupted and was repaired automatically:\n%1\n\nThe repaired torrent will still be added.</source><translation>Похоже, файл повреждён; он был автоматически восстановлен:\n%1\n\nОтремонтированный торрент всё равно будет добавлен.</translation></message>
     <message><source>The file appears to be corrupted and automatic repair failed:\n%1\n\nThe original file will still be sent to the daemon — it may reject the torrent.</source><translation>Похоже, файл повреждён, и автоматический ремонт не удался:\n%1\n\nОригинальный файл всё равно будет передан демону — он может отклонить торрент.</translation></message>
@@ -2660,6 +2673,13 @@ Used when opening files/torrents with double-click.</source>
       <source>The downloaded torrent file has a different info hash.</source>
       <translation>Хеш скачанного файла торрента отличается.</translation>
     </message>
+    <message><source>A client certificate requires HTTPS with server certificate verification.</source><translation>Клиентский сертификат требует HTTPS с проверкой сертификата сервера.</translation></message>
+    <message><source>Choose a certificate and private key, or a single PKCS#12 file.</source><translation>Выберите сертификат и закрытый ключ или один файл PKCS#12.</translation></message>
+    <message><source>Could not read the client certificate file: %1</source><translation>Не удалось прочитать файл клиентского сертификата: %1</translation></message>
+    <message><source>Could not open the PKCS#12 file. Check the file and its passphrase.</source><translation>Не удалось открыть PKCS#12. Проверьте файл и пароль.</translation></message>
+    <message><source>The client certificate file contains no valid certificate.</source><translation>В файле клиентского сертификата нет корректного сертификата.</translation></message>
+    <message><source>Could not read the client private key file: %1</source><translation>Не удалось прочитать файл закрытого ключа клиента: %1</translation></message>
+    <message><source>Could not load the PEM private key. Check the file and its passphrase.</source><translation>Не удалось загрузить закрытый ключ PEM. Проверьте файл и пароль.</translation></message>
   </context>
   <context>
     <name>TorrentLabels</name>

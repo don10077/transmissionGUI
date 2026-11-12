@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QEventLoop>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -24,6 +25,7 @@
 namespace {
 struct ConnTest {
     bool ok = false;
+    bool needsPassphrase = false;
     QString message;
 };
 
@@ -47,10 +49,17 @@ ConnTest runTest(const tgui::RpcClient::Options& opts)
         r.message = QObject::tr("Authentication failed: %1").arg(e);
         loop.quit();
     });
-    QObject::connect(client, &tgui::RpcClient::connectionFailed, [&](const QString& e) {
+    const auto fail = [&](const QString& e) {
         if (done) return;
         done = true;
         r.message = e;
+        loop.quit();
+    };
+    QObject::connect(client, &tgui::RpcClient::connectionFailed, fail);
+    QObject::connect(client, &tgui::RpcClient::connectionInterrupted, fail);
+    QObject::connect(client, &tgui::RpcClient::clientTlsPassphraseRequired, [&] {
+        done = true;
+        r.needsPassphrase = true;
         loop.quit();
     });
     QObject::connect(client, &tgui::RpcClient::readError, [&](const QString&, const QString& e) {
@@ -63,10 +72,11 @@ ConnTest runTest(const tgui::RpcClient::Options& opts)
     QObject::connect(timer, &QTimer::timeout, &loop, &QEventLoop::quit);
     timer->start(8000);
     client->connectToDaemon();
-    loop.exec();
+    if (!done)
+        loop.exec();
     timer->deleteLater();
     client->deleteLater();
-    if (!r.ok && r.message.isEmpty())
+    if (!r.ok && !r.needsPassphrase && r.message.isEmpty())
         r.message = QObject::tr("No response (timeout).");
     return r;
 }
@@ -141,6 +151,34 @@ ConnOptionsDialog::ConnOptionsDialog(QWidget* parent)
     auto* right = new QVBoxLayout;
     auto* tabs = new QTabWidget(this);
     tabs->addTab(connection, tr("Transmission"));
+    auto* tlsPage = new QWidget(tabs);
+    auto* tlsForm = new QFormLayout(tlsPage);
+    tlsForm->setContentsMargins(16, 16, 16, 16);
+    auto* hint = new QLabel(tr("Choose a certificate and PEM private key, or choose a PKCS#12 file as the certificate and leave the key field empty."), tlsPage);
+    hint->setWordWrap(true);
+    tlsForm->addRow(hint);
+    const auto fileRow = [this, tlsPage, tlsForm](const QString& label, const QString& filter,
+                                                const QString& objectName) {
+        auto* edit = new QLineEdit(tlsPage);
+        edit->setObjectName(objectName);
+        auto* browse = new QPushButton(tr("Browse…"), tlsPage);
+        connect(browse, &QPushButton::clicked, this, [this, edit, label, filter] {
+            const auto path = QFileDialog::getOpenFileName(this, label, edit->text(), filter);
+            if (!path.isEmpty())
+                edit->setText(path);
+        });
+        auto* row = new QHBoxLayout;
+        row->addWidget(edit, 1);
+        row->addWidget(browse);
+        tlsForm->addRow(label, row);
+        return edit;
+    };
+    m_clientCertificatePath = fileRow(tr("Client certificate"), tr("Certificates (*.pem *.crt *.cer *.p12 *.pfx);;All files (*)"),
+                                     QStringLiteral("clientCertificatePath"));
+    m_clientKeyPath = fileRow(tr("Client private key"), tr("PEM private keys (*.pem *.key);;All files (*)"),
+                             QStringLiteral("clientKeyPath"));
+    const int tlsTab = tabs->addTab(tlsPage, tr("Client TLS"));
+    tabs->setTabEnabled(tlsTab, false);
     auto* proxyPage = new QWidget(tabs);
     auto* proxyLayout = new QVBoxLayout(proxyPage);
     proxyLayout->setContentsMargins(12, 12, 12, 12);
@@ -178,8 +216,10 @@ ConnOptionsDialog::ConnOptionsDialog(QWidget* parent)
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     setProfile(DaemonProfile{});
-    connect(m_protocol, &QComboBox::currentIndexChanged, this, [this] {
-        m_ignoreSsl->setEnabled(m_protocol->currentData().toString() == "https");
+    connect(m_protocol, &QComboBox::currentIndexChanged, this, [this, tabs, tlsTab] {
+        const bool https = m_protocol->currentData().toString() == "https";
+        m_ignoreSsl->setEnabled(https);
+        tabs->setTabEnabled(tlsTab, https);
     });
     refreshList();
     const QString cur = m_store.currentName();
@@ -226,6 +266,8 @@ void ConnOptionsDialog::setProfile(const DaemonProfile& p)
     m_user->setText(p.username);
     m_pass->setText(p.password);
     m_ignoreSsl->setChecked(p.ignoreSslErrors);
+    m_clientCertificatePath->setText(p.clientCertificatePath);
+    m_clientKeyPath->setText(p.clientKeyPath);
     m_useProxy->setChecked(p.useProxy);
     m_useSocks->setChecked(p.useSocks);
     m_proxyHost->setText(p.proxyHost);
@@ -248,6 +290,8 @@ DaemonProfile ConnOptionsDialog::current() const
     p.username = m_user->text();
     p.password = m_pass->text();
     p.ignoreSslErrors = m_ignoreSsl->isChecked();
+    p.clientCertificatePath = m_clientCertificatePath->text().trimmed();
+    p.clientKeyPath = m_clientKeyPath->text().trimmed();
     p.useProxy = m_useProxy->isChecked();
     p.useSocks = m_useProxy->isChecked() && m_useSocks->isChecked();
     p.proxyHost = m_useProxy->isChecked() ? m_proxyHost->text().trimmed() : QString();
@@ -325,11 +369,25 @@ void ConnOptionsDialog::onTest()
         QMessageBox::warning(this, tr("Test connection"), tr("Host is empty."));
         return;
     }
-    setEnabled(false);
-    QApplication::setOverrideCursor(Qt::WaitCursor);
-    const ConnTest r = runTest(p.toOptions());
-    QApplication::restoreOverrideCursor();
-    setEnabled(true);
+    auto options = p.toOptions();
+    const auto test = [this, &options] {
+        setEnabled(false);
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        const auto result = runTest(options);
+        QApplication::restoreOverrideCursor();
+        setEnabled(true);
+        return result;
+    };
+    auto r = test();
+    if (r.needsPassphrase) {
+        bool accepted = false;
+        const auto passphrase = QInputDialog::getText(this, tr("Client TLS passphrase"),
+            tr("Passphrase for the client certificate or key:"), QLineEdit::Password, {}, &accepted);
+        if (!accepted)
+            return;
+        options.clientKeyPassphrase = passphrase.toUtf8();
+        r = test();
+    }
     if (r.ok)
         QMessageBox::information(this, tr("Test connection"), r.message);
     else

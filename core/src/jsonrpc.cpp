@@ -32,6 +32,13 @@ void JsonRpcClient::setIgnoreSslErrors(bool ignore)
     m_ignoreSslErrors = ignore;
 }
 
+/** Устанавливает цепочку и ключ для последующих HTTPS-запросов. */
+void JsonRpcClient::setClientIdentity(const QList<QSslCertificate>& chain, const QSslKey& key)
+{
+    m_clientChain = chain;
+    m_clientKey = key;
+}
+
 void JsonRpcClient::setProxy(const QNetworkProxy& proxy)
 {
     m_nam->setProxy(proxy);
@@ -128,9 +135,15 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
     }
     if (m_timeout.count() > 0)
         request.setTransferTimeout(static_cast<int>(m_timeout.count()));
-    if (m_ignoreSslErrors) {
+    if (request.url().scheme() == QLatin1String("https") && (m_ignoreSslErrors || !m_clientChain.isEmpty())) {
         QSslConfiguration ssl = QSslConfiguration::defaultConfiguration();
-        ssl.setPeerVerifyMode(QSslSocket::PeerVerifyMode::VerifyNone);
+        if (!m_clientChain.isEmpty()) {
+            ssl.setLocalCertificateChain(m_clientChain);
+            ssl.setPrivateKey(m_clientKey);
+            ssl.setPeerVerifyMode(QSslSocket::VerifyPeer);
+        } else {
+            ssl.setPeerVerifyMode(QSslSocket::VerifyNone);
+        }
         request.setSslConfiguration(ssl);
     }
 
@@ -154,6 +167,7 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
                 JsonRpcResult res;
                 res.httpCode =
                     reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+                res.networkError = reply->error();
 
                 // 409: нет/протух session id — взять новый из заголовка ответа
                 // и повторить 1 раз; повторный 409 — "Session ID error.";

@@ -99,12 +99,20 @@ TEST(ProfileStore, AddSaveReadRoundTrip)
     p.port = 9091;
     p.useSsl = true;
     p.username = "u";
+    p.clientCertificatePath = "client.pem";
+    p.clientKeyPath = "client.key";
     store.save(p);
 
     DaemonProfile r = store.profile("home");
     EXPECT_EQ(r.host, "10.0.0.5");
     EXPECT_TRUE(r.useSsl);
     EXPECT_EQ(r.username, "u");
+    EXPECT_EQ(r.toOptions().clientCertificatePath, "client.pem");
+    EXPECT_EQ(r.toOptions().clientKeyPath, "client.key");
+    EXPECT_FALSE(r.toOptions().clientKeyPassphrase.has_value());
+    r.useSsl = false;
+    EXPECT_TRUE(r.toOptions().clientCertificatePath.isEmpty());
+    EXPECT_TRUE(r.toOptions().clientKeyPath.isEmpty());
     EXPECT_EQ(store.currentProfile().host, "10.0.0.5");
 }
 

@@ -24,6 +24,9 @@ public:
         QString password;
         int timeoutMs = 30000;
         bool ignoreSslErrors = false;
+        QString clientCertificatePath;
+        QString clientKeyPath;
+        std::optional<QByteArray> clientKeyPassphrase; // Только в памяти на время подключения.
         QNetworkProxy proxy{ QNetworkProxy::NoProxy }; // по умолчанию — без прокси
     };
 
@@ -122,8 +125,10 @@ signals:
     // Соединение
     void connected(const SessionInfo& info);
     void connectionFailed(const QString& error);
+    void connectionInterrupted(const QString& error);
     // HTTP 401 (неверные/протухшие учётные данные) — предложить повторную авторизацию
     void authenticationFailed(const QString& error);
+    void clientTlsPassphraseRequired();
 
     // Чтение
     void torrentsReceived(const QVector<Torrent>& torrents);
@@ -140,6 +145,8 @@ signals:
                           const QJsonObject& arguments);
 
 private:
+    bool configureClientTls();
+    void call(const QString& method, const QJsonObject& arguments, JsonRpcClient::Callback callback);
     void request(const QString& method, const QJsonObject& arguments);
     void requestReport(const QString& method, const QJsonObject& arguments,
                        RequestCallback callback = {});
@@ -156,6 +163,7 @@ private:
     quint64 m_trackersApplied = 0;
     Options m_options;
     bool m_connected = false;
+    bool m_connectionProblemReported = false;
     int m_rpcVersion = 0;
     SessionInfo m_sessionInfo;
 };
