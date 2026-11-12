@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDialog>
+#include "daemonprofile.h"
 
 class QComboBox;
 class QSpinBox;
@@ -23,7 +24,7 @@ public:
     static constexpr char watchDestinationKey[] = "downloads/watchDestination";
 
     explicit OptionsDialog(QWidget* parent = nullptr, int rpcVersion = 0,
-                           tgui::RpcClient* rpc = nullptr);
+                           tgui::RpcClient* rpc = nullptr, const QString& profile = {});
 
     // Доступ к значениям (для UI и тестов).
     QString currentLanguage() const;
@@ -44,10 +45,15 @@ public:
 private:
     void reject() override;
     void renameLabel(tgui::RpcClient& rpc);
+    ProfilePreferences m_preferences;
     QComboBox* m_language = nullptr;
     QSpinBox* m_scale = nullptr;
     QSpinBox* m_refresh = nullptr;
+    QSpinBox* m_backgroundRefresh = nullptr;
+    QCheckBox* m_smoothRates = nullptr;
     QPlainTextEdit* m_paths = nullptr;
+    QLineEdit* m_downloadSpeeds = nullptr;
+    QLineEdit* m_uploadSpeeds = nullptr;
     QPlainTextEdit* m_labels = nullptr;
     QCheckBox* m_closeToTray = nullptr;
     QCheckBox* m_minimizeToTray = nullptr;

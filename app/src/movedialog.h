@@ -6,15 +6,14 @@
 class MoveDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit MoveDialog(const QString& currentDir, QWidget* parent = nullptr);
+    explicit MoveDialog(const QString& currentDir, QWidget* parent = nullptr, const QString& profile = {});
 
     QString targetDir() const;
     bool moveData() const;
-    // Запомнить подтверждённую цель переноса в истории (LastMoveDir).
-    static void rememberDirectory(const QString& dir);
 
 private:
     void onBrowse();
+    QStringList m_mappings;
 
     class QComboBox* m_path = nullptr;
     class QCheckBox* m_rename = nullptr;

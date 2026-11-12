@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractTableModel>
+#include <QHash>
 #include <QSortFilterProxyModel>
 
 #include "tgui/models.h"
@@ -65,6 +66,8 @@ public:
     explicit TorrentModel(QObject* parent = nullptr);
 
     void setTorrents(const QVector<tgui::Torrent>& torrents);
+    void setSmoothRates(bool enabled);
+    QPair<double, double> displayedRates(const tgui::Torrent& torrent) const;
     const QVector<tgui::Torrent>& torrents() const { return m_torrents; }
     const tgui::Torrent& torrentAt(int row) const { return m_torrents.at(row); }
 
@@ -80,6 +83,8 @@ public:
 
 private:
     QVector<tgui::Torrent> m_torrents;
+    bool m_smoothRates = false;
+    QHash<int, QPair<double, double>> m_displayedRates;
 };
 
 // Фильтр: статус-группа + папка + трекер + поиск по имени (референс — lvFilter/edSearch).

@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "settingsbackup.h"
 #include "externalopen.h"
 
 #include <QAction>
@@ -32,6 +33,7 @@
 #include <QInputDialog>
 #include <QItemSelectionModel>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
@@ -69,6 +71,7 @@
 #include <QTreeView>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QVersionNumber>
 #include <algorithm>
 #include <utility>
 
@@ -146,6 +149,8 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
     resize(1200, 780);
 
     m_proxy.setSourceModel(&m_model);
+    const QSettings preferences;
+    m_totalsMode = qBound(0, preferences.value("ui/totalsMode", 0).toInt(), 2);
     createUi();
     createActions();
     createMenus();
@@ -169,7 +174,8 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
     }
 
     // W07: интервал обновления из настроек (секунды), по умолчанию 2 (ранее 2000 ms).
-    m_refreshTimer.setInterval(QSettings().value("ui/refreshInterval", kRefreshIntervalMs / 1000).toInt() * 1000);
+    m_refreshTimer.setParent(this);
+    m_refreshTimer.setObjectName(QStringLiteral("refreshTimer"));
     connect(&m_refreshTimer, &QTimer::timeout, this, &MainWindow::onRefresh);
     m_reconnectTimer.setSingleShot(true);
     connect(&m_reconnectTimer, &QTimer::timeout, this, [this] {
@@ -196,6 +202,11 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
     }
 
     setConnectedUi(false);
+    const QSettings layout;
+    restoreGeometry(layout.value("ui/windowGeometry").toByteArray());
+    m_mainSplitter->restoreState(layout.value("ui/mainSplitter").toByteArray());
+    m_model.setSmoothRates(layout.value("ui/smoothRates", false).toBool());
+    connect(qApp, &QCoreApplication::aboutToQuit, this, &MainWindow::saveWindowLayout);
     statusBar()->showMessage(tr("Disconnected"), 5000);
     maybeAutoConnect();
 }
@@ -428,6 +439,7 @@ void MainWindow::createUi()
             [this](int) { refreshFilesDetails(); });
 
     auto* splitter = new QSplitter(Qt::Vertical, this);
+    m_mainSplitter = splitter;
     splitter->setHandleWidth(4);
     splitter->setChildrenCollapsible(false);
     splitter->addWidget(topPanel);
@@ -560,16 +572,14 @@ void MainWindow::createActions()
     connect(m_actRefresh, &QAction::triggered, this, &MainWindow::onRefresh);
 
     m_actAutoRefresh = new QAction(tr("Auto refresh"), this);
+    m_actAutoRefresh->setObjectName(QStringLiteral("autoRefreshAction"));
     m_actAutoRefresh->setCheckable(true);
     m_actAutoRefresh->setChecked(true);
     m_actAutoRefresh->setIcon(tgui::theme::icon(Icon::AutoRefresh));
     m_actAutoRefresh->setToolTip(tr("Automatically refresh the torrent list"));
     connect(m_actAutoRefresh, &QAction::toggled, this, [this](bool on) {
-        if (on && m_connected)
-            m_refreshTimer.start();
-        else
-            m_refreshTimer.stop();
         QSettings().setValue("ui/autoRefresh", on);
+        updateRefreshSchedule();
     });
 
     m_actAltSpeed = new QAction(tr("Use alternate bandwidth settings"), this);
@@ -705,7 +715,10 @@ void MainWindow::createActions()
     m_searchEdit->setFixedHeight(28);
     m_searchEdit->setMaximumWidth(360);
     connect(m_searchEdit, &QLineEdit::textChanged, this,
-            [this](const QString& text) { m_proxy.setSearchText(text.trimmed()); });
+            [this](const QString& text) {
+                m_proxy.setSearchText(text.trimmed());
+                updateStatusBarTotals();
+            });
     m_toolBar->addWidget(m_searchEdit);
     auto* find = new QAction(this);
     find->setShortcut(QKeySequence::Find);
@@ -749,9 +762,8 @@ void MainWindow::setConnectedUi(bool on)
         QString caption = tr("Not connected");
         if (on) {
             caption = m_rpc ? m_rpc->options().url.host() : tr("Connected");
-            const QString cur = ProfileStore().currentName();
-            if (!cur.isEmpty())
-                caption = cur;
+            if (!m_connectionProfile.isEmpty())
+                caption = m_connectionProfile;
         }
         m_connectButton->setText(caption);
         m_connectButton->setIcon(QIcon(tgui::theme::statusDotPixmap(
@@ -775,6 +787,8 @@ void MainWindow::setConnectedUi(bool on)
     m_actProperties->setEnabled(on);
     m_actMove->setEnabled(on);
     m_actDaemonOptions->setEnabled(on);
+    for (auto* menu : m_speedLimitMenus)
+        menu->setEnabled(on);
     updateSelectionActions();
 }
 
@@ -875,6 +889,7 @@ void MainWindow::setAutoConnect(const tgui::RpcClient::Options& opts)
     m_autoConnectOpts = opts;
     // Вызывается после конструктора — подключаемся сразу.
     if (!m_rpc && !m_connected) {
+        m_connectionProfile.clear();
         saveSettings(opts);
         startConnect(opts);
     }
@@ -928,8 +943,10 @@ void MainWindow::maybeAutoConnect()
         opts = m_autoConnectOpts;
     } else {
         ProfileStore store;
-        if (store.hasCurrent())
-            opts = store.currentProfile().toOptions();
+        if (store.hasCurrent()) {
+            m_connectionProfile = store.currentName();
+            opts = store.profile(m_connectionProfile).toOptions();
+        }
     }
     if (opts.url.isEmpty())
         return;
@@ -939,6 +956,7 @@ void MainWindow::maybeAutoConnect()
 
 void MainWindow::onDisconnect()
 {
+    m_connectionProfile.clear();
     m_reconnectTimer.stop();
     m_reconnectOptions.reset();
     m_reconnectDelayMs = 1000;
@@ -1000,8 +1018,7 @@ void MainWindow::onConnected(const tgui::SessionInfo& info)
         m_daemonLabel->setToolTip(m_rpc->options().url.toString());
     setConnectionState(tr("Connected"), tgui::theme::color::green);
     setConnectedUi(true);
-    if (m_actAutoRefresh->isChecked())
-        m_refreshTimer.start();
+    updateRefreshSchedule();
     m_rpc->getTorrents();
     m_rpc->getSessionStats();
     updateWatchFolder();
@@ -1108,6 +1125,23 @@ void MainWindow::onRefresh()
         m_rpc->getSessionStats();
         refreshFilesDetails();
     }
+}
+
+/** Выбирает интервал по состоянию окна, сохраняя пользовательский режим автообновления. */
+void MainWindow::updateRefreshSchedule()
+{
+    if (!m_actAutoRefresh || !m_connected || !m_actAutoRefresh->isChecked()) {
+        m_refreshTimer.stop();
+        return;
+    }
+    const bool background = !isVisible() || isMinimized();
+    const auto key = background ? "ui/backgroundRefreshInterval" : "ui/refreshInterval";
+    const int fallback = background ? 10 : kRefreshIntervalMs / 1000;
+    const int interval = qBound(1, QSettings().value(key, fallback).toInt(), 999) * 1000;
+    if (m_refreshTimer.interval() != interval)
+        m_refreshTimer.setInterval(interval);
+    if (!m_refreshTimer.isActive())
+        m_refreshTimer.start();
 }
 
 void MainWindow::refreshFilesDetails()
@@ -1310,6 +1344,7 @@ void MainWindow::onFilterChanged(int group, const QString& folder,
     m_proxy.setFolderFilter(folder);
     m_proxy.setLabelFilter(label);
     m_proxy.setTrackerFilter(tracker);
+    updateStatusBarTotals();
 }
 
 // Счётчики групп и состав списков папок/трекеров (референс — FillTorrentsList).
@@ -1487,11 +1522,14 @@ void MainWindow::onRemoveSelected()
 
 void MainWindow::updateStatusBarTotals()
 {
+    if (!m_speedLabel)
+        return;
     double down = 0.0;
     double up = 0.0;
     for (const auto& t : m_model.torrents()) {
-        down += t.rateDownload.value_or(0);
-        up += t.rateUpload.value_or(0);
+        const auto rates = m_model.displayedRates(t);
+        down += rates.first;
+        up += rates.second;
     }
     m_speedLabel->setText(
         QStringLiteral("<span style=\"color:%1;\">↓</span>&nbsp;%2&nbsp;&nbsp;"
@@ -1500,13 +1538,41 @@ void MainWindow::updateStatusBarTotals()
                  QString::fromStdString(tgui::formatRate(down)),
                  tgui::theme::color::green.name(),
                  QString::fromStdString(tgui::formatRate(up))));
+    if (m_totalsMode == 0)
+        return;
+    double size = 0.0;
+    double left = 0.0;
+    const auto sum = [&](const tgui::Torrent& torrent) {
+        size += torrent.totalSize.value_or(torrent.sizeWhenDone.value_or(0));
+        left += torrent.leftUntilDone.value_or(0);
+    };
+    if (m_totalsMode == 1) {
+        for (int row = 0; row < m_proxy.rowCount(); ++row)
+            sum(m_proxy.torrentAt(row));
+    } else {
+        for (const auto& row : m_view->selectionModel()->selectedRows())
+            sum(m_proxy.torrentAt(row.row()));
+    }
+    m_speedLabel->setText(m_speedLabel->text() + QStringLiteral(" &nbsp;·&nbsp; ") +
+        (m_totalsMode == 1 ? tr("Visible: %1, left %2") : tr("Selected: %1, left %2"))
+            .arg(QString::fromStdString(tgui::formatSize(size)), QString::fromStdString(tgui::formatSize(left))));
 }
 
 void MainWindow::onShowProperties()
 {
     const auto ids = selectedTorrentIds();
-    if (!ids.isEmpty())
+    if (ids.size() == 1) {
         showProperties(ids.first(), 0);
+    } else if (ids.size() > 1 && m_rpc && m_connected) {
+        const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+        const auto profile = m_connectionProfile;
+        PropsDialog dialog(static_cast<int>(ids.size()), this, rpc->rpcVersion());
+        if (dialog.exec() != QDialog::Accepted || !rpc || rpc != m_rpc.get() ||
+            !m_connected || profile != m_connectionProfile || dialog.changes().isEmpty())
+            return;
+        rpc->torrentAction("torrent-set", ids, dialog.changes(),
+            afterTorrentChange("torrent-set", RefreshAfter::Properties, m_currentId));
+    }
 }
 
 /** Открывает свойства конкретного торрента на указанной вкладке. */
@@ -1537,19 +1603,21 @@ void MainWindow::onMoveSelected()
     if (!found)
         return;
 
-    MoveDialog dlg(found->downloadDir.value_or(QString()), this);
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    const auto profile = m_connectionProfile;
+    MoveDialog dlg(found->downloadDir.value_or(QString()), this, profile);
     if (ids.size() > 1)
         dlg.setWindowTitle(tr("Move torrents - %1 selected").arg(ids.size()));
-    if (dlg.exec() != QDialog::Accepted)
+    if (dlg.exec() != QDialog::Accepted || !rpc || rpc != m_rpc.get() ||
+        !m_connected || profile != m_connectionProfile)
         return;
 
     const QString target = dlg.targetDir();
     const bool moveData = dlg.moveData();
     if (target.isEmpty())
         return;
-    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
     rpc->setLocation(ids, target, moveData,
-                     [this, rpc, ids, target](const tgui::JsonRpcResult& result) {
+                     [this, rpc, ids, target, profile](const tgui::JsonRpcResult& result) {
         if (!rpc || rpc != m_rpc.get())
             return;
         if (!result.ok) {
@@ -1557,7 +1625,7 @@ void MainWindow::onMoveSelected()
                                result.arguments);
             return;
         }
-        MoveDialog::rememberDirectory(target);
+        ProfilePreferences(profile).rememberMove(target);
         statusBar()->showMessage(tr("Move started: %1").arg(target), 4000);
         // Демон не возвращает новый путь в ответе — проверяем его в списке.
         m_movePendingIds = ids;
@@ -1750,7 +1818,7 @@ void MainWindow::onAddTorrent()
 
 void MainWindow::startAdd(const tgui::RpcClient::AddTorrent& params, AddOrigin origin)
 {
-    m_addQueue.enqueue({params, origin});
+    m_addQueue.enqueue({params, origin, m_connectionProfile});
     if (!m_addingTorrent)
         addNextTorrent();
 }
@@ -1870,7 +1938,7 @@ void MainWindow::addNextTorrent()
         return;
 
     m_addingTorrent = true;
-    auto [params, origin] = m_addQueue.dequeue();
+    auto [params, origin, profile] = m_addQueue.dequeue();
     const bool fromWatchFolder = origin == AddOrigin::WatchFolder;
     const bool requireLocalFile = origin != AddOrigin::Interactive &&
         params.source == tgui::RpcClient::AddTorrent::Source::File;
@@ -1909,7 +1977,7 @@ void MainWindow::addNextTorrent()
     }
 
     // Берём список файлов у демона, пока торрент на паузе.
-    rpc->addTorrent(request, [this, rpc, start, params, skipDialog, sourceBytes, fromWatchFolder](
+    rpc->addTorrent(request, [this, rpc, start, params, skipDialog, sourceBytes, fromWatchFolder, profile](
                                 const tgui::JsonRpcResult& addedResult, const QByteArray& metainfo) {
         if (!rpc || rpc != m_rpc.get())
             return;
@@ -1927,7 +1995,7 @@ void MainWindow::addNextTorrent()
             finishAdd(rpc);
             return;
         }
-        rpc->getTorrentDetails(id, [this, rpc, id, start, params, skipDialog, sourceBytes, fromWatchFolder](const auto& details) {
+        rpc->getTorrentDetails(id, [this, rpc, id, start, params, skipDialog, sourceBytes, fromWatchFolder, profile](const auto& details) {
             if (!rpc || rpc != m_rpc.get() || !m_connected)
                 return;
             const auto remove = [this, rpc, id] {
@@ -1972,7 +2040,7 @@ void MainWindow::addNextTorrent()
                 rpc->configureAddedTorrent(*details, options, {}, {}, configured);
                 return;
             }
-            auto* dialog = new FileSelectDialog(*details, start, rpc->rpcVersion(), rpc, this, !fromWatchFolder);
+            auto* dialog = new FileSelectDialog(*details, start, rpc->rpcVersion(), rpc, this, !fromWatchFolder, profile);
             dialog->offerMetainfoCopy(params);
             dialog->setAttribute(Qt::WA_DeleteOnClose);
             connect(rpc.data(), &QObject::destroyed, dialog, &QDialog::reject);
@@ -2132,6 +2200,10 @@ void MainWindow::createMenus()
     connect(actExport, &QAction::triggered, this, &MainWindow::onExportSettings);
     auto* actImport = mTorrent->addAction(tr("Import settings…"));
     connect(actImport, &QAction::triggered, this, &MainWindow::onImportSettings);
+    auto* exportTorrents = mTorrent->addAction(tr("Export torrent list…"));
+    connect(exportTorrents, &QAction::triggered, this, &MainWindow::onExportTorrentList);
+    auto* importTorrents = mTorrent->addAction(tr("Import torrent list…"));
+    connect(importTorrents, &QAction::triggered, this, &MainWindow::onImportTorrentList);
     mTorrent->addSeparator();
     auto* actExit = mTorrent->addAction(tr("E&xit"));
     actExit->setShortcut(QKeySequence(Qt::ALT | Qt::Key_F4));
@@ -2175,6 +2247,20 @@ void MainWindow::createMenus()
             m_filterPanel->selectAllTorrents();
     });
     mView->addSeparator();
+    auto* totals = mView->addMenu(tr("Size totals"));
+    auto* totalChoices = new QActionGroup(totals);
+    const QStringList captions{tr("Hide size totals"), tr("Visible torrents"), tr("Selected torrents")};
+    for (int i = 0; i < captions.size(); ++i) {
+        auto* action = totals->addAction(captions.at(i));
+        action->setCheckable(true);
+        action->setChecked(m_totalsMode == i);
+        totalChoices->addAction(action);
+        connect(action, &QAction::triggered, this, [this, i] {
+            m_totalsMode = i;
+            QSettings().setValue("ui/totalsMode", i);
+            updateStatusBarTotals();
+        });
+    }
 
     // Видимость панелей. F11/F12 и Shift+F11/Shift+F12 работают и тогда,
     // когда меню/тулбар скрыты — действия добавлены в окно.
@@ -2242,6 +2328,8 @@ void MainWindow::createMenus()
 
     // --- Tools (порядок — точное соответствие OLD) ---
     auto* mTools = menuBar()->addMenu(tr("T&ools"));
+    addSpeedLimitMenu(mTools, true);
+    addSpeedLimitMenu(mTools, false);
     mTools->addAction(m_actDaemonOptions);
     mTools->addAction(m_actOptions);
     mTools->addSeparator();
@@ -2326,11 +2414,11 @@ void MainWindow::onExportSettings()
     if (path.isEmpty())
         return;
     QSettings cur;
-    const QStringList keys = cur.allKeys();
-    QSettings out(path, QSettings::IniFormat);
-    for (const QString& k : keys)
-        out.setValue(k, cur.value(k));
-    out.sync();
+    cur.setFallbacksEnabled(false);
+    if (!settingsbackup::write(path, settingsbackup::snapshot(cur))) {
+        QMessageBox::warning(this, tr("Export settings"), tr("Could not write the settings backup."));
+        return;
+    }
     statusBar()->showMessage(tr("Settings exported to: %1").arg(path), 4000);
 }
 
@@ -2338,21 +2426,108 @@ void MainWindow::onImportSettings()
 {
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Import settings"), QString(), tr("INI files (*.ini)"));
-    if (path.isEmpty() || !QFileInfo(path).exists())
+    if (path.isEmpty())
         return;
+    const auto data = settingsbackup::read(path);
+    if (!data) {
+        QMessageBox::warning(this, tr("Import settings"), tr("The file is not a supported transmissionGUI settings backup."));
+        return;
+    }
     if (QMessageBox::question(this, tr("Import settings"),
             tr("Import settings from file? Current settings will be overwritten.\n"
                "Restart the application to apply the changes."))
             != QMessageBox::Yes)
         return;
-    QSettings in(path, QSettings::IniFormat);
     QSettings cur;
-    for (const QString& k : cur.allKeys())
-        cur.remove(k);
-    for (const QString& k : in.allKeys())
-        cur.setValue(k, in.value(k));
-    cur.sync();
+    cur.setFallbacksEnabled(false);
+    if (!settingsbackup::replace(cur, *data)) {
+        QMessageBox::warning(this, tr("Import settings"), tr("Could not apply the settings backup."));
+        return;
+    }
+    m_settingsImported = true;
+    onDisconnect();
     statusBar()->showMessage(tr("Settings imported. Restart to apply."), 4000);
+}
+
+/** Экспортирует весь подтверждённый список в переносимый файл magnet-ссылок. */
+void MainWindow::onExportTorrentList()
+{
+    QStringList links;
+    QSet<QString> identifiers;
+    for (const auto& torrent : m_model.torrents()) {
+        auto link = torrent.magnetLink.value_or(QString());
+        if (link.isEmpty() && torrent.hashString)
+            link = QStringLiteral("magnet:?xt=urn:btih:") + *torrent.hashString;
+        const auto key = magnetIdentifier(QUrl(link, QUrl::StrictMode));
+        if (!key.isEmpty() && !identifiers.contains(key)) {
+            identifiers.insert(key);
+            links.append(link);
+        }
+    }
+    if (links.isEmpty()) {
+        QMessageBox::information(this, tr("Export torrent list"), tr("There are no torrent links to export."));
+        return;
+    }
+    const auto path = QFileDialog::getSaveFileName(this, tr("Export torrent list"), "torrents.txt",
+                                                  tr("Magnet lists (*.txt)"));
+    if (!path.isEmpty() && !settingsbackup::writeFile(path, (links.join('\n') + '\n').toUtf8()))
+        QMessageBox::warning(this, tr("Export torrent list"), tr("Could not write the torrent list."));
+}
+
+/** Проверяет весь файл и ставит ссылки в обычную очередь добавления после подтверждения. */
+void MainWindow::onImportTorrentList()
+{
+    if (!m_rpc || !m_connected) {
+        QMessageBox::information(this, tr("Import torrent list"), tr("Not connected to the daemon."));
+        return;
+    }
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    const auto profile = m_connectionProfile;
+    const auto path = QFileDialog::getOpenFileName(this, tr("Import torrent list"), {},
+                                                  tr("Magnet lists (*.txt)"));
+    if (path.isEmpty())
+        return;
+    QFile file(path);
+    const auto invalidList = [this] {
+        QMessageBox::warning(this, tr("Import torrent list"), tr("The file must contain one magnet link per line."));
+    };
+    if (!file.open(QIODevice::ReadOnly) || file.size() > settingsbackup::maxBytes) {
+        invalidList();
+        return;
+    }
+    QStringList links;
+    QSet<QString> identifiers;
+    auto contents = QString::fromUtf8(file.read(settingsbackup::maxBytes + 1));
+    if (file.error() != QFileDevice::NoError || !file.atEnd()) {
+        invalidList();
+        return;
+    }
+    if (contents.startsWith(QChar::ByteOrderMark))
+        contents.remove(0, 1);
+    for (const auto& line : contents.split('\n')) {
+        const auto text = line.trimmed();
+        if (text.isEmpty())
+            continue;
+        const QUrl url(text, QUrl::StrictMode);
+        const auto key = magnetIdentifier(url);
+        if (!url.isValid() || key.isEmpty()) {
+            invalidList();
+            return;
+        }
+        if (!identifiers.contains(key)) {
+            identifiers.insert(key);
+            links.append(url.toString(QUrl::FullyEncoded));
+        }
+    }
+    if (links.isEmpty()) {
+        invalidList();
+        return;
+    }
+    if (QMessageBox::question(this, tr("Import torrent list"),
+            tr("Add %1 torrent links to the connected daemon?").arg(links.size())) != QMessageBox::Yes)
+        return;
+    if (rpc && rpc == m_rpc.get() && m_connected && profile == m_connectionProfile)
+        openExternalTorrents(links);
 }
 
 void MainWindow::onSelectAll()
@@ -2461,9 +2636,10 @@ void MainWindow::openTorrentObject(int id, bool containingFolder)
     }
 
     const QPointer<tgui::RpcClient> rpc(m_rpc.get());
-    rpc->getTorrentDetails(id, [this, rpc, id, containingFolder]
+    const auto profile = m_connectionProfile;
+    rpc->getTorrentDetails(id, [this, rpc, id, containingFolder, profile]
                            (const std::optional<tgui::TorrentDetails>& details) {
-        if (!rpc || rpc != m_rpc.get())
+        if (!rpc || rpc != m_rpc.get() || !m_connected || profile != m_connectionProfile)
             return;
         const tgui::Torrent* current = torrentById(id);
         if (!current)
@@ -2503,8 +2679,7 @@ const tgui::Torrent* MainWindow::torrentById(int id) const
 
 QString MainWindow::mappedLocalPath(const QString& remotePath) const
 {
-    return tgui::mapRemoteToLocal(remotePath,
-                                  QSettings().value(QStringLiteral("paths/mappings")).toStringList());
+    return tgui::mapRemoteToLocal(remotePath, ProfilePreferences(m_connectionProfile).mappings());
 }
 
 /** Сверяет downloadDir выбранных торрентов с целью переноса после ответа демона. */
@@ -2560,8 +2735,7 @@ void MainWindow::openLocalPath(const QString& path, bool selectFile)
         return;
     // Маппинг remote→local: путь демона (на сервере) → локальный.
     // Правила задаются в Application options → Paths (строки "remote=local").
-    const QStringList mappings = QSettings().value("paths/mappings").toStringList();
-    const QString local = tgui::mapRemoteToLocal(path, mappings);
+    const QString local = mappedLocalPath(path);
 
     const QFileInfo fi(local);
     if (fi.exists() && (fi.isDir() || !selectFile)) {
@@ -2888,7 +3062,51 @@ void MainWindow::onDevSite()
 
 void MainWindow::onCheckUpdate()
 {
-    QDesktopServices::openUrl(QUrl(QStringLiteral("https://transmissionbt.com/#release-notes")));
+    if (m_checkingUpdate)
+        return;
+    m_checkingUpdate = true;
+    statusBar()->showMessage(tr("Checking for updates…"));
+    QNetworkRequest request(QUrl(QStringLiteral("https://api.github.com/repos/don10077/transmissionGUI/releases/latest")));
+    request.setRawHeader("Accept", "application/vnd.github+json");
+    request.setRawHeader("User-Agent", "transmissionGUI");
+    request.setTransferTimeout(10000);
+    auto* reply = m_nam.get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        m_checkingUpdate = false;
+        statusBar()->clearMessage();
+        reply->deleteLater();
+        const int http = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const auto title = tr("Check for updates");
+        if (http == 404) {
+            QMessageBox::information(this, title, tr("No published release was found."));
+            return;
+        }
+        if (reply->error() != QNetworkReply::NoError) {
+            QMessageBox::warning(this, title, tr("Could not check for updates: %1").arg(reply->errorString()));
+            return;
+        }
+        const auto release = QJsonDocument::fromJson(reply->readAll()).object();
+        const auto tag = release.value("tag_name").toString();
+        const auto number = tag.startsWith('v', Qt::CaseInsensitive) ? tag.mid(1) : tag;
+        qsizetype suffix = 0;
+        const auto latest = QVersionNumber::fromString(number, &suffix);
+        if (latest.isNull() || suffix != number.size()) {
+            QMessageBox::warning(this, title, tr("Could not read the published version."));
+            return;
+        }
+        const auto current = QVersionNumber::fromString(QCoreApplication::applicationVersion());
+        if (latest.normalized() <= current.normalized()) {
+            QMessageBox::information(this, title, tr("You have the latest version."));
+            return;
+        }
+        QMessageBox box(QMessageBox::Information, title, tr("Version %1 is available.").arg(number),
+                        QMessageBox::Close, this);
+        auto* open = box.addButton(tr("Open release"), QMessageBox::AcceptRole);
+        box.exec();
+        if (box.clickedButton() == open)
+            QDesktopServices::openUrl(QUrl::fromEncoded(
+                "https://github.com/don10077/transmissionGUI/releases/tag/" + QUrl::toPercentEncoding(tag)));
+    });
 }
 
 void MainWindow::onPriorityHigh()
@@ -2917,7 +3135,8 @@ void MainWindow::onOptions()
 {
     // W07: диалог параметров (интерфейс: язык/масштаб/интервал; трей).
     auto* rpc = m_connected ? m_rpc.get() : nullptr;
-    OptionsDialog dlg(this, rpc ? rpc->rpcVersion() : 0, rpc);
+    const auto profile = (m_rpc || m_reconnectOptions) ? m_connectionProfile : ProfileStore().currentName();
+    OptionsDialog dlg(this, rpc ? rpc->rpcVersion() : 0, rpc, profile);
     const auto result = dlg.exec();
 
     m_labels = torrentlabels::configured();
@@ -2929,7 +3148,9 @@ void MainWindow::onOptions()
 
     updateWatchFolder();
     // Интервал обновления — применяем сразу (запущенный таймер подхватит новый интервал).
-    m_refreshTimer.setInterval(QSettings().value("ui/refreshInterval", kRefreshIntervalMs / 1000).toInt() * 1000);
+    updateRefreshSchedule();
+    m_model.setSmoothRates(QSettings().value("ui/smoothRates", false).toBool());
+    updateStatusBarTotals();
     // Иконка трея — применяем сразу (показать/скрыть существующую).
     if (!m_tray && QSettings().value("ui/trayIcon", true).toBool())
         createTray();
@@ -2975,6 +3196,7 @@ void MainWindow::switchToProfile(const QString& name)
             active.clientCertificatePath == opts.clientCertificatePath &&
             active.clientKeyPath == opts.clientKeyPath) {
             store.setCurrent(name);
+            m_connectionProfile = name;
             setConnectedUi(true); // Renaming does not require reconnecting.
             return;
         }
@@ -2985,6 +3207,7 @@ void MainWindow::switchToProfile(const QString& name)
         statusBar()->showMessage(tr("Server '%1' has no host set.").arg(name), 4000);
         return;
     }
+    m_connectionProfile = name;
     saveSettings(opts);
     startConnect(opts);
 }
@@ -3052,6 +3275,8 @@ void MainWindow::onSelectionChanged()
     // это обрабатывается onTorrentsReceived (восстановление по prevId).
     if (m_refreshing)
         return;
+    if (m_totalsMode == 2)
+        updateStatusBarTotals();
     int id = -1;
     if (m_view->selectionModel()) {
         for (const QModelIndex& vi : m_view->selectionModel()->selectedIndexes()) {
@@ -3598,6 +3823,53 @@ void MainWindow::dropEvent(QDropEvent* event)
     event->acceptProposedAction();
 }
 
+/** Наполняет меню подтверждёнными лимитами текущего демона и значениями его профиля. */
+void MainWindow::addSpeedLimitMenu(QMenu* parent, bool download)
+{
+    auto* menu = parent->addMenu(download ? tr("Max download speed") : tr("Max upload speed"));
+    menu->setObjectName(download ? QStringLiteral("quickDownloadSpeed") : QStringLiteral("quickUploadSpeed"));
+    menu->setEnabled(m_connected);
+    m_speedLimitMenus.append(menu);
+    connect(menu, &QMenu::aboutToShow, this, [this, menu, download] {
+        menu->clear();
+        if (!m_rpc || !m_connected)
+            return;
+        const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+        const auto profile = m_connectionProfile;
+        const auto& session = rpc->sessionInfo();
+        const bool enabled = download ? session.speedLimitDownEnabled : session.speedLimitUpEnabled;
+        const int current = enabled ? (download ? session.speedLimitDown : session.speedLimitUp) : -1;
+        auto speeds = ProfilePreferences(profile).speedPresets(download);
+        if (current >= 0 && !speeds.contains(current)) {
+            speeds.append(current);
+            std::sort(speeds.begin(), speeds.end());
+        }
+        const auto add = [this, menu, rpc, profile, download, current, alternate = session.altSpeedEnabled](
+                             const QString& caption, int speed) {
+            auto* action = menu->addAction(caption);
+            action->setCheckable(true);
+            action->setChecked(!alternate && speed == current);
+            action->setData(speed);
+            connect(action, &QAction::triggered, this, [this, rpc, profile, download, speed] {
+                if (!rpc || rpc != m_rpc.get() || !m_connected || profile != m_connectionProfile)
+                    return;
+                const auto key = download ? QStringLiteral("speed-limit-down") : QStringLiteral("speed-limit-up");
+                QJsonObject params{{key + "-enabled", speed >= 0}};
+                if (speed >= 0)
+                    params.insert(key, speed);
+                if (rpc->sessionInfo().altSpeedEnabled)
+                    params.insert("alt-speed-enabled", false);
+                rpc->setSession(params);
+            });
+        };
+        add(tr("Unlimited"), -1);
+        if (!speeds.isEmpty())
+            menu->addSeparator();
+        for (auto it = speeds.crbegin(); it != speeds.crend(); ++it)
+            add(tr("%1 KB/s").arg(*it), *it);
+    });
+}
+
 void MainWindow::createTray()
 {
     if (!QSystemTrayIcon::isSystemTrayAvailable())
@@ -3618,6 +3890,8 @@ void MainWindow::createTray()
     auto* actShow = menu->addAction(tr("Show"));
     auto* actStartAll = menu->addAction(tr("Start all"));
     auto* actStopAll = menu->addAction(tr("Pause all"));
+    addSpeedLimitMenu(menu, true);
+    addSpeedLimitMenu(menu, false);
     menu->addSeparator();
     auto* actRefresh = menu->addAction(tr("Refresh"));
     menu->addSeparator();
@@ -3646,6 +3920,7 @@ void MainWindow::createTray()
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
+    saveWindowLayout();
     // W07: «close to tray» из настроек; иначе — выход.
     const bool closeToTray = QSettings().value("ui/closeToTray", true).toBool();
     if (closeToTray && m_tray && m_tray->isVisible()) {
@@ -3654,6 +3929,25 @@ void MainWindow::closeEvent(QCloseEvent* event)
         return;
     }
     QMainWindow::closeEvent(event);
+}
+
+/** Сохраняет геометрию окна и пропорции основной панели. */
+void MainWindow::saveWindowLayout()
+{
+    if (m_settingsImported)
+        return;
+    QSettings settings;
+    settings.setValue("ui/windowGeometry", saveGeometry());
+    settings.setValue("ui/mainSplitter", m_mainSplitter->saveState());
+}
+
+bool MainWindow::event(QEvent* event)
+{
+    const bool handled = QMainWindow::event(event);
+    if (event->type() == QEvent::Show || event->type() == QEvent::Hide ||
+        event->type() == QEvent::WindowStateChange)
+        updateRefreshSchedule();
+    return handled;
 }
 
 void MainWindow::changeEvent(QEvent* event)

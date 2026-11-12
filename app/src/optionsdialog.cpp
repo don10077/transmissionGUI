@@ -44,7 +44,6 @@ constexpr char kKeyCloseToTray[] = "ui/closeToTray";
 constexpr char kKeyMinimizeToTray[] = "ui/minimizeToTray";
 constexpr char kKeyTrayIcon[] = "ui/trayIcon";
 constexpr char kKeyTrayNotify[] = "ui/trayNotify";
-constexpr char kKeyPaths[] = "paths/mappings";
 
 #ifdef Q_OS_WIN
 /** Регистрирует клиент как возможный обработчик для текущего пользователя. */
@@ -90,8 +89,8 @@ QStringList readLabels(const QPlainTextEdit& editor)
 }
 }  // namespace
 
-OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion, tgui::RpcClient* rpc)
-    : QDialog(parent)
+OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion, tgui::RpcClient* rpc, const QString& profile)
+    : QDialog(parent), m_preferences(profile)
 {
     // Как transgui/options.lfm: «Application options» + вкладки
     // General / Advanced (+ Paths для маппинга путей).
@@ -115,6 +114,16 @@ OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion, tgui::RpcClient* r
     m_refresh->setSuffix(tr(" seconds"));
     m_refresh->setValue(QSettings().value(kKeyRefresh, 2).toInt());
     dataForm->addRow(tr("Data refresh interval:"), m_refresh);
+    m_backgroundRefresh = new QSpinBox(dataGroup);
+    m_backgroundRefresh->setObjectName(QStringLiteral("backgroundRefresh"));
+    m_backgroundRefresh->setRange(1, 999);
+    m_backgroundRefresh->setSuffix(tr(" seconds"));
+    m_backgroundRefresh->setValue(QSettings().value("ui/backgroundRefreshInterval", 10).toInt());
+    dataForm->addRow(tr("Refresh interval while minimized:"), m_backgroundRefresh);
+    m_smoothRates = new QCheckBox(tr("Smooth displayed transfer rates"), dataGroup);
+    m_smoothRates->setObjectName(QStringLiteral("smoothRates"));
+    m_smoothRates->setChecked(QSettings().value("ui/smoothRates", false).toBool());
+    dataForm->addRow(m_smoothRates);
 
     generalLayout->addWidget(dataGroup);
     generalLayout->addStretch(1);
@@ -187,11 +196,36 @@ OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion, tgui::RpcClient* r
         pathsPage);
     pathsHint->setWordWrap(true);
     m_paths = new QPlainTextEdit(pathsPage);
-    m_paths->setPlainText(
-        QSettings().value(kKeyPaths, QStringList()).toStringList().join(QLatin1Char('\n')));
+    m_paths->setPlainText(m_preferences.mappings().join(QLatin1Char('\n')));
+    auto* profileLabel = new QLabel(profile.isEmpty() ? tr("Connections without a profile") : tr("Profile: %1").arg(profile), pathsPage);
+    profileLabel->setTextFormat(Qt::PlainText);
+    pathsLayout->addWidget(profileLabel);
     pathsLayout->addWidget(pathsHint);
     pathsLayout->addWidget(m_paths, 1);
     tabs->addTab(pathsPage, tr("Paths"));
+
+    auto* speedsPage = new QWidget(tabs);
+    auto* speedsForm = new QFormLayout(speedsPage);
+    speedsForm->setContentsMargins(16, 16, 16, 16);
+    auto* speedsProfile = new QLabel(profileLabel->text(), speedsPage);
+    speedsProfile->setTextFormat(Qt::PlainText);
+    speedsForm->addRow(speedsProfile);
+    auto* speedsHint = new QLabel(tr("Enter speed presets separated by commas or spaces."), speedsPage);
+    speedsHint->setWordWrap(true);
+    speedsForm->addRow(speedsHint);
+    const auto makeSpeedsEdit = [this, speedsPage](bool download, const QString& objectName) {
+        QStringList values;
+        for (int speed : m_preferences.speedPresets(download))
+            values.append(QString::number(speed));
+        auto* edit = new QLineEdit(values.join(", "), speedsPage);
+        edit->setObjectName(objectName);
+        return edit;
+    };
+    m_downloadSpeeds = makeSpeedsEdit(true, QStringLiteral("downloadSpeedPresets"));
+    m_uploadSpeeds = makeSpeedsEdit(false, QStringLiteral("uploadSpeedPresets"));
+    speedsForm->addRow(tr("Download presets (KB/s)"), m_downloadSpeeds);
+    speedsForm->addRow(tr("Upload presets (KB/s)"), m_uploadSpeeds);
+    tabs->addTab(speedsPage, tr("Speed limits"));
 
     auto* addingPage = new QWidget(tabs);
     auto* addingLayout = new QVBoxLayout(addingPage);
@@ -380,6 +414,12 @@ void OptionsDialog::setPathMappingsText(const QString& text)
 
 bool OptionsDialog::apply()
 {
+    const auto downloadSpeeds = ProfilePreferences::parseSpeeds(m_downloadSpeeds->text());
+    const auto uploadSpeeds = ProfilePreferences::parseSpeeds(m_uploadSpeeds->text());
+    if (!downloadSpeeds || !uploadSpeeds) {
+        QMessageBox::warning(this, tr("Speed limits"), tr("Speed presets must be non-negative whole numbers."));
+        return false;
+    }
     const auto labels = readLabels(*m_labels);
     for (const auto& label : labels) {
         if (label.contains(QLatin1Char(','))) {
@@ -397,6 +437,8 @@ bool OptionsDialog::apply()
     s.setValue(kKeyLanguage, newLang);
     s.setValue(kKeyScale, newScale);
     s.setValue(kKeyRefresh, refreshIntervalSec());
+    s.setValue("ui/backgroundRefreshInterval", m_backgroundRefresh->value());
+    s.setValue("ui/smoothRates", m_smoothRates->isChecked());
     s.setValue(kKeyCloseToTray, m_closeToTray->isChecked());
     s.setValue(kKeyMinimizeToTray, m_minimizeToTray->isChecked());
     s.setValue(kKeyTrayIcon, m_trayIcon->isChecked());
@@ -408,7 +450,9 @@ bool OptionsDialog::apply()
     s.setValue(watchDestinationKey, m_watchDestination->text().trimmed());
     s.setValue("downloads/autoSequential", m_autoSequential->isChecked());
     s.setValue("downloads/sequentialExtensions", m_sequentialExtensions->toPlainText());
-    s.setValue(kKeyPaths, tgui::pathMappingsFromText(pathMappingsText()));
+    m_preferences.setMappings(tgui::pathMappingsFromText(pathMappingsText()));
+    m_preferences.setSpeedPresets(true, *downloadSpeeds);
+    m_preferences.setSpeedPresets(false, *uploadSpeeds);
     s.setValue(torrentlabels::settingsKey, labels);
     s.sync();
     return true;

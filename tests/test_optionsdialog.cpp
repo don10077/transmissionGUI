@@ -10,6 +10,7 @@
 
 #include "fileselectdialog.h"
 #include "optionsdialog.h"
+#include "settingsbackup.h"
 #include "torrentlabels.h"
 
 namespace {
@@ -90,6 +91,28 @@ TEST(OptionsDialog, AddPreferencesAreOptInAndPersist)
     EXPECT_TRUE(reopened.findChild<QCheckBox*>("deleteSourceTorrent")->isChecked());
     settings.remove(OptionsDialog::skipAddDialogKey);
     settings.remove(OptionsDialog::deleteSourceTorrentKey);
+}
+
+TEST(SettingsBackup, ValidatesBeforeReplacingAndRoundTripsProfiles)
+{
+    QTemporaryDir directory;
+    ASSERT_TRUE(directory.isValid());
+    const auto valid = directory.filePath("backup.ini");
+    const auto invalid = directory.filePath("foreign.ini");
+    const QVariantMap exported{{"ui/refreshInterval", 3}, {"daemons/names", QStringList{"server"}},
+                               {"daemons/current", "server"}, {"daemons/server/host", "localhost"}};
+    ASSERT_TRUE(settingsbackup::write(valid, exported));
+    ASSERT_TRUE(settingsbackup::writeFile(invalid, "[foreign]\nsetting=42\n"));
+    EXPECT_FALSE(settingsbackup::read(invalid).has_value());
+    const auto loaded = settingsbackup::read(valid);
+    ASSERT_TRUE(loaded.has_value());
+    QSettings destination(directory.filePath("destination.ini"), QSettings::IniFormat);
+    destination.setValue("ui/obsolete", true);
+    ASSERT_TRUE(settingsbackup::replace(destination, *loaded));
+    EXPECT_FALSE(destination.contains("ui/obsolete"));
+    EXPECT_EQ(destination.value("ui/refreshInterval").toInt(), 3);
+    EXPECT_EQ(destination.value("daemons/server/host").toString(), "localhost");
+    EXPECT_FALSE(destination.contains("backup/version"));
 }
 
 TEST(OptionsDialog, TrayDefaultsPersist)

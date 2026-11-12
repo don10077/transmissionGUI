@@ -2,6 +2,7 @@
 
 #include <QNetworkProxy>
 #include <QStringList>
+#include <QVariantMap>
 
 #include "tgui/rpcclient.h"
 
@@ -46,4 +47,24 @@ public:
     void remove(const QString& name);
     void rename(const QString& oldName, const QString& newName);
     DaemonProfile currentProfile() const;
+};
+
+/** Настройки путей и меню скоростей одного профиля. Пустое имя — подключение без профиля. */
+class ProfilePreferences {
+public:
+    explicit ProfilePreferences(const QString& name = {});
+    QStringList mappings() const;
+    void setMappings(const QStringList& mappings) const;
+    QStringList moveHistory() const;
+    void rememberMove(const QString& directory) const;
+    QVariantMap destinations(const tgui::RpcClient::Options* options) const;
+    void setDestinations(const tgui::RpcClient::Options* options, const QVariantMap& destinations) const;
+    QList<int> speedPresets(bool download) const;
+    void setSpeedPresets(bool download, const QList<int>& speeds) const;
+    static std::optional<QList<int>> parseSpeeds(const QString& text);
+
+private:
+    QVariant value(const QString& key, const QString& legacy, const QVariant& fallback = {}) const;
+    void setValue(const QString& key, const QString& legacy, const QVariant& value) const;
+    QString m_name;
 };

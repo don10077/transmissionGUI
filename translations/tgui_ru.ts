@@ -596,6 +596,34 @@
   </context>
   <context>
     <name>MainWindow</name>
+    <message><source>Visible: %1, left %2</source><translation>Видимые: %1, осталось %2</translation></message>
+    <message><source>Selected: %1, left %2</source><translation>Выбранные: %1, осталось %2</translation></message>
+    <message><source>Size totals</source><translation>Суммарный размер</translation></message>
+    <message><source>Hide size totals</source><translation>Скрыть суммарный размер</translation></message>
+    <message><source>Visible torrents</source><translation>Видимые торренты</translation></message>
+    <message><source>Selected torrents</source><translation>Выбранные торренты</translation></message>
+    <message><source>Export torrent list…</source><translation>Экспорт списка торрентов…</translation></message>
+    <message><source>Import torrent list…</source><translation>Импорт списка торрентов…</translation></message>
+    <message><source>Export torrent list</source><translation>Экспорт списка торрентов</translation></message>
+    <message><source>Import torrent list</source><translation>Импорт списка торрентов</translation></message>
+    <message><source>There are no torrent links to export.</source><translation>Нет ссылок для экспорта.</translation></message>
+    <message><source>Magnet lists (*.txt)</source><translation>Списки magnet-ссылок (*.txt)</translation></message>
+    <message><source>Could not write the torrent list.</source><translation>Не удалось записать список торрентов.</translation></message>
+    <message><source>The file must contain one magnet link per line.</source><translation>В файле должна быть одна magnet-ссылка на строку.</translation></message>
+    <message><source>Add %1 torrent links to the connected daemon?</source><translation>Добавить ссылки (%1) на подключённом демоне?</translation></message>
+    <message><source>Could not write the settings backup.</source><translation>Не удалось записать резервную копию настроек.</translation></message>
+    <message><source>The file is not a supported transmissionGUI settings backup.</source><translation>Формат резервной копии настроек transmissionGUI не распознан.</translation></message>
+    <message><source>Could not apply the settings backup.</source><translation>Не удалось применить резервную копию настроек.</translation></message>
+    <message><source>Checking for updates…</source><translation>Проверка обновлений…</translation></message>
+    <message><source>No published release was found.</source><translation>Опубликованные выпуски не найдены.</translation></message>
+    <message><source>Could not check for updates: %1</source><translation>Не удалось проверить обновления: %1</translation></message>
+    <message><source>Could not read the published version.</source><translation>Не удалось определить опубликованную версию.</translation></message>
+    <message><source>You have the latest version.</source><translation>Установлена актуальная версия.</translation></message>
+    <message><source>Version %1 is available.</source><translation>Доступна версия %1.</translation></message>
+    <message><source>Open release</source><translation>Открыть выпуск</translation></message>
+    <message><source>Max download speed</source><translation>Максимальная скорость загрузки</translation></message>
+    <message><source>Max upload speed</source><translation>Максимальная скорость отдачи</translation></message>
+    <message><source>%1 KB/s</source><translation>%1 КБ/с</translation></message>
     <message><source>Client TLS passphrase</source><translation>Пароль клиентского TLS</translation></message>
     <message><source>Passphrase for the client certificate or key:</source><translation>Пароль клиентского сертификата или ключа:</translation></message>
     <message><source>Reconnecting…</source><translation>Переподключение…</translation></message>
@@ -1831,6 +1859,15 @@ Restart the application to apply the changes.</source>
   </context>
   <context>
     <name>OptionsDialog</name>
+    <message><source>Refresh interval while minimized:</source><translation>Интервал обновления в свёрнутом окне:</translation></message>
+    <message><source>Smooth displayed transfer rates</source><translation>Сглаживать отображаемые скорости</translation></message>
+    <message><source>Connections without a profile</source><translation>Подключения без профиля</translation></message>
+    <message><source>Profile: %1</source><translation>Профиль: %1</translation></message>
+    <message><source>Speed limits</source><translation>Лимиты скорости</translation></message>
+    <message><source>Enter speed presets separated by commas or spaces.</source><translation>Введите значения скорости через запятую или пробел.</translation></message>
+    <message><source>Download presets (KB/s)</source><translation>Скорости загрузки (КБ/с)</translation></message>
+    <message><source>Upload presets (KB/s)</source><translation>Скорости отдачи (КБ/с)</translation></message>
+    <message><source>Speed presets must be non-negative whole numbers.</source><translation>Скорости должны быть целыми неотрицательными числами.</translation></message>
     <message><source>Adding torrents</source><translation>Добавление торрентов</translation></message>
     <message><source>Skip the add torrent dialog</source><translation>Пропускать окно добавления торрента</translation></message>
     <message><source>Delete the original .torrent file after successful addition</source><translation>Удалять исходный файл .torrent после успешного добавления</translation></message>
@@ -1993,6 +2030,12 @@ Used when opening files/torrents with double-click.</source>
   </context>
   <context>
     <name>PropsDialog</name>
+    <message><source>Trackers (one URL per line, blank line between tiers)</source><translation>Трекеры: один URL на строку, пустая строка между уровнями</translation></message>
+    <message><source>Properties — %1 torrents</source><translation>Свойства торрентов (%1)</translation></message>
+    <message><source>Keep unchanged</source><translation>Без изменений</translation></message>
+    <message><source>Set limit</source><translation>Установить лимит</translation></message>
+    <message><source>Enable</source><translation>Включить</translation></message>
+    <message><source>Disable</source><translation>Выключить</translation></message>
     <message><source>Label</source><translation>Метка</translation></message>
     <message><source>Name</source><translation>Название</translation></message>
     <message><source>Peer limit</source><translation>Лимит пиров</translation></message>

@@ -1,9 +1,10 @@
 #pragma once
 
 #include <QDialog>
+#include <QPointer>
 #include <QVariantMap>
 
-#include "tgui/rpcclient.h"
+#include "daemonprofile.h"
 
 class QCheckBox;
 class QComboBox;
@@ -22,7 +23,7 @@ class FileSelectDialog : public QDialog {
 public:
     FileSelectDialog(const tgui::TorrentDetails& details, bool start, int rpcVersion,
                      tgui::RpcClient* rpc = nullptr, QWidget* parent = nullptr,
-                     bool useDestinationTemplates = true);
+                     bool useDestinationTemplates = true, const QString& profile = {});
 
     void offerMetainfoCopy(const tgui::RpcClient::AddTorrent& source);
     QVector<int> wanted() const;
@@ -54,7 +55,8 @@ private:
     QSpinBox* m_peerLimit;
     QCheckBox* m_start;
     QCheckBox* m_sequential;
-    QString m_historyKey;
+    ProfilePreferences m_preferences;
+    QPointer<tgui::RpcClient> m_rpc;
     QVariantMap m_history;
     double m_totalSize = 0;
     bool m_updating = false;

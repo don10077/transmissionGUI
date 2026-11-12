@@ -6,8 +6,39 @@
 
 TorrentModel::TorrentModel(QObject* parent) : QAbstractTableModel(parent) {}
 
+/** Меняет только отображение скоростей, оставляя данные RPC доступными без сглаживания. */
+void TorrentModel::setSmoothRates(bool enabled)
+{
+    if (m_smoothRates == enabled)
+        return;
+    m_smoothRates = enabled;
+    m_displayedRates.clear();
+    if (!m_torrents.isEmpty())
+        emit dataChanged(index(0, ColRateDown), index(rowCount() - 1, ColRateUp), {Qt::DisplayRole});
+}
+
+/** Возвращает отображаемые скорости загрузки и отдачи в байтах в секунду. */
+QPair<double, double> TorrentModel::displayedRates(const tgui::Torrent& torrent) const
+{
+    return m_displayedRates.value(torrent.id, {static_cast<double>(torrent.rateDownload.value_or(0)),
+                                               static_cast<double>(torrent.rateUpload.value_or(0))});
+}
+
 void TorrentModel::setTorrents(const QVector<tgui::Torrent>& torrents)
 {
+    if (m_smoothRates) {
+        QHash<int, QPair<double, double>> rates;
+        const auto smooth = [](double previous, double sample) {
+            return sample > 0.0 ? (previous + sample) / 2.0 : 0.0;
+        };
+        for (const auto& torrent : torrents) {
+            const double down = static_cast<double>(torrent.rateDownload.value_or(0));
+            const double up = static_cast<double>(torrent.rateUpload.value_or(0));
+            const auto previous = m_displayedRates.value(torrent.id, {down, up});
+            rates.insert(torrent.id, {smooth(previous.first, down), smooth(previous.second, up)});
+        }
+        m_displayedRates.swap(rates);
+    }
     // Most RPC updates change values, not the set of rows. Keep the model's
     // indexes and the view's scroll position intact in that common case.
     bool sameRows = m_torrents.size() == torrents.size();
@@ -267,9 +298,9 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
                                   t.trackerStats.isEmpty() ? -1
                                                            : t.trackerStats.first().leecherCount);
         case ColRateDown:
-            return QString::fromStdString(tgui::formatRate(t.rateDownload.value_or(0)));
+            return QString::fromStdString(tgui::formatRate(displayedRates(t).first));
         case ColRateUp:
-            return QString::fromStdString(tgui::formatRate(t.rateUpload.value_or(0)));
+            return QString::fromStdString(tgui::formatRate(displayedRates(t).second));
         case ColEta:
             if (!t.eta)
                 return QStringLiteral("—");

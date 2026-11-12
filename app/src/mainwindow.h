@@ -23,6 +23,8 @@ class QTabWidget;
 class QTableView;
 class QTreeView;
 class QAction;
+class QMenu;
+class QSplitter;
 class QToolBar;
 class QToolButton;
 class QNetworkAccessManager;
@@ -151,12 +153,15 @@ private slots:
     void onSetLabels();
     void onExportSettings();
     void onImportSettings();
+    void onExportTorrentList();
+    void onImportTorrentList();
 
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
     void changeEvent(QEvent* event) override;
+    bool event(QEvent* event) override;
 
 private:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -164,6 +169,7 @@ private:
     void createActions();
     void createMenus();
     void createTray();
+    void addSpeedLimitMenu(QMenu* parent, bool download);
     bool ensureFlagImages(bool allowDownload);
     static QPixmap makeTrayIcon();
     void startConnect(const tgui::RpcClient::Options& opts, bool retry = false);
@@ -187,6 +193,8 @@ private:
     void setConnectedUi(bool connected);
     void setConnectionState(const QString& text, const QColor& color);
     void updateStatusBarTotals();
+    void updateRefreshSchedule();
+    void saveWindowLayout();
     void updateFilterPanel(const QVector<tgui::Torrent>& torrents);
     void updateSelectionActions();
     void updateLabelUi();
@@ -218,6 +226,8 @@ private:
     static void saveSettings(const tgui::RpcClient::Options& opts);
 
     std::unique_ptr<tgui::RpcClient> m_rpc;
+    QString m_connectionProfile;
+    QList<QMenu*> m_speedLimitMenus;
     bool m_connected = false;
     QTimer m_reconnectTimer;
     std::optional<tgui::RpcClient::Options> m_reconnectOptions;
@@ -231,6 +241,7 @@ private:
     struct PendingAdd {
         tgui::RpcClient::AddTorrent params;
         AddOrigin origin;
+        QString profile;
     };
     QQueue<PendingAdd> m_addQueue;
     QStringList m_pendingExternalTorrents;
@@ -248,6 +259,10 @@ private:
     TrackerListModel m_trackerModel;
     tgui::GeoIpDb m_geoip; // GeoIP Country Edition (W11b)
     QTimer m_refreshTimer;
+    QSplitter* m_mainSplitter = nullptr;
+    int m_totalsMode = 0;
+    bool m_settingsImported = false;
+    bool m_checkingUpdate = false;
     // Ожидание подтверждённого нового downloadDir после переноса.
     QVector<int> m_movePendingIds;
     QString m_movePendingTarget;

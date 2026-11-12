@@ -45,6 +45,7 @@ add_executable(transmissiongui WIN32
     src/aboutdialog.h
 )
 target_include_directories(transmissiongui PRIVATE src)
+target_compile_definitions(transmissiongui PRIVATE TGUI_VERSION="${PROJECT_VERSION}")
 target_link_libraries(transmissiongui PRIVATE tgui_core Qt6::Widgets Qt6::Network ZLIB::ZLIB)
 if(WIN32)
     target_link_libraries(transmissiongui PRIVATE shell32)

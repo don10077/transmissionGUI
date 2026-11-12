@@ -17,6 +17,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QMimeData>
 #include <QScopeGuard>
 #include <QScrollArea>
@@ -575,6 +576,38 @@ TEST(Properties, SequentialDownloadToggle)
     EXPECT_TRUE(old.changes().isEmpty());
 }
 
+TEST(Properties, BatchChangesOnlyExplicitSettings)
+{
+    PropsDialog dialog(3, nullptr, 18);
+    auto* ratio = dialog.findChild<QComboBox*>("seedRatioMode");
+    auto* download = dialog.findChild<QComboBox*>("downloadLimited");
+    ASSERT_NE(ratio, nullptr);
+    ASSERT_NE(download, nullptr);
+    ratio->setCurrentIndex(3);
+    download->setCurrentIndex(1);
+    auto* buttons = dialog.findChild<QDialogButtonBox*>();
+    ASSERT_NE(buttons, nullptr);
+    buttons->button(QDialogButtonBox::Ok)->click();
+    EXPECT_EQ(dialog.changes(), (QJsonObject{{"seedRatioMode", 2}, {"downloadLimited", false}}));
+}
+
+TEST(Properties, TrackerTierEditingUsesTrackerListOnSupportedDaemon)
+{
+    tgui::Torrent torrent;
+    torrent.trackerStats = {{.id = 1, .announce = "https://one.test/announce", .tier = 0},
+                            {.id = 2, .announce = "https://two.test/announce", .tier = 1}};
+    PropsDialog dialog(torrent, nullptr, 17, 1);
+    auto* edit = dialog.findChild<QPlainTextEdit*>();
+    ASSERT_NE(edit, nullptr);
+    EXPECT_EQ(edit->toPlainText(), "https://one.test/announce\n\nhttps://two.test/announce");
+    edit->setPlainText("https://two.test/announce\nhttps://one.test/announce");
+    auto* buttons = dialog.findChild<QDialogButtonBox*>();
+    ASSERT_NE(buttons, nullptr);
+    buttons->button(QDialogButtonBox::Ok)->click();
+    EXPECT_EQ(dialog.changes(),
+              (QJsonObject{{"trackerList", "https://two.test/announce\nhttps://one.test/announce"}}));
+}
+
 TEST(DialogAppearance, AllPagesFitAndDaemonPreservesZero)
 {
     tgui::SessionInfo session;
@@ -840,6 +873,125 @@ protected:
 };
 
 using AutomaticAddSources = MockDaemonWindow;
+
+TEST_F(MockDaemonWindow, RefreshIntervalFollowsWindowVisibilityAndAutoRefresh)
+{
+    const auto foreground = settings.value("ui/refreshInterval");
+    const auto background = settings.value("ui/backgroundRefreshInterval");
+    const auto restore = qScopeGuard([&] {
+        if (foreground.isValid()) settings.setValue("ui/refreshInterval", foreground);
+        else settings.remove("ui/refreshInterval");
+        if (background.isValid()) settings.setValue("ui/backgroundRefreshInterval", background);
+        else settings.remove("ui/backgroundRefreshInterval");
+    });
+    settings.setValue("ui/autoRefresh", true);
+    settings.setValue("ui/refreshInterval", 2);
+    settings.setValue("ui/backgroundRefreshInterval", 9);
+    MainWindow window;
+    window.show();
+    ASSERT_NO_FATAL_FAILURE(connectWindow(window));
+    auto* timer = window.findChild<QTimer*>("refreshTimer");
+    auto* refresh = window.findChild<QAction*>("autoRefreshAction");
+    ASSERT_NE(timer, nullptr);
+    ASSERT_NE(refresh, nullptr);
+    EXPECT_TRUE(timer->isActive());
+    EXPECT_EQ(timer->interval(), 2000);
+    window.showMinimized();
+    EXPECT_EQ(timer->interval(), 9000);
+    window.showNormal();
+    EXPECT_EQ(timer->interval(), 2000);
+    window.hide();
+    EXPECT_EQ(timer->interval(), 9000);
+    refresh->setChecked(false);
+    window.show();
+    EXPECT_FALSE(timer->isActive());
+}
+
+TEST(TorrentModel, RateSmoothingLeavesRpcSamplesAndActiveFilterUnchanged)
+{
+    TorrentModel model;
+    model.setSmoothRates(true);
+    tgui::Torrent torrent;
+    torrent.id = 1;
+    torrent.rateDownload = 1000;
+    model.setTorrents({torrent});
+    torrent.rateDownload = 3000;
+    model.setTorrents({torrent});
+    EXPECT_DOUBLE_EQ(model.displayedRates(model.torrentAt(0)).first, 2000);
+    EXPECT_EQ(model.torrentAt(0).rateDownload.value_or(0), 3000);
+    torrent.rateDownload = 0;
+    model.setTorrents({torrent});
+    EXPECT_DOUBLE_EQ(model.displayedRates(model.torrentAt(0)).first, 0);
+    EXPECT_FALSE(TorrentModel::matchesGroup(model.torrentAt(0), TorrentModel::GroupActive));
+}
+
+TEST_F(MockDaemonWindow, QuickSpeedMenuUsesTheSelectedProfile)
+{
+    server.setDefault({200, R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","alt-speed-enabled":true,"speed-limit-down-enabled":true,"speed-limit-down":77,"torrents":[]}})", {}});
+    ProfileStore profiles;
+    const auto cleanup = qScopeGuard([&] {
+        profiles.remove("speeds-a");
+        profiles.remove("speeds-b");
+    });
+    for (const auto& [name, speed] : {std::pair{QStringLiteral("speeds-a"), 111},
+                                      std::pair{QStringLiteral("speeds-b"), 222}}) {
+        profiles.add(name);
+        DaemonProfile profile;
+        profile.name = name;
+        profile.host = server.url().host();
+        profile.port = server.url().port();
+        profiles.save(profile);
+        ProfilePreferences(name).setSpeedPresets(true, {speed});
+    }
+    profiles.setCurrent("speeds-a");
+    MainWindow window;
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow() && server.requestCount() >= 3; }));
+    auto* speedMenu = window.findChild<QMenu*>("quickDownloadSpeed");
+    ASSERT_NE(speedMenu, nullptr);
+    const auto speedAction = [speedMenu](int speed) -> QAction* {
+        for (auto* action : speedMenu->actions())
+            if (action->data().isValid() && action->data().toInt() == speed)
+                return action;
+        return nullptr;
+    };
+    const auto writes = [&] {
+        QList<QJsonObject> result;
+        for (const auto& request : server.requests())
+            if (request.rpcMethod == "session-set")
+                result.append(request.arguments);
+        return result;
+    };
+    ASSERT_TRUE(QMetaObject::invokeMethod(speedMenu, "aboutToShow", Qt::DirectConnection));
+    EXPECT_NE(speedAction(77), nullptr); // Текущий лимит показывается вне списка пресетов.
+    EXPECT_EQ(speedAction(222), nullptr);
+    auto* oldAction = speedAction(111);
+    ASSERT_NE(oldAction, nullptr);
+    oldAction->trigger();
+    ASSERT_TRUE(waitForSettings([&] { return writes().size() == 1 && server.requestCount() >= 5; }));
+
+    auto* connection = window.findChild<QToolButton*>("connectButton");
+    ASSERT_NE(connection, nullptr);
+    auto* profileMenu = connection->menu();
+    ASSERT_NE(profileMenu, nullptr);
+    ASSERT_TRUE(QMetaObject::invokeMethod(profileMenu, "aboutToShow", Qt::DirectConnection));
+    const auto actions = profileMenu->actions();
+    const auto other = std::find_if(actions.cbegin(), actions.cend(),
+        [](const auto* action) { return action->text() == "speeds-b"; });
+    ASSERT_NE(other, actions.cend());
+    (*other)->trigger();
+    ASSERT_TRUE(window.isConnectedNow()); // Оба профиля используют один адрес.
+    oldAction->trigger();
+    ASSERT_TRUE(QMetaObject::invokeMethod(speedMenu, "aboutToShow", Qt::DirectConnection));
+    EXPECT_EQ(speedAction(111), nullptr);
+    auto* newAction = speedAction(222);
+    ASSERT_NE(newAction, nullptr);
+    newAction->trigger();
+    ASSERT_TRUE(waitForSettings([&] { return writes().size() >= 2; }));
+    EXPECT_EQ(writes(), (QList<QJsonObject>{
+        {{"speed-limit-down", 111}, {"speed-limit-down-enabled", true}, {"alt-speed-enabled", false}},
+        {{"speed-limit-down", 222}, {"speed-limit-down-enabled", true}, {"alt-speed-enabled", false}}
+    }));
+}
 
 TEST_F(AutomaticAddSources, ClipboardOptInAndNormalizesRepeatedLinks)
 {

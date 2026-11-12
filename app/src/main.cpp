@@ -59,7 +59,7 @@ int main(int argc, char* argv[])
     TorrentApplication app(argc, argv);
     app.setOrganizationName("transmissionGUI");
     app.setApplicationName("transmissionGUI");
-    app.setApplicationVersion("0.1.0");
+    app.setApplicationVersion(QStringLiteral(TGUI_VERSION));
     QCommandLineParser parser;
     parser.addHelpOption();
     parser.addVersionOption();

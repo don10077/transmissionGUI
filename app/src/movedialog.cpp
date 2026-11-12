@@ -6,7 +6,7 @@
 #include <QFileDialog>
 #include <QDir>
 #include <QFileInfo>
-#include <QSettings>
+#include "daemonprofile.h"
 #include "pathmap.h"
 #include <QHBoxLayout>
 #include <QLabel>
@@ -15,12 +15,8 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-namespace {
-constexpr int kMoveHistoryLimit = 10;
-const char kMoveHistoryKey[] = "paths/moveDirs";
-}  // namespace
-
-MoveDialog::MoveDialog(const QString& currentDir, QWidget* parent) : QDialog(parent)
+MoveDialog::MoveDialog(const QString& currentDir, QWidget* parent, const QString& profile)
+    : QDialog(parent), m_mappings(ProfilePreferences(profile).mappings())
 {
     setWindowTitle(tr("Move torrent"));
     resize(560, 120);
@@ -33,7 +29,7 @@ MoveDialog::MoveDialog(const QString& currentDir, QWidget* parent) : QDialog(par
     m_path = new QComboBox(this);
     m_path->setEditable(true);
     m_path->setInsertPolicy(QComboBox::NoInsert);
-    m_path->addItems(QSettings().value(QLatin1String(kMoveHistoryKey)).toStringList());
+    m_path->addItems(ProfilePreferences(profile).moveHistory());
     m_path->setCurrentText(currentDir);
     if (m_path->lineEdit())
         m_path->lineEdit()->setPlaceholderText(tr("Folder for the torrent files"));
@@ -78,25 +74,9 @@ bool MoveDialog::moveData() const
     return m_rename->isChecked();
 }
 
-void MoveDialog::rememberDirectory(const QString& dir)
-{
-    const QString target = dir.trimmed();
-    if (target.isEmpty())
-        return;
-    QSettings settings;
-    QStringList history = settings.value(QLatin1String(kMoveHistoryKey)).toStringList();
-    history.removeAll(target);
-    history.prepend(target);
-    while (history.size() > kMoveHistoryLimit)
-        history.removeLast();
-    settings.setValue(QLatin1String(kMoveHistoryKey), history);
-    settings.sync();
-}
-
 void MoveDialog::onBrowse()
 {
-    const auto mappings = QSettings().value("paths/mappings").toStringList();
-    const QString local = QDir::fromNativeSeparators(tgui::mapRemoteToLocal(targetDir(), mappings));
+    const QString local = QDir::fromNativeSeparators(tgui::mapRemoteToLocal(targetDir(), m_mappings));
     if (!QFileInfo(local).isDir()) {
         QMessageBox::warning(this, tr("Move"),
             tr("Folder is not accessible locally: %1. Check path mappings or enter the daemon path manually.").arg(local));
@@ -104,5 +84,5 @@ void MoveDialog::onBrowse()
     }
     const QString dir = QFileDialog::getExistingDirectory(
         this, tr("Folder for the torrent files"), local);
-    if (!dir.isEmpty()) m_path->setCurrentText(tgui::mapLocalToRemote(dir, mappings));
+    if (!dir.isEmpty()) m_path->setCurrentText(tgui::mapLocalToRemote(dir, m_mappings));
 }

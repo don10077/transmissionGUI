@@ -3,9 +3,12 @@
 
 #include <QCoreApplication>
 #include <QNetworkProxy>
+#include <QScopeGuard>
 #include <QSettings>
+#include <QLineEdit>
 
 #include "daemonprofile.h"
+#include "optionsdialog.h"
 
 namespace {
 void isolate()
@@ -114,6 +117,67 @@ TEST(ProfileStore, AddSaveReadRoundTrip)
     EXPECT_TRUE(r.toOptions().clientCertificatePath.isEmpty());
     EXPECT_TRUE(r.toOptions().clientKeyPath.isEmpty());
     EXPECT_EQ(store.currentProfile().host, "10.0.0.5");
+}
+
+TEST(ProfileStore, LegacyPreferencesMigrateAndStayIndependentAfterRename)
+{
+    isolate();
+    clearStore();
+    QSettings settings;
+    ProfileStore store;
+    DaemonProfile first;
+    first.name = "first";
+    first.host = "daemon.local";
+    store.add(first.name);
+    store.save(first);
+    store.add("second");
+    settings.remove("daemons/preferencesMigrated"); // Имитируем настройки до обновления.
+    const auto options = first.toOptions();
+    const auto destinationsKey = QStringLiteral("downloads/destinations/") + QString::fromLatin1(
+        QUrl::toPercentEncoding(options.url.toString(QUrl::RemoveUserInfo) + options.rpcPath));
+    const auto cleanup = qScopeGuard([&] {
+        for (const auto& key : {QString("paths/mappings"), QString("paths/moveDirs"),
+                                QString("downloads/downloadSpeeds"), destinationsKey})
+            settings.remove(key);
+        clearStore();
+    });
+    settings.setValue("paths/mappings", QStringList{"/remote=/local"});
+    settings.setValue("paths/moveDirs", QStringList{"/old"});
+    settings.setValue("downloads/downloadSpeeds", "80,100");
+    const QVariantMap templates{{"/archive", "*.mkv"}};
+    settings.setValue(destinationsKey, templates);
+
+    const ProfilePreferences a(first.name), b("second");
+    EXPECT_EQ(a.mappings(), QStringList{"/remote=/local"});
+    EXPECT_EQ(b.mappings(), a.mappings());
+    EXPECT_EQ(b.moveHistory(), QStringList{"/old"});
+    EXPECT_EQ(a.destinations(&options), templates);
+    EXPECT_EQ(b.speedPresets(true), (QList<int>{80, 100}));
+
+    OptionsDialog edit(nullptr, 0, nullptr, first.name);
+    edit.setPathMappingsText("/remote=/first");
+    auto* presets = edit.findChild<QLineEdit*>("downloadSpeedPresets");
+    ASSERT_NE(presets, nullptr);
+    presets->setText("200, 50 200");
+    ASSERT_TRUE(edit.apply());
+    a.rememberMove("/new");
+    a.setDestinations(&options, {{"/new", "*.iso"}});
+    EXPECT_EQ(b.mappings(), QStringList{"/remote=/local"});
+    EXPECT_EQ(b.moveHistory(), QStringList{"/old"});
+    EXPECT_TRUE(b.destinations(nullptr).isEmpty());
+    EXPECT_EQ(b.speedPresets(true), (QList<int>{80, 100}));
+    EXPECT_EQ(ProfilePreferences().mappings(), QStringList{"/remote=/local"});
+
+    store.rename(first.name, "renamed");
+    settings.sync();
+    const ProfilePreferences reopened("renamed");
+    EXPECT_EQ(reopened.mappings(), QStringList{"/remote=/first"});
+    EXPECT_EQ(reopened.moveHistory(), (QStringList{"/new", "/old"}));
+    EXPECT_EQ(reopened.destinations(&options), (QVariantMap{{"/new", "*.iso"}}));
+    EXPECT_EQ(reopened.speedPresets(true), (QList<int>{50, 200}));
+
+    store.add("new-profile");
+    EXPECT_TRUE(ProfilePreferences("new-profile").mappings().isEmpty());
 }
 
 TEST(ProfileStore, AddDuplicateIgnored)

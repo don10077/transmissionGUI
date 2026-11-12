@@ -23,7 +23,6 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSaveFile>
-#include <QSettings>
 #include <QSpinBox>
 #include <QStyle>
 #include <QTimer>
@@ -69,8 +68,8 @@ void forEachFile(QTreeWidgetItem* item, const std::function<void(QTreeWidgetItem
 
 FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool start,
                                    int rpcVersion, tgui::RpcClient* rpc, QWidget* parent,
-                                   bool useDestinationTemplates)
-    : QDialog(parent)
+                                   bool useDestinationTemplates, const QString& profile)
+    : QDialog(parent), m_preferences(profile), m_rpc(rpc)
 {
     setWindowTitle(tr("Add new torrent"));
     resize(620, 460);
@@ -82,11 +81,7 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
     m_destination->setObjectName(QStringLiteral("destinationFolder"));
     m_destination->setEditable(true);
     m_destination->setInsertPolicy(QComboBox::NoInsert);
-    m_historyKey = QStringLiteral("downloads/destinations/");
-    if (rpc)
-        m_historyKey += QString::fromLatin1(QUrl::toPercentEncoding(
-            rpc->options().url.toString(QUrl::RemoveUserInfo) + rpc->options().rpcPath));
-    m_history = QSettings().value(m_historyKey).toMap();
+    m_history = m_preferences.destinations(rpc ? &rpc->options() : nullptr);
     m_destination->addItems(m_history.keys());
     if (!details.downloadDir.isEmpty() && m_destination->findText(details.downloadDir) < 0)
         m_destination->addItem(details.downloadDir);
@@ -98,7 +93,7 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
         const int index = m_destination->findText(path);
         if (index >= 0)
             m_destination->removeItem(index);
-        QSettings().setValue(m_historyKey, m_history);
+        m_preferences.setDestinations(m_rpc ? &m_rpc->options() : nullptr, m_history);
     });
     auto* browse = new QPushButton(tr("Browse…"), this);
     connect(browse, &QPushButton::clicked, this, &FileSelectDialog::browseDestination);
@@ -426,14 +421,14 @@ void FileSelectDialog::accept()
     }
     if (!path.isEmpty()) {
         m_history.insert(path, m_template->text().trimmed());
-        QSettings().setValue(m_historyKey, m_history);
+        m_preferences.setDestinations(m_rpc ? &m_rpc->options() : nullptr, m_history);
     }
     QDialog::accept();
 }
 
 void FileSelectDialog::browseDestination()
 {
-    const auto mappings = QSettings().value("paths/mappings").toStringList();
+    const auto mappings = m_preferences.mappings();
     QString local = tgui::mapRemoteToLocal(options().downloadDir, mappings);
     if (!QFileInfo(local).isDir()) {
         for (const auto& mapping : mappings) {

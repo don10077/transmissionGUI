@@ -11,6 +11,7 @@ class PropsDialog : public QDialog {
 public:
     explicit PropsDialog(const tgui::Torrent& torrent, QWidget* parent = nullptr,
                          int rpcVersion = 0, int page = 0);
+    PropsDialog(int torrentCount, QWidget* parent, int rpcVersion);
     QJsonObject changes() const { return m_changes; }
 private:
     QJsonObject m_changes;
