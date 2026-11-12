@@ -1,39 +1,43 @@
 #include "delegates.h"
 
+#include <QAbstractItemView>
 #include <QApplication>
 #include <QFontMetrics>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
-#include <QPainterPath>
 #include <QStyleOptionViewItem>
 
 #include "detailmodels.h"
 #include "theme.h"
+#include "torrentlabels.h"
 #include "torrentmodel.h"
+
+#include <algorithm>
 
 namespace {
 
-QColor statusColor(int status, bool finished, bool error)
+/** Выбирает цвет полосы. Ошибка и проверка важнее процента загрузки. */
+QColor progressColor(const QModelIndex& index)
 {
-    using namespace tgui::theme::color;
-    if (error)
-        return red;
-    if (finished)
-        return green;
-    switch (status) {
-        case 4: // Download
-            return accent;
-        case 6: // Seed
-            return green;
-        case 1: // CheckWait
-        case 3: // DownloadWait
-        case 5: // SeedWait
-            return amber;
-        case 2: // Check
-            return purple;
-        default: // Stopped
-            return textFaint;
+    const auto& colors = tgui::theme::palette();
+    if (index.data(TorrentModel::ErrorRole).toBool())
+        return colors.progressRed;
+
+    using tgui::TorrentStatus;
+    switch (static_cast<TorrentStatus>(index.data(TorrentModel::StatusRole).toInt())) {
+        case TorrentStatus::Download:
+            return colors.blue;
+        case TorrentStatus::Seed:
+            return colors.progressGreen;
+        case TorrentStatus::CheckWait:
+        case TorrentStatus::Check:
+        case TorrentStatus::DownloadWait:
+        case TorrentStatus::SeedWait:
+            return colors.progressAmber;
+        default:
+            return index.data(TorrentModel::FinishedRole).toBool()
+                ? colors.progressGreen : colors.progressStopped;
     }
 }
 
@@ -58,181 +62,232 @@ tgui::theme::Icon torrentStatusIcon(int status, bool finished, bool error)
     }
     if (finished)
         return Icon::StatusDone;
-    if (status == 0)
-        return Icon::Pause;
     return Icon::StatusStopped;
 }
 
 } // namespace
 
+/** Кэширует шрифты и размеры, зависящие от масштаба интерфейса. */
+void TorrentDelegate::updateFonts(const QFont& font) const
+{
+    if (m_fontsReady && m_baseFont == font)
+        return;
+
+    m_fontsReady = true;
+    m_baseFont = font;
+    const auto scaledFont = [&font](qreal scale) {
+        QFont result = font;
+        if (font.pointSizeF() > 0)
+            result.setPointSizeF(font.pointSizeF() * scale);
+        else
+            result.setPixelSize(std::max(1, qRound(font.pixelSize() * scale)));
+        return result;
+    };
+    m_progressFont = scaledFont(11.0 / 12.0);
+    m_labelFont = scaledFont(10.5 / 12.0);
+    const auto digits = QStringLiteral("0123456789.%");
+    m_progressHeight = std::max(15, QFontMetrics(m_progressFont).tightBoundingRect(digits).height() + 2);
+    m_labelWidths.clear();
+}
+
+namespace {
+
+/** Рисует общую шкалу прогресса с белым текстом на заливке. */
+void drawProgressBar(QPainter& painter, const QRect& cell, double progress,
+                     const QColor& fill, const QFont& font, int barHeight)
+{
+    const auto& colors = tgui::theme::palette();
+    const QRect track(cell.left(), cell.top() + (cell.height() - barHeight) / 2,
+                      cell.width(), barHeight);
+    const QRect inner = track.adjusted(1, 1, -1, -1);
+    if (!inner.isValid())
+        return;
+
+    const int fillWidth = qRound(inner.width() * std::min(progress, 100.0) / 100.0);
+    const QRect chunk(inner.left(), inner.top(), fillWidth, inner.height());
+
+    painter.fillRect(track, colors.progressBorder);
+    painter.fillRect(inner, colors.progressBg);
+    if (fillWidth > 0)
+        painter.fillRect(chunk, fill);
+    painter.setFont(font);
+
+    const QString percent = QStringLiteral("%1%").arg(progress, 0, 'f', 1);
+    painter.save();
+    if (fillWidth < inner.width()) {
+        painter.save();
+        painter.setClipRect(QRect(inner.left() + fillWidth, inner.top(),
+                                  inner.width() - fillWidth, inner.height()), Qt::IntersectClip);
+        painter.setPen(colors.text);
+        painter.drawText(inner, Qt::AlignCenter, percent);
+        painter.restore();
+    }
+    if (fillWidth > 0) {
+        painter.setClipRect(chunk, Qt::IntersectClip);
+        painter.setPen(Qt::white);
+        painter.drawText(inner, Qt::AlignCenter, percent);
+    }
+    painter.restore();
+}
+
+/** Рисует фон ячейки, в которой стандартный делегат заменён. */
+void drawDetailCell(QPainter& painter, const QStyleOptionViewItem& option)
+{
+    const auto& colors = tgui::theme::palette();
+    const QColor background = option.state.testFlag(QStyle::State_Selected) ? colors.selBg
+        : option.state.testFlag(QStyle::State_MouseOver) ? colors.hoverBg : colors.panel;
+    painter.fillRect(option.rect, background);
+    painter.setPen(colors.listRowBorder);
+    painter.drawLine(option.rect.bottomLeft(), option.rect.bottomRight());
+}
+
+} // namespace
+
+void TorrentDelegate::paintProgress(QPainter& painter, const QRect& cell, const QModelIndex& index) const
+{
+    const double progress = index.data(TorrentModel::ProgressRole).toDouble();
+    if (!(progress >= 0.0)) {
+        painter.setPen(tgui::theme::palette().textMuted);
+        painter.drawText(cell, Qt::AlignCenter, QStringLiteral("—"));
+        return;
+    }
+    drawProgressBar(painter, cell, progress, progressColor(index), m_progressFont, m_progressHeight);
+}
+
+/** Раскладывает метки в одну строку и показывает число не поместившихся. */
+void TorrentDelegate::paintLabels(QPainter& painter, const QRect& cell, const QStringList& labels) const
+{
+    const auto& colors = tgui::theme::palette();
+    constexpr int kIcon = 12;
+    constexpr int kIconGap = 3;
+    constexpr int kLabelGap = 8;
+    const QFontMetrics metrics(m_labelFont);
+    int x = cell.left();
+    const auto overflowText = [](qsizetype count) {
+        return QLatin1Char('+') + QString::number(count);
+    };
+
+    painter.setFont(m_labelFont);
+    painter.setPen(colors.labelText);
+    const auto drawLabel = [&](const QString& label, const QString& displayed, int textWidth) {
+        torrentlabels::labelIcon(label).paint(&painter,
+            QRect(x, cell.top() + (cell.height() - kIcon) / 2, kIcon, kIcon));
+        painter.drawText(QRect(x + kIcon + kIconGap, cell.top(), textWidth, cell.height()),
+                         Qt::AlignLeft | Qt::AlignVCenter, displayed);
+        x += kIcon + kIconGap + textWidth + kLabelGap;
+    };
+
+    for (qsizetype i = 0; i < labels.size(); ++i) {
+        const auto& label = labels.at(i);
+        auto cached = m_labelWidths.constFind(label);
+        if (cached == m_labelWidths.cend()) {
+            if (m_labelWidths.size() >= 256)
+                m_labelWidths.clear();
+            m_labelWidths.insert(label, metrics.horizontalAdvance(label));
+            cached = m_labelWidths.constFind(label);
+        }
+        const int labelWidth = *cached + kIcon + kIconGap;
+        const int available = cell.right() + 1 - x;
+        const qsizetype remaining = labels.size() - i - 1;
+        const int reserve = remaining > 0
+            ? kLabelGap + metrics.horizontalAdvance(overflowText(remaining)) : 0;
+        if (labelWidth + reserve > available) {
+            const int shortenedWidth = available - reserve - kIcon - kIconGap;
+            qsizetype hidden = remaining + 1;
+            if (i == 0 && shortenedWidth >= metrics.horizontalAdvance(QStringLiteral("…"))) {
+                drawLabel(label, metrics.elidedText(label, Qt::ElideRight, shortenedWidth), shortenedWidth);
+                --hidden;
+            }
+            const int remainingWidth = cell.right() + 1 - x;
+            if (hidden > 0 && remainingWidth > 0)
+                painter.drawText(QRect(x, cell.top(), remainingWidth, cell.height()),
+                                 Qt::AlignLeft | Qt::AlignVCenter,
+                                 metrics.elidedText(overflowText(hidden), Qt::ElideRight, remainingWidth));
+            break;
+        }
+
+        drawLabel(label, label, *cached);
+    }
+}
+
 void TorrentDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
                             const QModelIndex& index) const
 {
     using namespace tgui::theme;
-    using namespace tgui::theme::color;
-
-    const bool selected = option.state & QStyle::State_Selected;
-    const bool hovered = option.state & QStyle::State_MouseOver;
-    const QRect r = option.rect;
-    if (!r.isValid())
+    const QRect row = option.rect;
+    if (!row.isValid())
         return;
+
+    const auto& colors = palette();
+    const auto* view = qobject_cast<const QAbstractItemView*>(option.widget);
+    const bool selected = option.state & QStyle::State_Selected;
+    const bool active = view ? view->isActiveWindow() : option.state.testFlag(QStyle::State_Active);
+    const bool focused = view ? view->hasFocus() : option.state.testFlag(QStyle::State_HasFocus);
+    const bool current = view && view->currentIndex().row() == index.row();
 
     painter->save();
-    painter->setRenderHint(QPainter::Antialiasing, true);
+    painter->setClipRect(row, Qt::IntersectClip);
 
-    // Фон строки: выделение, hover, чередование.
-    QColor bg;
+    QColor background = index.row() % 2 == 0 ? colors.panel : colors.zebra;
     if (selected)
-        bg = accent;
-    else if (hovered)
-        bg = hover;
-    else
-        bg = (index.row() % 2 == 0) ? panel : panelAlt;
-    painter->fillRect(r, bg);
-    if (!selected) {
-        painter->setPen(borderSoft);
-        painter->drawLine(r.bottomLeft(), r.bottomRight());
+        background = active ? (focused ? colors.selBgActive : colors.selBg) : colors.selBgInactive;
+    else if (option.state & QStyle::State_MouseOver)
+        background = colors.hoverBg;
+    painter->fillRect(row, background);
+    if (current) {
+        painter->setPen(colors.selectionBorder);
+        painter->drawLine(row.topLeft(), row.topRight());
+        painter->drawLine(row.bottomLeft(), row.bottomRight());
+    } else if (!selected) {
+        painter->setPen(colors.listRowBorder);
+        painter->drawLine(row.bottomLeft(), row.bottomRight());
     }
 
-    const int col = index.column();
-    const QColor normalText = selected ? QColor(Qt::white) : text;
-    const QColor mutedText = selected ? QColor(255, 255, 255, 205) : textMuted;
-
-    if (col == TorrentModel::ColName) {
-        const int status = index.data(TorrentModel::StatusRole).toInt();
-        const bool finished = index.data(TorrentModel::FinishedRole).toBool();
-        const bool error = index.data(TorrentModel::ErrorRole).toBool();
-        const QIcon stateIcon = tgui::theme::icon(torrentStatusIcon(status, finished, error));
-        const QRect iconRect(r.left() + 7, r.top() + (r.height() - 16) / 2, 16, 16);
-        stateIcon.paint(painter, iconRect, Qt::AlignCenter,
-                        selected ? QIcon::Selected : QIcon::Normal);
-
-        QFont f = option.font;
-        painter->setFont(f);
-        painter->setPen(normalText);
-        const QRect textRect(r.left() + 28, r.top(), r.width() - 36, r.height());
-        const QString elided = QFontMetrics(f).elidedText(
-            index.data(Qt::DisplayRole).toString(), Qt::ElideRight, textRect.width());
-        painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, elided);
+    QRect content = row.adjusted(6, 0, -6, -1);
+    if (!content.isValid()) {
         painter->restore();
         return;
     }
 
-    if (col == TorrentModel::ColDone) {
-        const double progress = index.data(TorrentModel::ProgressRole).toDouble();
-        if (progress < 0.0) {
-            painter->setPen(mutedText);
-            painter->drawText(r.adjusted(2, 0, -8, 0),
-                              Qt::AlignVCenter | Qt::AlignHCenter, QStringLiteral("—"));
-            painter->restore();
-            return;
+    painter->setFont(option.font);
+    const int column = index.column();
+    if (column == TorrentModel::ColDone) {
+        updateFonts(option.font);
+        paintProgress(*painter, content, index);
+    } else if (column == TorrentModel::ColLabels) {
+        updateFonts(option.font);
+        const auto labels = index.data(TorrentModel::LabelListRole).toStringList();
+        if (!labels.isEmpty())
+            paintLabels(*painter, content, labels);
+    } else {
+        if (column == TorrentModel::ColName) {
+            const bool error = index.data(TorrentModel::ErrorRole).toBool();
+            const auto iconId = torrentStatusIcon(index.data(TorrentModel::StatusRole).toInt(),
+                                                  !error && index.data(TorrentModel::FinishedRole).toBool(),
+                                                  error);
+            const QRect iconRect(content.left(), content.top() + (content.height() - 16) / 2, 16, 16);
+            icon(iconId).paint(painter, iconRect);
+            content.adjust(22, 0, 0, 0);
         }
-
-        const QRectF track(r.left() + 6, r.top() + (r.height() - 14) / 2.0,
-                           r.width() - 12, 14);
-        painter->setPen(QPen(border, 1.0));
-        painter->setBrush(QColor(Qt::white));
-        painter->drawRoundedRect(track, 2, 2);
-
-        const qreal fillW = track.width() * qBound(0.0, progress, 100.0) / 100.0;
-        if (fillW > 0.5) {
-            QRectF fill = track;
-            fill.setWidth(fillW);
-            QPainterPath clip;
-            clip.addRoundedRect(track, 2, 2);
-            painter->save();
-            painter->setClipPath(clip);
-            // Родной градиент эталона: GetLikeColor(clHighlight, 70) → clHighlight.
-            QLinearGradient grad(fill.topLeft(), fill.bottomLeft());
-            grad.setColorAt(0.0, QColor(0x46, 0xBE, 0xFF));
-            grad.setColorAt(0.5, QColor(0x00, 0x78, 0xD7));
-            grad.setColorAt(1.0, QColor(0x46, 0xBE, 0xFF));
-            painter->fillRect(fill, grad);
-            painter->restore();
-        }
-
-        const QString textValue = QStringLiteral("%1%").arg(progress, 0, 'f', 1);
-        QFont f = option.font;
-        f.setPointSizeF(qMax(7.5, f.pointSizeF() - 0.5));
-        painter->setFont(f);
-
-        // Как в DrawProgressCell эталона: текст белый поверх заливки, тёмный —
-        // на незаполненной части. Иначе на выделенной строке проценты пропадают.
-        const QRect textRect = track.toRect();
-        painter->save();
-        painter->setClipRect(QRectF(textRect.left(), textRect.top(), fillW,
-                                    textRect.height()));
-        painter->setPen(QColor(Qt::white));
-        painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignHCenter, textValue);
-        painter->restore();
-
-        if (fillW < textRect.width()) {
-            painter->save();
-            painter->setClipRect(QRectF(textRect.left() + fillW, textRect.top(),
-                                        textRect.width() - fillW, textRect.height()));
-            painter->setPen(tgui::theme::color::text);
-            painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignHCenter, textValue);
-            painter->restore();
-        }
-        painter->restore();
-        return;
+        const auto foreground = index.data(Qt::ForegroundRole);
+        painter->setPen(foreground.isValid() ? foreground.value<QBrush>().color() : colors.text);
+        const int alignment = index.data(Qt::TextAlignmentRole).toInt() | Qt::AlignVCenter;
+        const auto text = index.data(Qt::DisplayRole).toString();
+        const auto elided = option.fontMetrics.elidedText(text, Qt::ElideRight,
+                                                          std::max(0, content.width()));
+        painter->drawText(content, alignment, elided);
     }
-
-    if (col == TorrentModel::ColStatus) {
-        const int status = index.data(TorrentModel::StatusRole).toInt();
-        const bool finished = index.data(TorrentModel::FinishedRole).toBool();
-        const bool error = index.data(TorrentModel::ErrorRole).toBool();
-        const QColor dot = selected ? QColor(Qt::white) : statusColor(status, finished, error);
-
-        painter->setPen(Qt::NoPen);
-        painter->setBrush(dot);
-        painter->drawEllipse(QPointF(r.left() + 12, r.center().y() + 0.5), 3.6, 3.6);
-
-        QFont f = option.font;
-        painter->setFont(f);
-        painter->setPen(selected ? normalText : (error ? red : text));
-        const QRect textRect(r.left() + 23, r.top(), r.width() - 29, r.height());
-        const QString elided = QFontMetrics(f).elidedText(
-            index.data(Qt::DisplayRole).toString(), Qt::ElideRight, textRect.width());
-        painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, elided);
-        painter->restore();
-        return;
-    }
-
-    // Обычная текстовая ячейка.
-    int align = index.data(Qt::TextAlignmentRole).toInt();
-    if ((align & Qt::AlignHorizontal_Mask) == 0)
-        align |= Qt::AlignLeft;
-    align |= Qt::AlignVCenter;
-
-    QColor textColor = normalText;
-    if (!selected && col == TorrentModel::ColRateDown &&
-        index.data(TorrentModel::RateDownRole).toDouble() > 0.0) {
-        textColor = accent;
-    } else if (!selected && col == TorrentModel::ColRateUp &&
-               index.data(TorrentModel::RateUpRole).toDouble() > 0.0) {
-        textColor = green;
-    }
-
-    QFont f = option.font;
-    painter->setFont(f);
-    painter->setPen(textColor);
-    const int leftPad = (align & Qt::AlignRight) ? 2 : 8;
-    const QRect textRect(r.left() + leftPad, r.top(), r.width() - leftPad - 8, r.height());
-    const QString elided = QFontMetrics(f).elidedText(
-        index.data(Qt::DisplayRole).toString(), Qt::ElideRight, textRect.width());
-    painter->drawText(textRect, align, elided);
     painter->restore();
 }
 
 QSize TorrentDelegate::sizeHint(const QStyleOptionViewItem& option,
                                 const QModelIndex& index) const
 {
+    updateFonts(option.font);
     QSize size = QStyledItemDelegate::sizeHint(option, index);
-    size.setHeight(qMax(size.height(), 28));
+    size.setHeight(std::max(tgui::theme::rowHeightFor(option.font), m_progressHeight + 4));
     return size;
 }
-
 
 int NameCheckDelegate::checkSize()
 {
@@ -244,40 +299,26 @@ int NameCheckDelegate::checkSize()
 void ProgressDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
                              const QModelIndex& index) const
 {
-    const double progress = index.data(Qt::DisplayRole).toDouble(); // 0..100
-    QRect r = option.rect;
-    if (r.width() < 4 || r.height() < 4)
-        return;
-
+    bool ok = false;
+    const QVariant numeric = index.data(PeerListModel::ProgressRole);
+    const double progress = (numeric.isValid() ? numeric : index.data()).toDouble(&ok);
     painter->save();
-    const bool selected = option.state & QStyle::State_Selected;
-
-    // Фон клетки.
-    if (selected)
-        painter->fillRect(r, option.palette.highlight());
-    else
-        painter->fillRect(r, option.palette.base());
-
-    const QString text = QStringLiteral("%1%").arg(progress, 0, 'f', 1);
-
-    // Бар: вертикальный градиент (светлее в центре), как GetLikeColor(clHighlight, 70).
-    const int fillW = qRound(r.width() * (progress / 100.0));
-    if (fillW > 0) {
-        QRect bar(r.left(), r.top(), qMin(fillW, r.width()), r.height());
-        QLinearGradient grad(bar.topLeft(), bar.bottomLeft());
-        const QColor base = option.palette.highlight().color();
-        grad.setColorAt(0.0, base.lighter(170));
-        grad.setColorAt(0.5, base);
-        grad.setColorAt(1.0, base.lighter(170));
-        painter->fillRect(bar, grad);
+    drawDetailCell(*painter, option);
+    if (ok && progress >= 0.0) {
+        const auto& colors = tgui::theme::palette();
+        QFont font = option.font;
+        if (font.pointSizeF() > 0)
+            font.setPointSizeF(font.pointSizeF() * 11.0 / 12.0);
+        else
+            font.setPixelSize(std::max(1, qRound(font.pixelSize() * 11.0 / 12.0)));
+        const int textHeight = QFontMetrics(font).tightBoundingRect(QStringLiteral("0123456789.%")).height();
+        const int barHeight = std::min(option.rect.height() - 1, std::max(15, textHeight + 2));
+        drawProgressBar(*painter, option.rect.adjusted(8, 0, -8, -1), progress,
+                        progress >= 100.0 ? colors.progressGreen : colors.blue, font, barHeight);
+    } else {
+        painter->setPen(tgui::theme::palette().textMuted);
+        painter->drawText(option.rect, Qt::AlignCenter, QStringLiteral("—"));
     }
-
-    // Текст по центру клетки; цвет — белый, если центр закрыт баром.
-    const bool centerFilled = (r.width() / 2.0) < fillW;
-    painter->setPen(centerFilled ? option.palette.highlightedText().color()
-                                 : option.palette.text().color());
-    painter->drawText(r.adjusted(2, 0, -2, 0), Qt::AlignVCenter | Qt::AlignHCenter,
-                      text);
     painter->restore();
 }
 
@@ -317,58 +358,20 @@ void WantCheckDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opt
 
     painter->save();
 
-    const bool selected = option.state & QStyle::State_Selected;
-    // Фон ячейки.
-    if (selected)
-        painter->fillRect(r, option.palette.highlight().color());
-    else if (option.state & QStyle::State_MouseOver)
-        painter->fillRect(r, QColor(0xE5, 0xF3, 0xFF));
-    else
-        painter->fillRect(r, (index.row() % 2 == 0) ? QColor(0xFF, 0xFF, 0xFF)
-                                                     : QColor(0xF7, 0xF7, 0xF7));
-
-    // Размер и позиция чекбокса.
-    const int sz = 16;
-    const int x = r.left() + (r.width() - sz) / 2;
-    const int y = r.top() + (r.height() - sz) / 2;
-    QRect box(x, y, sz, sz);
-
-    // Состояние: Checked / Unchecked / PartiallyChecked.
-    const Qt::CheckState state =
-        static_cast<Qt::CheckState>(index.data(Qt::CheckStateRole).toInt());
-
-    // Цвета: при выделении — белые контуры/галочки, иначе тёмные.
-    const QColor border = selected ? Qt::white : QColor(0x6C, 0x6C, 0x6C);
-    const QColor fillBg = selected ? QColor(0x00, 0x5A, 0x9E) : Qt::white;
-    const QColor markColor = selected ? Qt::white : QColor(0x00, 0x78, 0xD7);
-
-    // Фон квадрата.
-    painter->setPen(QPen(border, 1.5));
-    painter->setBrush(fillBg);
-    painter->drawRoundedRect(box, 3, 3);
-
-    // Отметка: галочка или dash.
-    if (state == Qt::Checked) {
-        QPen checkPen(markColor, 2.0);
-        checkPen.setCapStyle(Qt::RoundCap);
-        checkPen.setJoinStyle(Qt::RoundJoin);
-        painter->setPen(checkPen);
-        painter->setBrush(Qt::NoBrush);
-        const QPointF p1(box.left() + 3, box.center().y() + 0.5);
-        const QPointF p2(box.left() + 6, box.bottom() - 4);
-        const QPointF p3(box.right() - 3, box.top() + 4);
-        painter->drawLine(p1, p2);
-        painter->drawLine(p2, p3);
-    } else if (state == Qt::PartiallyChecked) {
-        QPen dashPen(markColor, 2.0);
-        dashPen.setCapStyle(Qt::RoundCap);
-        painter->setPen(dashPen);
-        painter->setBrush(Qt::NoBrush);
-        painter->drawLine(box.left() + 4, box.center().y(),
-                          box.right() - 4, box.center().y());
+    drawDetailCell(*painter, option);
+    const int size = 14;
+    QStyleOptionButton check;
+    check.rect = QRect(r.left() + (r.width() - size) / 2,
+                       r.top() + (r.height() - size) / 2, size, size);
+    check.palette = option.palette;
+    check.state = option.state & (QStyle::State_Enabled | QStyle::State_MouseOver);
+    switch (static_cast<Qt::CheckState>(index.data(Qt::CheckStateRole).toInt())) {
+        case Qt::Checked: check.state |= QStyle::State_On; break;
+        case Qt::PartiallyChecked: check.state |= QStyle::State_NoChange; break;
+        default: check.state |= QStyle::State_Off; break;
     }
-    // Unchecked — пустой квадрат.
-
+    const auto* style = option.widget ? option.widget->style() : QApplication::style();
+    style->drawPrimitive(QStyle::PE_IndicatorCheckBox, &check, painter, option.widget);
     painter->restore();
 }
 

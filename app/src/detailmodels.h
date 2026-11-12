@@ -61,6 +61,7 @@ public:
     };
 
     explicit PeerListModel(QObject* parent = nullptr);
+    enum Role { ProgressRole = Qt::UserRole + 1 };
 
     void setPeers(const QVector<tgui::Peer>& peers);
     const QVector<tgui::Peer>& peers() const { return m_peers; }

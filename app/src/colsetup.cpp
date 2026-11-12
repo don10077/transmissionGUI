@@ -1,4 +1,5 @@
 #include "colsetup.h"
+#include "torrentmodel.h"
 
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
@@ -18,6 +19,27 @@ int ColumnLayout::persistentColumn() { return 0; } // ColName
 ColumnLayout ColumnLayout::defaults(int count)
 {
     ColumnLayout d;
+    if (count == TorrentModel::ColumnCount) {
+        using enum TorrentModel::Column;
+        d.order = {ColName, ColLabels, ColSize, ColDone, ColStatus, ColSeeds, ColPeers,
+                   ColRateDown, ColRateUp, ColEta, ColAddedOn, ColRatio};
+        d.visible = QList<bool>(count, false);
+        for (int column : d.order)
+            d.visible[column] = true;
+        for (int column = 0; column < count; ++column) {
+            if (!d.visible.at(column))
+                d.order.append(column);
+        }
+        d.widths = {{ColName, 330}, {ColLabels, 120}, {ColSize, 76}, {ColDone, 86},
+                    {ColStatus, 82}, {ColSeeds, 56}, {ColPeers, 56}, {ColRateDown, 78},
+                    {ColRateUp, 78}, {ColEta, 70}, {ColRatio, 82}, {ColDownloaded, 80},
+                    {ColUploaded, 80}, {ColTracker, 140}, {ColTrackerStatus, 120},
+                    {ColAddedOn, 124}, {ColCompletedOn, 124}, {ColLastActive, 124},
+                    {ColPath, 180}, {ColPriority, 80}, {ColSizeToDownload, 90}, {ColId, 40},
+                    {ColQueuePosition, 60}, {ColSeedingTime, 90}, {ColSizeLeft, 90},
+                    {ColPrivate, 70}};
+        return d;
+    }
     d.order.clear();
     for (int i = 0; i < count; ++i)
         d.order << i;
@@ -79,7 +101,8 @@ ColumnLayout ColumnLayout::fromSettings(int count, const QString& ns)
             vis << (token == "1");
         d.visible = vis;
     }
-    d.widths.clear();
+    if (count != TorrentModel::ColumnCount)
+        d.widths.clear();
     for (int i = 0; i < count; ++i) {
         const int w = s.value(ns + QStringLiteral("/width_%1").arg(i)).toInt();
         if (w > 0)

@@ -1,9 +1,11 @@
 #pragma once
 
+#include <QFont>
+#include <QHash>
+#include <QStringList>
 #include <QStyledItemDelegate>
 
-// Делегат строки списка торрентов: чередование фона, hover/selection,
-// чекбокс в колонке Name, статус-точка, градиентный прогресс и цветные скорости.
+/** Рисует строки списка торрентов, прогресс, статусы и метки по макету. */
 class TorrentDelegate : public QStyledItemDelegate {
     Q_OBJECT
 public:
@@ -12,6 +14,18 @@ public:
                const QModelIndex& index) const override;
     QSize sizeHint(const QStyleOptionViewItem& option,
                    const QModelIndex& index) const override;
+
+private:
+    void updateFonts(const QFont& font) const;
+    void paintProgress(QPainter& painter, const QRect& cell, const QModelIndex& index) const;
+    void paintLabels(QPainter& painter, const QRect& cell, const QStringList& labels) const;
+
+    mutable bool m_fontsReady = false;
+    mutable QFont m_baseFont;
+    mutable QFont m_progressFont;
+    mutable QFont m_labelFont;
+    mutable int m_progressHeight = 15;
+    mutable QHash<QString, int> m_labelWidths;
 };
 
 // Колонка «Done»: синий градиентный бар + процент (референс — DrawProgressCell,

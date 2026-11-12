@@ -1,7 +1,10 @@
 #include "torrentmodel.h"
 
+#include <QBrush>
+
 #include <algorithm>
 
+#include "theme.h"
 #include "tgui/util.h"
 
 TorrentModel::TorrentModel(QObject* parent) : QAbstractTableModel(parent) {}
@@ -197,6 +200,56 @@ double verifyingPercent(const tgui::Torrent& t)
     return std::clamp(t.recheckProgress.value_or(0.0) * 100.0, 0.0, 100.0);
 }
 
+/** Возвращает выравнивание чисел и дат в таблице и в заголовке. */
+QVariant columnAlignment(int column)
+{
+    using enum TorrentModel::Column;
+    switch (column) {
+        case ColSize:
+        case ColSeeds:
+        case ColPeers:
+        case ColRateDown:
+        case ColRateUp:
+        case ColEta:
+        case ColRatio:
+        case ColDownloaded:
+        case ColUploaded:
+        case ColAddedOn:
+        case ColCompletedOn:
+        case ColLastActive:
+        case ColSizeToDownload:
+        case ColId:
+        case ColQueuePosition:
+        case ColSeedingTime:
+        case ColSizeLeft:
+            return static_cast<int>(Qt::AlignRight | Qt::AlignVCenter);
+        default:
+            return {};
+    }
+}
+
+/** Возвращает цвет текста статуса, сохраняя приоритет ошибки. */
+QColor statusForeground(int status, bool error)
+{
+    const auto& colors = tgui::theme::palette();
+    if (error)
+        return colors.red;
+    using tgui::TorrentStatus;
+    switch (static_cast<TorrentStatus>(status)) {
+        case TorrentStatus::Download:
+            return colors.blue;
+        case TorrentStatus::Seed:
+            return colors.green;
+        case TorrentStatus::CheckWait:
+        case TorrentStatus::Check:
+        case TorrentStatus::DownloadWait:
+        case TorrentStatus::SeedWait:
+            return colors.amber;
+        default:
+            return colors.statusNeutral;
+    }
+}
+
 } // namespace
 
 QVariant TorrentModel::data(const QModelIndex& index, int role) const
@@ -205,11 +258,20 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
         return {};
     const auto& t = m_torrents.at(index.row());
     const int col = index.column();
-    const bool finished = tgui::statusIsFinished(
-        t.status.value_or(-1), t.sizeWhenDone.value_or(0.0), t.leftUntilDone.value_or(0.0));
+    const int status = t.status.value_or(-1);
+    const auto isFinished = [&] {
+        return tgui::statusIsFinished(status, t.sizeWhenDone.value_or(0.0), t.leftUntilDone.value_or(0.0));
+    };
+    const auto hasError = [&] { return !tgui::torrentError(t).isEmpty(); };
 
-    const QString error = tgui::torrentError(t);
-    if (role == Qt::ToolTipRole && !error.isEmpty()) return error;
+    if (role == Qt::ToolTipRole) {
+        const QString error = tgui::torrentError(t);
+        if (col == ColLabels && t.labels && !t.labels->isEmpty()) {
+            const QString labels = t.labels->join(QStringLiteral(", "));
+            return error.isEmpty() ? labels : error + QLatin1Char('\n') + labels;
+        }
+        return error.isEmpty() ? QVariant{} : QVariant(error);
+    }
 
     // Числовые роли — для кастомного делегата (не зависят от текста ячейки).
     switch (role) {
@@ -223,11 +285,16 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
                 return t.metadataPercentComplete.value() * 100.0;
             return -1.0;
         case StatusRole:
-            return t.status.value_or(-1);
+            return status;
         case FinishedRole:
-            return finished && error.isEmpty();
+            return isFinished() && !hasError();
         case ErrorRole:
-            return !error.isEmpty();
+            return hasError();
+        case LabelListRole:
+            return t.labels ? QVariant::fromValue(*t.labels) : QVariant{};
+        case Qt::ForegroundRole:
+            return col == ColStatus ? QVariant::fromValue(QBrush(statusForeground(status, hasError())))
+                                    : QVariant{};
         case RateDownRole:
             return static_cast<double>(t.rateDownload.value_or(0));
         case RateUpRole:
@@ -236,28 +303,8 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
             break;
     }
 
-    if (role == Qt::TextAlignmentRole) {
-        switch (col) {
-            case ColSize:
-            case ColDone:
-            case ColSeeds:
-            case ColPeers:
-            case ColRateDown:
-            case ColRateUp:
-            case ColEta:
-            case ColRatio:
-            case ColDownloaded:
-            case ColUploaded:
-            case ColSizeToDownload:
-            case ColId:
-            case ColQueuePosition:
-            case ColSeedingTime:
-            case ColSizeLeft:
-                return static_cast<int>(Qt::AlignRight | Qt::AlignVCenter);
-            default:
-                break;
-        }
-    }
+    if (role == Qt::TextAlignmentRole)
+        return columnAlignment(col);
     if (role != Qt::DisplayRole)
         return {};
 
@@ -285,10 +332,7 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
             return QStringLiteral("—");
         }
         case ColStatus:
-            return statusText(
-                t.status.value_or(-1),
-                tgui::statusIsFinished(t.status.value_or(-1), t.sizeWhenDone.value_or(0.0),
-                                       t.leftUntilDone.value_or(0.0)) && error.isEmpty());
+            return hasError() ? QObject::tr("Error") : statusText(status, isFinished());
         case ColSeeds:
             return countWithTotal(t.peersSendingToUs.value_or(0),
                                   t.trackerStats.isEmpty() ? -1
@@ -358,7 +402,11 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
 
 QVariant TorrentModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
-    if (orientation != Qt::Horizontal || role != Qt::DisplayRole)
+    if (orientation != Qt::Horizontal)
+        return {};
+    if (role == Qt::TextAlignmentRole)
+        return columnAlignment(section);
+    if (role != Qt::DisplayRole)
         return {};
     // Заголовки 1:1 с референсом (Title.Caption в main.lfm).
     switch (section) {
@@ -545,9 +593,14 @@ void TorrentFilterProxy::setTrackerFilter(const QString& announce)
     setFilterValue(m_tracker, announce);
 }
 
-void TorrentFilterProxy::setLabelFilter(const QString& label)
+void TorrentFilterProxy::setLabelFilter(const QString& label, bool withoutLabels)
 {
-    setFilterValue(m_label, label);
+    std::optional<QString> filter;
+    if (withoutLabels)
+        filter.emplace();
+    else if (!label.isEmpty())
+        filter = label;
+    setFilterValue(m_label, filter);
 }
 
 void TorrentFilterProxy::setSearchText(const QString& text)
@@ -573,8 +626,13 @@ bool TorrentFilterProxy::filterAcceptsRow(int row, const QModelIndex& parent) co
         return false;
     if (!m_folder.isEmpty() && t.downloadDir.value_or(QString()) != m_folder)
         return false;
-    if (!m_label.isEmpty() && !t.labels.value_or(QStringList()).contains(m_label))
-        return false;
+    if (m_label) {
+        const bool matchesLabel = m_label->isEmpty()
+            ? !t.labels || t.labels->isEmpty()
+            : t.labels && t.labels->contains(*m_label);
+        if (!matchesLabel)
+            return false;
+    }
     if (!m_tracker.isEmpty() &&
         (t.trackerStats.isEmpty() || t.trackerStats.first().announce != m_tracker))
         return false;

@@ -543,6 +543,7 @@
   </context>
   <context>
     <name>FilterPanel</name>
+    <message><source>No label</source><translation>Без метки</translation></message>
     <message>
       <source>Search</source>
       <translation>Поиск</translation>
@@ -596,6 +597,25 @@
   </context>
   <context>
     <name>MainWindow</name>
+    <message><source>All torrents</source><translation>Все торренты</translation></message>
+    <message><source>Transmission %1 (RPC %2)</source><translation>Transmission %1 (RPC %2)</translation></message>
+    <message><source> on %1</source><translation> на %1</translation></message>
+    <message><source>DL: %1</source><translation>Загр: %1</translation></message>
+    <message><source>UL: %1</source><translation>Разд: %1</translation></message>
+    <message><source>Alt speeds</source><translation>Альт. скорости</translation></message>
+    <message><source>Free: %1</source><translation>Своб: %1</translation></message>
+    <message><source>Total: %1</source><translation>Всего: %1</translation></message>
+    <message><source>Visible: %1</source><translation>Видно: %1</translation></message>
+    <message><source>Selected: %1</source><translation>Выбрано: %1</translation></message>
+    <message><source>Done: %1</source><translation>Готово: %1</translation></message>
+    <message><source>Left: %1</source><translation>Осталось: %1</translation></message>
+    <message><source>, %1 selected</source><translation>, выбрано %1</translation></message>
+    <message><source>Other…</source><translation>Другое…</translation></message>
+    <message><source>Limit (KB/s):</source><translation>Лимит (КБ/с):</translation></message>
+    <message><source> (+%1 more)</source><translation> (+ещё %1)</translation></message>
+    <message><source>No connected peers.</source><translation>Нет подключённых пиров.</translation></message>
+    <message><source>Expand all</source><translation>Развернуть всё</translation></message>
+    <message><source>Collapse all</source><translation>Свернуть всё</translation></message>
     <message><source>Visible: %1, left %2</source><translation>Видимые: %1, осталось %2</translation></message>
     <message><source>Selected: %1, left %2</source><translation>Выбранные: %1, осталось %2</translation></message>
     <message><source>Size totals</source><translation>Суммарный размер</translation></message>
@@ -634,6 +654,11 @@
     <message><source>Note: part of the fix falls inside the "info" section — the InfoHash may change, and peers of the original torrent will not find it.</source><translation>Примечание: часть исправлений попала в секцию «info» — InfoHash может измениться, и пиров оригинального торрента он не найдёт.</translation></message>
     <message><source>Add</source><translation>Добавить</translation></message>
     <message><source>Magnet</source><translation>Magnet</translation></message>
+    <message><source>Link</source><translation>Ссылка</translation></message>
+    <message><source>Connection profiles (Ctrl+K)</source><translation>Профили подключения (Ctrl+K)</translation></message>
+    <message><source>Hide toolbar</source><translation>Скрыть панель инструментов</translation></message>
+    <message><source>Expand all sections</source><translation>Развернуть все разделы</translation></message>
+    <message><source>Hide filter panel</source><translation>Скрыть панель фильтров</translation></message>
     <message><source>Limit</source><translation>Лимит</translation></message>
     <message><source>Change queue position</source><translation>Изменить позицию в очереди</translation></message>
     <message><source>Not connected</source><translation>Не подключено</translation></message>
@@ -2067,6 +2092,12 @@ Used when opening files/torrents with double-click.</source>
   </context>
   <context>
     <name>PropsForm</name>
+    <message><source>Show separate download bar</source><translation>Показать отдельную шкалу загрузки</translation></message>
+    <message><source>Priority</source><translation>Приоритет</translation></message>
+    <message><source>Sequential download</source><translation>Последовательная загрузка</translation></message>
+    <message><source>Private</source><translation>Приватный</translation></message>
+    <message><source>Edit</source><translation>Изменить</translation></message>
+    <message><source>Set…</source><translation>Задать…</translation></message>
     <message>
       <source>Copy</source>
       <translation>Копировать</translation>
@@ -2288,6 +2319,7 @@ Used when opening files/torrents with double-click.</source>
   </context>
   <context>
     <name>QObject</name>
+    <message><source>Error</source><translation>Ошибка</translation></message>
     <message><source>Tracker error: %1</source><translation>Ошибка трекера: %1</translation></message>
     <message><source>Paused</source><translation>На паузе</translation></message>
     <message><source>Completed (paused)</source><translation>Завершён (на паузе)</translation></message>
@@ -2638,6 +2670,7 @@ Used when opening files/torrents with double-click.</source>
   </context>
   <context>
     <name>StatsForm</name>
+    <message><source>Ratio</source><translation>Коэффициент</translation></message>
     <message><source>Global statistics:</source><translation>Общая статистика:</translation></message>
     <message><source>Cumulative</source><translation>Всего</translation></message>
     <message>

@@ -4,6 +4,7 @@ add_executable(transmissiongui WIN32
     src/externalopen.cpp
     icons/icons.qrc
     src/theme.cpp
+    src/connectbutton.cpp
     src/mainwindow.cpp
     src/torrentmodel.cpp
     src/addlinkdialog.cpp

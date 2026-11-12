@@ -18,7 +18,7 @@ struct ColumnLayout {
     QList<bool> visible;                   // видимость по логическому индексу
     QMap<int, int> widths;                 // ширина по логическому индексу
 
-    static ColumnLayout defaults(int count); // видны первые 9 (Name..ETA), дефолтные ширины
+    static ColumnLayout defaults(int count); // порядок, видимость и ширины при первом запуске
     void ensureAtLeastOneVisible();          // хотя бы одна колонка видима
     void moveItem(int position, int delta);  // -1 вверх / +1 вниз
     static ColumnLayout fromSettings(int count,

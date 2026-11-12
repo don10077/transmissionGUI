@@ -20,13 +20,14 @@ class QComboBox;
 class QLineEdit;
 class QLabel;
 class QTabWidget;
+class QToolButton;
 class QTableView;
 class QTreeView;
 class QAction;
 class QMenu;
 class QSplitter;
 class QToolBar;
-class QToolButton;
+class ConnectButton;
 class QNetworkAccessManager;
 class QDragEnterEvent;
 class QDropEvent;
@@ -121,7 +122,7 @@ private slots:
     void onColumns();
     void onContextMenu(const QPoint& pos);
     void onFilterChanged(int group, const QString& folder, const QString& tracker,
-                         const QString& label);
+                         const QString& label, bool withoutLabels);
     void onSelectAll();
     void onCopyPath();
     void onOpenFolder();
@@ -191,11 +192,15 @@ private:
     void checkPendingMove();
     void setConnectedUi(bool connected);
     void setConnectionState(const QString& text, const QColor& color);
+    void updateConnectionButton();
     void updateStatusBarTotals();
+    void updateStatusBarPresentation();
+    QMenu* createSpeedLimitMenu(QWidget* parent, bool download);
     void updateRefreshSchedule();
     void saveWindowLayout();
     void updateFilterPanel(const QVector<tgui::Torrent>& torrents);
     void updateSelectionActions();
+    void updateInfoTitle();
     void updateLabelUi();
     // Обновить видимую вкладку данных выбранного торрента («Файлы»/«Пиры»):
     // проценты файлов и набор пиров меняются во время проверки и загрузки —
@@ -259,7 +264,7 @@ private:
     tgui::GeoIpDb m_geoip; // GeoIP Country Edition (W11b)
     QTimer m_refreshTimer;
     QSplitter* m_mainSplitter = nullptr;
-    int m_totalsMode = 0;
+    int m_totalsMode = 3;
     bool m_settingsImported = false;
     bool m_checkingUpdate = false;
     // Ожидание подтверждённого нового downloadDir после переноса.
@@ -269,6 +274,8 @@ private:
     QTimer m_moveVerifyTimer;
 
     QTabWidget* m_tabs = nullptr;
+    QLabel* m_infoTitle = nullptr;
+    QLabel* m_peerEmpty = nullptr;
     PropsForm* m_general = nullptr;
     StatsForm* m_statsForm = nullptr;
     FilterPanel* m_filterPanel = nullptr;
@@ -279,7 +286,7 @@ private:
     FileTreeModel* m_fileTree = nullptr;
     QToolBar* m_toolBar = nullptr;
     // Кнопка подключения-дропдаун (аналог OLD tbConnect, tbsDropDown).
-    QToolButton* m_connectButton = nullptr;
+    ConnectButton* m_connectButton = nullptr;
     QLineEdit* m_searchEdit = nullptr;
     // ID торрента, для которого загружаются вкладки Файлы/Пиры/Трекеры.
     int m_currentId = -1;
@@ -287,11 +294,22 @@ private:
     // в этот момент не должен сбрасывать m_currentId и детали.
     bool m_refreshing = false;
     tgui::SessionInfo m_sessionInfo; // session-get для лимитов в «General»
-    QLabel* m_daemonLabel = nullptr;
-    QLabel* m_speedLabel = nullptr;
+    QWidget* m_statusStrip = nullptr;
+    QWidget* m_statusConnection = nullptr;
+    QToolButton* m_statusDownload = nullptr;
+    QToolButton* m_statusUpload = nullptr;
+    QWidget* m_statusAlternative = nullptr;
+    QLabel* m_statusFree = nullptr;
+    QLabel* m_statusSize = nullptr;
+    QLabel* m_statusSelectedSize = nullptr;
+    QLabel* m_statusDone = nullptr;
+    QLabel* m_statusLeft = nullptr;
     QLabel* m_countLabel = nullptr;
     QLabel* m_statusText = nullptr;
     QLabel* m_statusDot = nullptr;
+    QString m_connectionStateText;
+    double m_statusDownRate = 0;
+    double m_statusUpRate = 0;
 
     QAction* m_actConnect = nullptr;
     QAction* m_actDisconnect = nullptr;
@@ -322,6 +340,7 @@ private:
     QAction* m_actLabelGrouping = nullptr;
     QAction* m_actChooseLabel = nullptr;
     QStringList m_labels;
+    bool m_hasUnlabelledTorrents = false;
     QAction* m_actTrackerGrouping = nullptr;
 
     QSystemTrayIcon* m_tray = nullptr;

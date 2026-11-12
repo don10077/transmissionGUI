@@ -10,9 +10,11 @@
 #include <QAction>
 #include <QClipboard>
 #include <QComboBox>
+#include <QContextMenuEvent>
 #include <QDropEvent>
 #include <QEventLoop>
 #include <QHeaderView>
+#include <QImage>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -119,7 +121,18 @@ TEST(PropsForm, RendersTorrent)
     EXPECT_FALSE(labelContaining(&f, "movie-2160p").isEmpty());
     EXPECT_FALSE(labelContaining(&f, "1.00 GB").isEmpty());
     EXPECT_FALSE(labelContaining(&f, "/Shares/Video").isEmpty());
-    EXPECT_TRUE(hasExactLabel(&f, QStringLiteral("hd, video")));
+    QLabel* labels = nullptr;
+    for (auto* field : f.findChildren<QLabel*>())
+        if (field->accessibleName() == QStringLiteral("hd, video"))
+            labels = field;
+    ASSERT_NE(labels, nullptr);
+    EXPECT_EQ(labels->textFormat(), Qt::RichText);
+    labels->setSelection(2, 2);
+    EXPECT_TRUE(labels->hasSelectedText());
+    const auto resource = labels->resourceProvider();
+    ASSERT_TRUE(resource);
+    EXPECT_FALSE(resource(QUrl(QStringLiteral("tgui-label:/0"))).value<QImage>().isNull());
+    EXPECT_FALSE(resource(QUrl(QStringLiteral("tgui-label:/1"))).value<QImage>().isNull());
     // Раздел «Downloaded:» + одна шкала (карта кусков) + процент справа —
     // как в старом transgui (panProgress: метка, pbDownloaded, «100.0%»).
     EXPECT_FALSE(labelContaining(&f, "Downloaded:").isEmpty());
@@ -156,10 +169,13 @@ TEST(PropsForm, ScrollKeepsPositionAcrossRefresh)
     ASSERT_EQ(bar->value(), target);
 
     // Автообновление пересобирает панель — позиция не должна сбрасываться.
+    auto* progress = f.findChild<QWidget*>(QStringLiteral("progressRow"));
+    ASSERT_NE(progress, nullptr);
     f.setTorrent(t);
     QCoreApplication::processEvents();
     QCoreApplication::processEvents();
     EXPECT_EQ(bar->value(), target);
+    EXPECT_EQ(f.findChild<QWidget*>(QStringLiteral("progressRow")), progress);
 }
 
 TEST(PropsForm, ClearShowsPlaceholder)
@@ -189,13 +205,14 @@ TEST(StatsForm, RendersStats)
 
     auto* table = s.findChild<QTableWidget*>();
     ASSERT_NE(table, nullptr);
-    EXPECT_EQ(table->rowCount(), 4);
+    EXPECT_EQ(table->rowCount(), 5);
     EXPECT_EQ(table->horizontalHeaderItem(1)->text(), QStringLiteral("Current"));
     EXPECT_EQ(table->horizontalHeaderItem(2)->text(), QStringLiteral("Cumulative"));
     EXPECT_EQ(table->item(0, 1)->text(), QStringLiteral("1 MB"));
     EXPECT_EQ(table->item(0, 2)->text(), QStringLiteral("2.00 GB"));
-    EXPECT_EQ(table->item(2, 1)->text(), QStringLiteral("3"));
-    EXPECT_TRUE(table->item(3, 1)->text().contains(QStringLiteral("01:01:01")));
+    EXPECT_EQ(table->item(2, 0)->text(), QStringLiteral("Ratio"));
+    EXPECT_EQ(table->item(3, 1)->text(), QStringLiteral("3"));
+    EXPECT_TRUE(table->item(4, 1)->text().contains(QStringLiteral("01:01:01")));
 
     s.clear();
     EXPECT_EQ(s.stats(), nullptr);
@@ -392,6 +409,14 @@ TEST(PropsForm, ProgressStaysVisibleWhileDetailsScroll)
     EXPECT_EQ(form.findChild<QWidget*>(QStringLiteral("progressRow")), nullptr);
 }
 
+static QMenu* openPropertyMenu(PropsForm& form, QWidget* field)
+{
+    const QPoint point = field->rect().center();
+    QContextMenuEvent event(QContextMenuEvent::Mouse, point, field->mapToGlobal(point));
+    QApplication::sendEvent(field, &event);
+    return form.findChild<QMenu*>(QStringLiteral("copyFieldMenu"));
+}
+
 TEST(PropsForm, CopyFromCaptionAndValueIncludesClippedText)
 {
     PropsForm form;
@@ -411,12 +436,30 @@ TEST(PropsForm, CopyFromCaptionAndValueIncludesClippedText)
     ASSERT_NE(caption, nullptr);
     ASSERT_NE(value, nullptr);
     for (auto* label : {caption, value}) {
-        auto* action = label->findChild<QAction*>(QStringLiteral("copyFieldValue"));
+        auto* menu = openPropertyMenu(form, label);
+        ASSERT_NE(menu, nullptr);
+        auto* action = menu->findChild<QAction*>(QStringLiteral("copyFieldValue"));
         ASSERT_NE(action, nullptr);
         QApplication::clipboard()->clear();
         action->trigger();
         EXPECT_EQ(QApplication::clipboard()->text(), *torrent.hashString);
+        delete menu;
     }
+
+    QPointer<QWidget> oldField = value;
+    QPointer<QMenu> menu = openPropertyMenu(form, value);
+    ASSERT_FALSE(menu.isNull());
+    const QString oldHash = *torrent.hashString;
+    torrent.hashString = QString(200, QChar('b'));
+    form.setTorrent(torrent);
+    EXPECT_TRUE(oldField.isNull());
+    ASSERT_FALSE(menu.isNull());
+    auto* copy = menu->findChild<QAction*>(QStringLiteral("copyFieldValue"));
+    ASSERT_NE(copy, nullptr);
+    QApplication::clipboard()->clear();
+    copy->trigger();
+    EXPECT_EQ(QApplication::clipboard()->text(), oldHash);
+    menu->close();
 }
 
 TEST(PropsForm, CommentLinkIsClickableAndCopiesOriginalUrl)
@@ -428,26 +471,31 @@ TEST(PropsForm, CommentLinkIsClickableAndCopiesOriginalUrl)
     form.setTorrent(torrent);
     QLabel* link = nullptr;
     for (auto* label : form.findChildren<QLabel*>())
-        if (label->toolTip() == *torrent.comment)
+        if (label->text().contains(torrent.comment->toHtmlEscaped()))
             link = label;
     ASSERT_NE(link, nullptr);
+    EXPECT_TRUE(link->toolTip().isEmpty());
     EXPECT_TRUE(link->openExternalLinks());
     EXPECT_TRUE(link->textInteractionFlags().testFlag(Qt::LinksAccessibleByMouse));
     EXPECT_TRUE(link->text().contains(QStringLiteral("<a href=")));
-    auto* copy = link->findChild<QAction*>(QStringLiteral("copyFieldValue"));
+    auto* menu = openPropertyMenu(form, link);
+    ASSERT_NE(menu, nullptr);
+    auto* copy = menu->findChild<QAction*>(QStringLiteral("copyFieldValue"));
     ASSERT_NE(copy, nullptr);
     copy->trigger();
     EXPECT_EQ(QApplication::clipboard()->text(), *torrent.comment);
+    delete menu;
 
     torrent.comment = QStringLiteral("ordinary comment <b>not markup</b>");
     form.setTorrent(torrent);
-    for (auto* label : form.findChildren<QLabel*>()) {
-        if (label->toolTip() == *torrent.comment) {
-            EXPECT_EQ(label->textFormat(), Qt::PlainText);
-            EXPECT_FALSE(label->openExternalLinks());
-            EXPECT_EQ(label->text(), *torrent.comment);
-        }
-    }
+    QLabel* plainComment = nullptr;
+    for (auto* label : form.findChildren<QLabel*>())
+        if (label->text() == *torrent.comment)
+            plainComment = label;
+    ASSERT_NE(plainComment, nullptr);
+    EXPECT_EQ(plainComment->textFormat(), Qt::PlainText);
+    EXPECT_FALSE(plainComment->openExternalLinks());
+    EXPECT_TRUE(plainComment->toolTip().isEmpty());
 }
 
 TEST(InfoPanel, RendersAllReferenceTabs)
@@ -1599,6 +1647,7 @@ TEST(TorrentInteraction, ReferenceCompletionAndErrorRules)
 
     torrent.status = 0; torrent.errorString = QStringLiteral("No data found");
     model.setTorrents({torrent});
+    EXPECT_EQ(status(), QStringLiteral("Error"));
     EXPECT_TRUE(model.index(0, 0).data(TorrentModel::ErrorRole).toBool());
     EXPECT_FALSE(model.index(0, 0).data(TorrentModel::FinishedRole).toBool());
     EXPECT_EQ(model.index(0, 0).data(Qt::ToolTipRole).toString(), *torrent.errorString);
@@ -1999,7 +2048,11 @@ TEST(W04Context, AltSpeedF8ChooseLabelF7AndContextMenuItems)
     Torrent unlabeled;
     unlabeled.id = 701;
     unlabeled.name = QStringLiteral("unlabeled");
-    window.applyTorrentsUpdate({torrent, unlabeled});
+    Torrent emptyLabels;
+    emptyLabels.id = 702;
+    emptyLabels.name = QStringLiteral("empty-label-list");
+    emptyLabels.labels = QStringList{};
+    window.applyTorrentsUpdate({torrent, unlabeled, emptyLabels});
 
     QAction* altSpeed = nullptr; QAction* setLabels = nullptr;
     QAction* labelGrouping = nullptr;
@@ -2019,14 +2072,17 @@ TEST(W04Context, AltSpeedF8ChooseLabelF7AndContextMenuItems)
     const auto sections = filterTree->findItems("Labels", Qt::MatchExactly);
     ASSERT_EQ(sections.size(), 1);
     auto* labelsSection = sections.first();
-    ASSERT_EQ(labelsSection->childCount(), 2);
+    ASSERT_EQ(labelsSection->childCount(), 3);
     EXPECT_EQ(labelsSection->child(0)->text(0), QStringLiteral("Music (0)"));
     EXPECT_EQ(labelsSection->child(1)->text(0), QStringLiteral("Video (1)"));
+    EXPECT_EQ(labelsSection->child(2)->text(0), QStringLiteral("No label (2)"));
     EXPECT_FALSE(labelsSection->isHidden());
     labelGrouping->setChecked(false);
     EXPECT_TRUE(labelsSection->isHidden());
     labelGrouping->setChecked(true);
     EXPECT_FALSE(labelsSection->isHidden());
+    filterTree->setCurrentItem(labelsSection->child(2));
+    EXPECT_EQ(window.torrentView()->model()->rowCount(), 2);
     filterTree->setCurrentItem(labelsSection->child(1));
     ASSERT_EQ(window.torrentView()->model()->rowCount(), 1);
 
@@ -2099,9 +2155,13 @@ TEST(W04Context, AltSpeedF8ChooseLabelF7AndContextMenuItems)
     });
     EXPECT_TRUE(QMetaObject::invokeMethod(&window, "onOptions", Qt::DirectConnection));
     EXPECT_FALSE(setLabels->isVisible());
-    EXPECT_FALSE(labelGrouping->isVisible());
-    EXPECT_TRUE(labelsSection->isHidden());
+    EXPECT_TRUE(labelGrouping->isVisible());
+    EXPECT_FALSE(labelsSection->isHidden());
     EXPECT_EQ(filterTree->currentItem(), filterTree->topLevelItem(0));
+    ASSERT_EQ(labelsSection->childCount(), 1);
+    EXPECT_EQ(labelsSection->child(0)->text(0), QStringLiteral("No label (2)"));
+    filterTree->setCurrentItem(labelsSection->child(0));
+    EXPECT_EQ(window.torrentView()->model()->rowCount(), 2);
 
     if (oldProfile.isValid()) settings.setValue("daemons/current", oldProfile);
     if (oldLabels.isValid()) settings.setValue("downloads/labels", oldLabels);

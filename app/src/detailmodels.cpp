@@ -1,5 +1,6 @@
 #include "detailmodels.h"
 
+#include <QBrush>
 #include <algorithm>
 #include <QDateTime>
 #include <QDir>
@@ -220,6 +221,8 @@ QVariant PeerListModel::data(const QModelIndex& index, int role) const
         return {};
     const tgui::Peer& p = m_peers.at(index.row());
 
+    if (role == ProgressRole && index.column() == ColProgress)
+        return p.progress;
     if (role == Qt::TextAlignmentRole && index.column() >= ColProgress)
         return static_cast<int>(Qt::AlignRight | Qt::AlignVCenter);
     if (role != Qt::DisplayRole && role != Qt::DecorationRole)
@@ -239,10 +242,10 @@ QVariant PeerListModel::data(const QModelIndex& index, int role) const
         }
         case ColCountry: {
             if (!m_geoip || !m_geoip->isLoaded())
-                return {};
+                return role == Qt::DisplayRole ? QVariant(QStringLiteral("—")) : QVariant{};
             const std::string code = m_geoip->countryFor(p.address.toStdString());
             if (code.empty())
-                return {};
+                return role == Qt::DisplayRole ? QVariant(QStringLiteral("—")) : QVariant{};
             if (role == Qt::DecorationRole) {
                 if (!m_showFlags)
                     return {};
@@ -278,6 +281,9 @@ QVariant PeerListModel::data(const QModelIndex& index, int role) const
 
 QVariant PeerListModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
+    if (orientation == Qt::Horizontal && role == Qt::TextAlignmentRole &&
+        (section == ColRateDown || section == ColRateUp))
+        return static_cast<int>(Qt::AlignRight | Qt::AlignVCenter);
     if (orientation != Qt::Horizontal || role != Qt::DisplayRole)
         return {};
     switch (section) {
@@ -328,8 +334,17 @@ QVariant TrackerListModel::data(const QModelIndex& index, int role) const
         return {};
     const tgui::TrackerStat& t = m_trackers.at(index.row());
 
-    if (role == Qt::TextAlignmentRole && index.column() >= ColTier && index.column() <= ColLeechers)
+    if (role == Qt::TextAlignmentRole &&
+        ((index.column() >= ColTier && index.column() <= ColLeechers) || index.column() == ColUpdate))
         return static_cast<int>(Qt::AlignRight | Qt::AlignVCenter);
+    if (index.column() == ColLastResult && t.hasAnnounced && !t.lastAnnounceSucceeded &&
+        !t.lastAnnounceResult.isEmpty() &&
+        t.lastAnnounceResult.compare(QLatin1String("Success"), Qt::CaseInsensitive) != 0) {
+        if (role == Qt::ForegroundRole)
+            return QVariant::fromValue(QBrush(tgui::theme::palette().red));
+        if (role == Qt::ToolTipRole)
+            return t.lastAnnounceResult;
+    }
     if (role != Qt::DisplayRole)
         return {};
 
@@ -356,11 +371,14 @@ QVariant TrackerListModel::data(const QModelIndex& index, int role) const
 
 QVariant TrackerListModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
+    if (orientation == Qt::Horizontal && role == Qt::TextAlignmentRole &&
+        ((section >= ColTier && section <= ColLeechers) || section == ColUpdate))
+        return static_cast<int>(Qt::AlignRight | Qt::AlignVCenter);
     if (orientation != Qt::Horizontal || role != Qt::DisplayRole)
         return {};
     switch (section) {
         case ColAnnounce:
-            return QObject::tr("Name");
+            return QObject::tr("Tracker");
         case ColTier:
             return QObject::tr("Tier");
         case ColSeeders:

@@ -7,6 +7,7 @@
 
 class QTreeWidget;
 class QTreeWidgetItem;
+class QPoint;
 
 // Левая панель (референс — lvFilter + edSearch, main.pas/main.lfm):
 //   All torrents (N) / Downloading (N) / Completed (N) / Active (N) /
@@ -32,6 +33,9 @@ public:
     void setTrackerGroupingEnabled(bool enabled);
     void setEnabledUi(bool enabled);
 
+    /** Раскрывает секции папок, меток и трекеров. */
+    void expandSections();
+
     // Текущий выбор: группа статусов (TorrentModel::StatusGroup), папка/метка/
     // трекер — пустая строка, если выбран статус.
     int selectedGroup() const;
@@ -45,7 +49,18 @@ public:
 
 signals:
     void filterChanged(int group, const QString& folder, const QString& tracker,
-                       const QString& label);
+                       const QString& label, bool withoutLabels);
+    /** Запрашивает контекстное меню панели.
+     * @param globalPosition Положение меню в координатах экрана.
+     */
+    void contextMenuRequested(const QPoint& globalPosition);
+
+protected:
+    /** Обрабатывает нажатие на заголовок до того, как дерево изменит выделение.
+     * @param watched Объект, которому адресовано событие.
+     * @param event Событие виджета.
+     */
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
     QTreeWidgetItem* itemAt(int row) const;
@@ -56,6 +71,7 @@ private:
     QTreeWidgetItem* m_trackersSection = nullptr;
     QString m_selFolder; // выбранная папка (для восстановления выбора)
     QString m_selLabel;  // выбранная метка
+    bool m_withoutLabels = false; // выбрана строка «Без метки»
     QString m_selTracker; // выбранный трекер
     int m_selStatus = -1; // TorrentModel::StatusGroup
 };

@@ -182,15 +182,21 @@ const Palette& palette()
         QColor(0xFA, 0xFB, 0xFC), // zebra
         QColor(0xE1, 0xE1, 0xE1), // section
         QColor(0xFF, 0xFF, 0xFF), // headerBg
+        QColor(0xEE, 0xF6, 0xFD), // listHeaderHover
+        QColor(0xE9, 0xF2, 0xFB), // detailTabHover
         // Границы
         QColor(0xD5, 0xD5, 0xD5), // border
         QColor(0xE9, 0xE9, 0xE9), // borderSoft
         QColor(0xD5, 0xD5, 0xD5), // layoutBorder
+        QColor(0xF3, 0xF3, 0xF3), // listRowBorder
+        QColor(0xE1, 0xEC, 0xF7), // statusRateHover
+        QColor(0xAA, 0xAA, 0xAA), // statusOfflineDot
         // Текст
         QColor(0x1B, 0x1B, 0x1B), // text
         QColor(0x6D, 0x6D, 0x6D), // textMuted
         QColor(0x7A, 0x7A, 0x7A), // textFaint
         QColor(0x33, 0x33, 0x33), // iconSlate
+        QColor(0x44, 0x44, 0x44), // detailFieldLabel
         // Акцент
         QColor(0x00, 0x67, 0xC0), // accent
         QColor(0x00, 0x53, 0x9E), // accentDark
@@ -203,6 +209,7 @@ const Palette& palette()
         QColor(0xD9, 0x36, 0x3E), // red
         QColor(0xFB, 0xEA, 0xEA), // redLight
         QColor(0x7A, 0x65, 0xC0), // purple
+        QColor(0x55, 0x55, 0x55), // statusNeutral
         // Прогресс/куски
         QColor(0x2B, 0x7B, 0xD6), // blue
         QColor(0x3F, 0xAE, 0x5A), // progressGreen
@@ -224,11 +231,11 @@ const Palette& palette()
         QColor(0xF1, 0xF4, 0xF7), // groupRow
         QColor(0xF9, 0xF9, 0xF9), // toolbarBg
         QColor(0xD3, 0xD3, 0xD3), // toolbarSep
+        QColor(0x99, 0xD1, 0xFF), // selectionBorder
+        QColor(0xFF, 0xF6, 0xF5), // connectOfflineBg
+        QColor(0xE5, 0xA4, 0xA0), // connectOfflineBorder
         QColor(0xE9, 0xEC, 0xEF), // sectionHeader
-        // Чипы
-        QColor(0xE8, 0xEE, 0xF6), // chipBg
-        QColor(0x2D, 0x4A, 0x6B), // chipText
-        QColor(0xCF, 0xDE, 0xEC), // chipBorder
+        QColor(0x2D, 0x4A, 0x6B), // labelText
         // PieceBar
         QColor(0xE3, 0xE8, 0xEE), // pieceEmpty
         QColor(0x9F, 0xB6, 0xCF), // pieceBorder
@@ -336,11 +343,25 @@ QMenu::item:selected { background: %selBg%; color: %text%; }
 QMenu::item:disabled { color: %disabledText%; }
 QMenu::separator { height: 1px; background: %borderSoft%; margin: 4px 8px; }
 QToolBar { background: %toolbarBg%; border: none; border-bottom: 1px solid %layoutBorder%; spacing: 1px; padding: 3px 6px; }
-QToolBar::separator { background: %toolbarSep%; width: 1px; margin: 4px 5px; }
+QToolBar::separator { background: %toolbarSep%; width: 1px; margin: 5px; }
 QToolButton { background: transparent; border: 1px solid transparent; border-radius: 3px; padding: 3px; }
 QToolButton:hover { background: %hoverBg%; border-color: %border%; }
 QToolButton:pressed { background: %selBg%; }
 QToolButton:checked { background: %selBg%; border-color: %inputFocus%; }
+QToolBar#mainToolBar > QToolButton[toolbarAction="true"] { min-width: 22px; padding: 2px 6px; }
+QToolBar#mainToolBar > QToolButton[toolbarAction="true"]:hover { border-color: %selBg%; }
+QToolBar#mainToolBar > QToolButton[toolbarAction="true"]:pressed { background: %selBgActive%; }
+QToolBar#mainToolBar > QToolButton[toolbarAction="true"]:checked { border-color: %selectionBorder%; }
+QToolBar#mainToolBar > QToolButton[toolbarAction="true"]:focus { border-color: %inputFocus%; }
+QToolBar#mainToolBar > QToolButton[toolbarAction="true"]:disabled { color: %disabledText%; }
+QToolBar#mainToolBar > QToolButton#queueButton { padding-right: 16px; }
+QToolButton#queueButton::menu-indicator {
+    width: 8px;
+    height: 8px;
+    subcontrol-origin: padding;
+    subcontrol-position: right center;
+    right: 3px;
+}
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
     background: %panel%;
     border: 1px solid %inputBorder%;
@@ -351,6 +372,7 @@ QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
     selection-color: %inputSelectionText%;
 }
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus { border-color: %inputFocus%; }
+QLineEdit#searchEdit { min-height: 24px; padding: 0 5px; }
 QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {
     background: %window%;
     color: %disabledText%;
@@ -395,6 +417,8 @@ QHeaderView::section {
     font-weight: 600;
 }
 QHeaderView::section:hover { background: %hoverBg%; }
+QHeaderView#torrentHeader::section { min-height: 23px; padding: 0 6px; font-weight: normal; color: %iconSlate%; }
+QHeaderView#torrentHeader::section:hover { background: %listHeaderHover%; }
 QTableCornerButton::section { background: %headerBg%; border: none; }
 QTabWidget::pane { border: 1px solid %border%; border-radius: 0; background: %panel%; top: -1px; }
 QTabBar { background: %window%; }
@@ -416,12 +440,48 @@ QTabBar::tab:selected {
     padding-top: 7px;
 }
 QTabBar::tab:disabled { color: %disabledText%; }
+QTabWidget#infoPanel::pane { border: none; border-top: 1px solid %border%; top: -1px; }
+QTabWidget#infoPanel QTabBar::tab {
+    background: transparent;
+    padding: 3px 10px 4px;
+    margin: 3px 0 0;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 2px;
+}
+QTabWidget#infoPanel QTabBar::tab:hover { background: %detailTabHover%; }
+QTabWidget#infoPanel QTabBar::tab:selected {
+    background: %panel%;
+    border-color: %border%;
+    border-bottom: 1px solid %panel%;
+    padding-bottom: 3px;
+}
+QLabel#infoTorrentTitle { color: %textMuted%; padding: 0 8px 3px; }
+QLabel#peerEmpty { color: %textMuted%; }
+QTabWidget#infoPanel QHeaderView::section, QTableWidget#statisticsTable QHeaderView::section {
+    padding: 3px 8px; font-weight: normal;
+}
+QTabWidget#infoPanel QTreeView, QTabWidget#infoPanel QTableView, QTableWidget#statisticsTable {
+    border: none; border-radius: 0;
+}
+QTabWidget#infoPanel QTreeView::item, QTabWidget#infoPanel QTableView::item, QTableWidget#statisticsTable::item {
+    background: %panel%; min-height: 16px; padding: 2px 8px; border-bottom: 1px solid %listRowBorder%;
+}
+QTabWidget#infoPanel QTreeView::item:hover, QTabWidget#infoPanel QTableView::item:hover,
+QTableWidget#statisticsTable::item:hover { background: %hoverBg%; }
+QTabWidget#infoPanel QTreeView::item:selected, QTabWidget#infoPanel QTableView::item:selected,
+QTableWidget#statisticsTable::item:selected { background: %selBg%; color: %text%; }
 )");
     q += QStringLiteral(R"(
-QStatusBar { background: %window%; border-top: 1px solid %layoutBorder%; color: %text%; }
+QStatusBar { background: %window%; border-top: 1px solid %layoutBorder%; color: %text%; min-height: 22px; }
 QStatusBar::item { border: none; }
-QLabel#statusText { color: %text%; padding: 0 4px; }
-QLabel#statusSegment { color: %text%; border-left: 1px solid %border%; padding: 0 10px; }
+QWidget#statusStrip { background: %window%; }
+QWidget#statusSegmentGroup, QLabel#statusSegment { border-right: 1px solid %border%; }
+QLabel#statusSegment { padding: 0 10px; }
+QToolButton#statusRate { border: none; border-right: 1px solid %border%; border-radius: 0; padding: 0 10px; }
+QToolButton#statusRate:hover, QToolButton#statusRate:pressed { background: %statusRateHover%; }
+QToolButton#statusRate:focus { border-bottom: 1px solid %inputFocus%; }
+QToolButton#statusRate::menu-indicator { image: none; width: 0; }
 QSplitter::handle { background: %layoutBorder%; }
 QSplitter::handle:hover { background: %scrollHover%; }
 QSplitter::handle:vertical { height: 4px; }
@@ -459,11 +519,17 @@ QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color:
 /* Вкладка «General»: секции «Transfer»/«Torrent» — плоские блоки
    (вкладку Statistics тоже оформили так же). */
 QFrame#sectionPanel { background: transparent; border: none; }
-QLabel#sectionTitle { color: %text%; font-weight: 700; font-size: 13px; padding: 2px; }
-QLabel#fieldLabel { color: %text%; }
+QLabel#sectionTitle { background: %sectionHeader%; color: %text%; font-weight: 600; padding: 3px 8px; }
+QLabel#fieldLabel { color: %detailFieldLabel%; }
 QLabel#fieldValue { color: %text%; }
+QPushButton#propertyLink, QPushButton#propertyLink:hover {
+    color: %accent%; background: transparent; border: none; min-height: 0; padding: 0;
+}
+QPushButton#propertyLink:hover { text-decoration: underline; }
+QPushButton#propertyLink:focus { border-bottom: 1px solid %accent%; }
+QPushButton#propertyLink:disabled { color: %disabledText%; }
 QLabel#statsHeader { color: %text%; font-weight: 700; padding: 4px 0; border-bottom: 1px solid %border%; }
-QWidget#filterPanel { background: %panel%; border-right: 1px solid %borderSoft%; }
+QWidget#filterPanel { background: %panel%; border-right: 1px solid %border%; }
 QTreeWidget#filterTree { background: %panel%; border: none; border-radius: 0; }
 QTreeWidget#filterTree::item:selected { background: transparent; color: %text%; }
 QScrollArea { background: transparent; border: none; }
@@ -477,6 +543,12 @@ QCheckBox, QRadioButton { spacing: 6px; }
     } subs[] = {
         {"%window%", p.window},
         {"%headerBg%", p.headerBg},
+        {"%listHeaderHover%", p.listHeaderHover},
+        {"%detailTabHover%", p.detailTabHover},
+        {"%detailFieldLabel%", p.detailFieldLabel},
+        {"%listRowBorder%", p.listRowBorder},
+        {"%statusRateHover%", p.statusRateHover},
+        {"%sectionHeader%", p.sectionHeader},
         {"%panel%", p.panel},
         {"%zebra%", p.zebra},
         {"%section%", p.section},
@@ -484,6 +556,9 @@ QCheckBox, QRadioButton { spacing: 6px; }
         {"%borderSoft%", p.borderSoft},
         {"%layoutBorder%", p.layoutBorder},
         {"%text%", p.text},
+        {"%textMuted%", p.textMuted},
+        {"%iconSlate%", p.iconSlate},
+        {"%accent%", p.accent},
         {"%disabledText%", p.disabledText},
         {"%accentDark%", p.accentDark},
         {"%accentHover%", p.accentHover},
@@ -494,6 +569,7 @@ QCheckBox, QRadioButton { spacing: 6px; }
         {"%itemSelText%", p.itemSelText},
         {"%toolbarBg%", p.toolbarBg},
         {"%toolbarSep%", p.toolbarSep},
+        {"%selectionBorder%", p.selectionBorder},
         {"%inputBorder%", p.inputBorder},
         {"%inputFocus%", p.inputFocus},
         {"%inputSelectionText%", p.inputSelectionText},

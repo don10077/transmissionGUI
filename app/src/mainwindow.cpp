@@ -22,12 +22,12 @@
 #include <QFrame>
 #include <QFormLayout>
 #include <QHash>
-#include <QHBoxLayout>
 #include <QMenuBar>
 #include <QMouseEvent>
 #include <QApplication>
 #include <QClipboard>
 #include <QHeaderView>
+#include <QHBoxLayout>
 #include <QIcon>
 #include <QFileDialog>
 #include <QInputDialog>
@@ -56,6 +56,7 @@
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSettings>
+#include <QShortcut>
 #include <QSignalBlocker>
 #include <QStandardPaths>
 #include <QSplitter>
@@ -71,11 +72,14 @@
 #include <QTreeView>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QWidgetAction>
 #include <QVersionNumber>
 #include <algorithm>
+#include <limits>
 #include <utility>
 
 #include "addlinkdialog.h"
+#include "connectbutton.h"
 #include "connectdialog.h"
 #include "delegates.h"
 #include "fileselectdialog.h"
@@ -111,6 +115,29 @@ QString magnetIdentifier(const QUrl& url)
             return value.toLower();
     return {};
 }
+
+/** Показывает поле в тулбаре и обычную команду поиска в меню переполнения. */
+class ToolbarSearchAction : public QWidgetAction {
+public:
+    /** Привязывает уже созданное поле поиска.
+     * @param edit Поле в панели инструментов.
+     */
+    explicit ToolbarSearchAction(QLineEdit* edit)
+        : QWidgetAction(edit->parentWidget()), m_edit(edit)
+    {}
+
+protected:
+    /** Возвращает поле только для тулбара. В меню используется текст команды.
+     * @param parent Контейнер действия.
+     */
+    QWidget* createWidget(QWidget* parent) override
+    {
+        return m_edit && parent == m_edit->parentWidget() ? m_edit.data() : nullptr;
+    }
+
+private:
+    QPointer<QLineEdit> m_edit;
+};
 
 constexpr int kRefreshIntervalMs = 2000;
 
@@ -150,7 +177,7 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
 
     m_proxy.setSourceModel(&m_model);
     const QSettings preferences;
-    m_totalsMode = qBound(0, preferences.value("ui/totalsMode", 0).toInt(), 2);
+    m_totalsMode = qBound(0, preferences.value("ui/totalsMode", 3).toInt(), 3);
     createUi();
     createActions();
     createMenus();
@@ -217,6 +244,7 @@ void MainWindow::createUi()
     m_view->setObjectName(QStringLiteral("torrentView"));
     m_view->setModel(&m_proxy);
     m_view->setSortingEnabled(true);
+    m_view->sortByColumn(TorrentModel::ColName, Qt::AscendingOrder);
     m_view->setAlternatingRowColors(true);
     m_view->setRootIsDecorated(false);
     m_view->setIndentation(0);
@@ -225,6 +253,7 @@ void MainWindow::createUi()
     m_view->setUniformRowHeights(true);
     m_view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_view->setMouseTracking(true);
+    m_view->viewport()->setAttribute(Qt::WA_Hover);
     m_view->setWordWrap(false);
     m_view->setFrameShape(QFrame::NoFrame);
     m_view->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -232,18 +261,20 @@ void MainWindow::createUi()
     connect(m_view, &QTreeView::doubleClicked, this, [this](const QModelIndex& index) {
         if (index.isValid()) onTorrentsDoubleClicked();
     });
+    m_view->header()->setObjectName(QStringLiteral("torrentHeader"));
+    m_view->header()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     m_view->header()->setStretchLastSection(false);
     m_view->header()->setSectionResizeMode(QHeaderView::Interactive);
     m_view->header()->setHighlightSections(false);
-    m_view->header()->setMinimumSectionSize(44);
-    // W10: раскладка колонок (порядок/видимость/ширины) — из QSettings (иначе дефолт Name..ETA).
+    m_view->header()->setMinimumSectionSize(30);
+    // Сохранённые порядок, видимость и ширины имеют приоритет над макетом.
     ColumnLayout::fromSettings(TorrentModel::ColumnCount).applyToView(m_view);
     // W10: сохраняем ширину при ресайзе, чтобы она восстанавливалась при старте.
     connect(m_view->header(), &QHeaderView::sectionResized, this,
             [](int logical, int, int newWidth) {
                 QSettings().setValue(QStringLiteral("columns/width_%1").arg(logical), newWidth);
             });
-    // Единый делегат: фон строки, статус-иконка, статус-точка, прогресс, скорости.
+    // Единый делегат: выделение строки, статус, прогресс и метки.
     m_view->setItemDelegate(new TorrentDelegate(this));
 
     // Левая панель (референс — lvFilter + edSearch): группы статусов,
@@ -255,15 +286,15 @@ void MainWindow::createUi()
     m_filterPanel->setFolderGroupingEnabled(folderGrouping);
     m_filterPanel->setTrackerGroupingEnabled(trackerGrouping);
     m_filterPanel->setEnabledUi(false);
-    m_filterPanel->setMinimumWidth(200);
 
-    // Грид торрентов (всегда видим) — раскладка по референсу (см. WORKFLOW.md).
-    auto* topPanel = new QWidget(this);
-    auto* topLayout = new QHBoxLayout(topPanel);
-    topLayout->setContentsMargins(0, 0, 0, 0);
-    topLayout->setSpacing(0);
-    topLayout->addWidget(m_filterPanel);
-    topLayout->addWidget(m_view, 1);
+    // Разделитель между фильтрами и списком торрентов.
+    auto* topPanel = new QSplitter(Qt::Horizontal, this);
+    topPanel->setHandleWidth(4);
+    topPanel->setChildrenCollapsible(false);
+    topPanel->addWidget(m_filterPanel);
+    topPanel->addWidget(m_view);
+    topPanel->setStretchFactor(1, 1);
+    topPanel->setSizes({215, width() - 215 - topPanel->handleWidth()});
 
     // Вкладки деталей выбранного торрента: Файлы / Пиры / Трекеры.
     auto makeTable = [this](QAbstractTableModel* model) {
@@ -272,18 +303,21 @@ void MainWindow::createUi()
         view->setSelectionBehavior(QAbstractItemView::SelectRows);
         view->setSelectionMode(QAbstractItemView::ExtendedSelection);
         view->setEditTriggers(QAbstractItemView::NoEditTriggers);
-        view->setAlternatingRowColors(true);
+        view->setMouseTracking(true);
+        view->viewport()->setAttribute(Qt::WA_Hover);
         view->setSortingEnabled(false);
         view->setShowGrid(false);
         view->setWordWrap(false);
         view->setFrameShape(QFrame::NoFrame);
         view->verticalHeader()->setVisible(false);
-        view->verticalHeader()->setDefaultSectionSize(20);
-        view->verticalHeader()->setMinimumSectionSize(20);
+        const int rowHeight = qMax(21, view->fontMetrics().height() + 5);
+        view->verticalHeader()->setMinimumSectionSize(rowHeight);
+        view->verticalHeader()->setDefaultSectionSize(rowHeight);
         view->horizontalHeader()->setStretchLastSection(false);
         view->horizontalHeader()->setSectionsMovable(true);
         view->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
         view->horizontalHeader()->setHighlightSections(false);
+        view->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         return view;
     };
 
@@ -293,14 +327,17 @@ void MainWindow::createUi()
     filesView->setObjectName(QStringLiteral("filesView"));
     filesView->setModel(m_fileTree);
     filesView->setUniformRowHeights(true);
-    filesView->setAlternatingRowColors(true);
+    filesView->setMouseTracking(true);
+    filesView->viewport()->setAttribute(Qt::WA_Hover);
     filesView->setSelectionBehavior(QAbstractItemView::SelectRows);
     filesView->setSelectionMode(QAbstractItemView::ExtendedSelection);
     filesView->setEditTriggers(QAbstractItemView::NoEditTriggers);
     filesView->setFrameShape(QFrame::NoFrame);
-    filesView->setIndentation(18);
+    filesView->setIndentation(16);
+    filesView->setIconSize(QSize(16, 16));
     filesView->setTreePosition(FileTreeModel::Name);
     filesView->header()->setStretchLastSection(false);
+    filesView->header()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     filesView->header()->setSectionsMovable(true);
     filesView->setItemDelegateForColumn(FileTreeModel::Progress, new ProgressDelegate(filesView));
     filesView->setItemDelegateForColumn(FileTreeModel::Want, new WantCheckDelegate(filesView));
@@ -309,7 +346,7 @@ void MainWindow::createUi()
     filesView->setColumnWidth(FileTreeModel::Name, 350);
     filesView->setColumnWidth(FileTreeModel::Size, 90);
     filesView->setColumnWidth(FileTreeModel::Done, 90);
-    filesView->setColumnWidth(FileTreeModel::Progress, 70);
+    filesView->setColumnWidth(FileTreeModel::Progress, 86);
     filesView->setColumnWidth(FileTreeModel::Priority, 100);
     // Восстановить сохранённую раскладку вкладки «Файлы» (порядок/видимость/ширины).
     const bool filesColumnsSaved =
@@ -340,7 +377,7 @@ void MainWindow::createUi()
                 m_filesView->setColumnWidth(FileTreeModel::Name, 350);
                 m_filesView->setColumnWidth(FileTreeModel::Size, 90);
                 m_filesView->setColumnWidth(FileTreeModel::Done, 90);
-                m_filesView->setColumnWidth(FileTreeModel::Progress, 70);
+                m_filesView->setColumnWidth(FileTreeModel::Progress, 86);
                 m_filesView->setColumnWidth(FileTreeModel::Priority, 100);
             }
             m_filesView->expandToDepth(0);
@@ -356,11 +393,20 @@ void MainWindow::createUi()
 
     auto* peersView = makeTable(&m_peerModel);
     peersView->setObjectName(QStringLiteral("peersView"));
+    peersView->setIconSize(QSize(18, 12));
+    peersView->setItemDelegateForColumn(PeerListModel::ColProgress, new ProgressDelegate(peersView));
+    m_peerEmpty = new QLabel(tr("No connected peers."), peersView->viewport());
+    m_peerEmpty->setObjectName(QStringLiteral("peerEmpty"));
+    m_peerEmpty->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_peerEmpty->move(8, 6);
+    m_peerEmpty->adjustSize();
+    m_peerEmpty->hide();
+    connect(&m_peerModel, &QAbstractItemModel::modelReset, this, &MainWindow::updateInfoTitle);
     peersView->setColumnWidth(PeerListModel::ColAddress, 150);
     peersView->setColumnWidth(PeerListModel::ColCountry, 150);
     peersView->setColumnWidth(PeerListModel::ColClient, 150);
     peersView->setColumnWidth(PeerListModel::ColFlags, 70);
-    peersView->setColumnWidth(PeerListModel::ColProgress, 70);
+    peersView->setColumnWidth(PeerListModel::ColProgress, 86);
     peersView->setColumnWidth(PeerListModel::ColRateDown, 85);
     peersView->setColumnWidth(PeerListModel::ColRateUp, 85);
     peersView->hideColumn(PeerListModel::ColPort);
@@ -380,16 +426,16 @@ void MainWindow::createUi()
     auto* trackersView = makeTable(&m_trackerModel);
     m_trackersView = trackersView;
     trackersView->setObjectName(QStringLiteral("trackersView"));
-    trackersView->hideColumn(TrackerListModel::ColTier);
-    trackersView->hideColumn(TrackerListModel::ColLeechers);
     trackersView->setColumnWidth(TrackerListModel::ColAnnounce, 250);
+    trackersView->setColumnWidth(TrackerListModel::ColTier, 64);
     trackersView->setColumnWidth(TrackerListModel::ColLastResult, 240);
     trackersView->setColumnWidth(TrackerListModel::ColUpdate, 90);
     trackersView->setColumnWidth(TrackerListModel::ColSeeders, 70);
+    trackersView->setColumnWidth(TrackerListModel::ColLeechers, 70);
     trackersView->horizontalHeader()->moveSection(
-        trackersView->horizontalHeader()->visualIndex(TrackerListModel::ColLastResult), 1);
+        trackersView->horizontalHeader()->visualIndex(TrackerListModel::ColLastResult), 2);
     trackersView->horizontalHeader()->moveSection(
-        trackersView->horizontalHeader()->visualIndex(TrackerListModel::ColUpdate), 2);
+        trackersView->horizontalHeader()->visualIndex(TrackerListModel::ColUpdate), 3);
     // Восстановить сохранённую раскладку вкладки «Трекеры».
     if (QSettings().contains(QStringLiteral("trackers/columns/order")))
         ColumnLayout::fromSettings(TrackerListModel::ColumnCount, QStringLiteral("trackers/columns"))
@@ -413,13 +459,13 @@ void MainWindow::createUi()
 
     m_tabs = new QTabWidget(this);
     m_tabs->setObjectName(QStringLiteral("infoPanel"));
-    m_tabs->setIconSize(QSize(16, 16));
+    m_tabs->setIconSize(QSize(14, 14));
     m_tabs->setUsesScrollButtons(true);
-    m_tabs->setStyleSheet(QStringLiteral(
-        "QTabBar::tab { padding: 3px 8px; margin-right: 0; margin-top: 2px; }"
-        "QTabBar::tab:selected { padding-top: 5px; margin-top: 0; }"
-        "QTreeView::item, QTableView::item { padding: 1px 3px; min-height: 18px; }"
-        "QHeaderView::section { padding: 2px 5px; font-weight: normal; }"));
+    m_infoTitle = new QLabel(m_tabs);
+    m_infoTitle->setObjectName(QStringLiteral("infoTorrentTitle"));
+    m_infoTitle->setTextFormat(Qt::PlainText);
+    m_tabs->setCornerWidget(m_infoTitle, Qt::TopRightCorner);
+    m_tabs->installEventFilter(this);
     // Названия вкладок 1:1 с референсом (tabControl: General/Trackers/Peers/
     // Files/Statistics).
     m_tabs->addTab(m_general, tgui::theme::icon(tgui::theme::Icon::TabGeneral),
@@ -444,9 +490,9 @@ void MainWindow::createUi()
     splitter->setChildrenCollapsible(false);
     splitter->addWidget(topPanel);
     splitter->addWidget(m_tabs);
-    splitter->setStretchFactor(0, 3);
-    splitter->setStretchFactor(1, 1);
-    splitter->setSizes({454, 326});
+    splitter->setStretchFactor(0, 1);
+    splitter->setStretchFactor(1, 0);
+    splitter->setSizes({qMax(60, height() - 284), 280});
     setCentralWidget(splitter);
 
     if (m_view->selectionModel()) {
@@ -455,38 +501,127 @@ void MainWindow::createUi()
         // setCurrentIndex() (в т.ч. программный и навигация клавишами) меняет
         // current без selectionChanged — обновляем детали и по этому сигналу.
         connect(m_view->selectionModel(), &QItemSelectionModel::currentChanged, this,
-                [this](const QModelIndex&) { onSelectionChanged(); });
+                [this](const QModelIndex& current, const QModelIndex& previous) {
+                    if (current.row() != previous.row()) {
+                        auto* viewport = m_view->viewport();
+                        for (const auto& index : {current, previous}) {
+                            const QRect cell = m_view->visualRect(index);
+                            if (cell.isValid())
+                                viewport->update(QRect(0, cell.top(), viewport->width(), cell.height()));
+                        }
+                    }
+                    onSelectionChanged();
+                });
     }
 
-    m_statusDot = new QLabel(this);
-    m_statusDot->setContentsMargins(8, 0, 2, 0);
-    m_statusDot->setPixmap(tgui::theme::statusDotPixmap(tgui::theme::color::textFaint, 9, m_statusDot->devicePixelRatioF()));
-    m_statusText = new QLabel(tr("Disconnected"), this);
-    m_statusText->setObjectName(QStringLiteral("statusText"));
+    auto* bar = statusBar();
+    m_statusStrip = new QWidget(bar);
+    m_statusStrip->setObjectName(QStringLiteral("statusStrip"));
+    m_statusStrip->setAttribute(Qt::WA_StyledBackground);
+    m_statusStrip->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    auto* strip = new QHBoxLayout(m_statusStrip);
+    strip->setSizeConstraint(QLayout::SetNoConstraint);
+    strip->setContentsMargins(0, 0, 0, 0);
+    strip->setSpacing(0);
 
-    m_countLabel = new QLabel(this);
-    m_countLabel->setObjectName(QStringLiteral("statusSegment"));
-    m_daemonLabel = new QLabel(this);
-    m_daemonLabel->setObjectName(QStringLiteral("statusSegment"));
-    m_speedLabel = new QLabel(this);
-    m_speedLabel->setObjectName(QStringLiteral("statusSegment"));
-    m_speedLabel->setTextFormat(Qt::RichText);
+    const auto addGroup = [&] {
+        auto* group = new QWidget(m_statusStrip);
+        group->setObjectName(QStringLiteral("statusSegmentGroup"));
+        group->setAttribute(Qt::WA_StyledBackground);
+        auto* layout = new QHBoxLayout(group);
+        layout->setContentsMargins(10, 0, 11, 0);
+        layout->setSpacing(6);
+        strip->addWidget(group);
+        return qMakePair(group, layout);
+    };
 
-    statusBar()->setSizeGripEnabled(true);
-    statusBar()->addWidget(m_statusDot);
-    statusBar()->addWidget(m_statusText);
-    statusBar()->addPermanentWidget(m_countLabel);
-    statusBar()->addPermanentWidget(m_daemonLabel);
-    statusBar()->addPermanentWidget(m_speedLabel);
-    setConnectionState(tr("Disconnected"), tgui::theme::color::textFaint);
+    const auto [connection, connectionLayout] = addGroup();
+    m_statusConnection = connection;
+    m_statusDot = new QLabel(connection);
+    m_statusDot->setFixedSize(8, 8);
+    connectionLayout->addWidget(m_statusDot);
+    m_statusText = new QLabel(connection);
+    m_statusText->setTextFormat(Qt::PlainText);
+    m_statusText->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    connectionLayout->addWidget(m_statusText, 1);
+
+    const auto addRate = [&](bool download) {
+        auto* button = new QToolButton(m_statusStrip);
+        button->setObjectName(QStringLiteral("statusRate"));
+        button->setAutoRaise(true);
+        button->setIconSize(QSize(14, 14));
+        button->setIcon(tgui::theme::icon(download ? tgui::theme::Icon::StatusDown
+                                                  : tgui::theme::Icon::StatusSeed));
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::MinimumExpanding);
+        button->setFocusPolicy(Qt::StrongFocus);
+        button->setPopupMode(QToolButton::InstantPopup);
+        auto* menu = createSpeedLimitMenu(button, download);
+        menu->setObjectName(download ? QStringLiteral("statusDownloadSpeed") : QStringLiteral("statusUploadSpeed"));
+        button->setMenu(menu);
+        button->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(button, &QWidget::customContextMenuRequested, button, &QToolButton::showMenu);
+        strip->addWidget(button);
+        return button;
+    };
+    m_statusDownload = addRate(true);
+    m_statusUpload = addRate(false);
+
+    const auto [alternative, alternativeLayout] = addGroup();
+    m_statusAlternative = alternative;
+    auto* alternativeIcon = new QLabel(alternative);
+    alternativeIcon->setPixmap(tgui::theme::icon(tgui::theme::Icon::AltSpeed)
+                                  .pixmap(QSize(14, 14), bar->devicePixelRatioF()));
+    alternativeLayout->addWidget(alternativeIcon);
+    alternativeLayout->addWidget(new QLabel(tr("Alt speeds"), alternative));
+
+    const auto addLabel = [&] {
+        auto* label = new QLabel(m_statusStrip);
+        label->setObjectName(QStringLiteral("statusSegment"));
+        label->setTextFormat(Qt::PlainText);
+        strip->addWidget(label);
+        return label;
+    };
+    m_statusFree = addLabel();
+    m_statusSize = addLabel();
+    m_statusSelectedSize = addLabel();
+    m_statusDone = addLabel();
+    m_statusLeft = addLabel();
+    strip->addStretch(1);
+    m_countLabel = addLabel();
+
+    bar->setSizeGripEnabled(true);
+    bar->addPermanentWidget(m_statusStrip, 1);
+    connect(bar, &QStatusBar::messageChanged, this, &MainWindow::updateStatusBarPresentation);
+    m_statusStrip->installEventFilter(this);
+    setConnectionState(tr("Disconnected"), tgui::theme::palette().statusOfflineDot);
 }
 
 void MainWindow::setConnectionState(const QString& text, const QColor& color)
 {
-    if (m_statusText)
-        m_statusText->setText(text);
+    m_connectionStateText = text;
     if (m_statusDot)
-        m_statusDot->setPixmap(tgui::theme::statusDotPixmap(color, 9, m_statusDot->devicePixelRatioF()));
+        m_statusDot->setStyleSheet(QStringLiteral("background: %1; border-radius: 4px;").arg(color.name()));
+    updateConnectionButton();
+    updateStatusBarPresentation();
+}
+
+/** Обновляет подпись профиля и адрес или состояние подключения. */
+void MainWindow::updateConnectionButton()
+{
+    if (!m_connectButton)
+        return;
+
+    if (!m_connected) {
+        m_connectButton->setConnection(tr("Connect"), m_connectionStateText, false);
+        return;
+    }
+
+    const QUrl url = m_rpc ? m_rpc->options().url : QUrl{};
+    const QString title = m_connectionProfile.isEmpty() ? url.host() : m_connectionProfile;
+    const QString address = url.adjusted(QUrl::RemoveUserInfo).authority();
+    m_connectButton->setConnection(title.isEmpty() ? tr("Connected") : title,
+                                   address.isEmpty() ? tr("Connected") : address, true);
 }
 
 void MainWindow::createActions()
@@ -494,7 +629,6 @@ void MainWindow::createActions()
     using tgui::theme::Icon;
 
     m_actConnect = new QAction(tr("Connect"), this);
-    m_actConnect->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_K));
     m_actConnect->setIcon(tgui::theme::icon(Icon::Connect));
     m_actConnect->setToolTip(tr("Connect to daemon (Ctrl+K)"));
     connect(m_actConnect, &QAction::triggered, this, &MainWindow::onConnect);
@@ -606,7 +740,7 @@ void MainWindow::createActions()
     m_actAbout->setIcon(tgui::theme::icon(Icon::About));
     connect(m_actAbout, &QAction::triggered, this, &MainWindow::onAbout);
 
-    // --- Toolbar: порядок 1:1 с transgui/main.lfm -----------------------
+    // Панель инструментов по design/mockup.html.
     m_toolBar = addToolBar(tr("Main"));
     m_toolBar->setObjectName(QStringLiteral("mainToolBar"));
     m_toolBar->setMovable(false);
@@ -614,36 +748,28 @@ void MainWindow::createActions()
     m_toolBar->setAllowedAreas(Qt::TopToolBarArea);
     m_toolBar->setIconSize(QSize(22, 22));
     m_toolBar->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
-    m_toolBar->setStyleSheet(QStringLiteral(
-        "QToolBar { spacing: 2px; padding: 4px 8px; }"
-        "QToolBar::separator { width: 1px; margin: 6px; background: #C7C7C7; }"
-        "QToolBar > QToolButton { min-width: 30px; min-height: 30px; border-radius: 4px; padding: 4px 8px; }"
-        "QToolButton#connectButton { background: white; border: 1px solid #ABADB3; min-height: 32px; padding: 2px 20px 2px 10px; }"
-        "QToolButton#connectButton[connected=\"false\"] { background: #FFF6F5; border-color: #E5A4A0; }"
-        "QToolButton#queueButton { padding: 4px 18px 4px 8px; }"
-        "QToolButton#connectButton::menu-indicator, QToolButton#queueButton::menu-indicator { width: 8px; height: 8px; subcontrol-origin: padding; subcontrol-position: center right; right: 5px; }"));
+    const auto addToolbarButton = [this](QAction* action) {
+        m_toolBar->addAction(action);
+        auto* button = qobject_cast<QToolButton*>(m_toolBar->widgetForAction(action));
+        button->setProperty("toolbarAction", true);
+        button->setFocusPolicy(Qt::StrongFocus);
+        return button;
+    };
     m_actAdd->setIconText(tr("Add"));
-    m_actAddLink->setIconText(tr("Magnet"));
+    m_actAddLink->setIconText(tr("Link"));
     m_actStart->setIconText(tr("Start"));
     m_actStop->setIconText(tr("Pause"));
     m_actRemove->setIconText(tr("Remove"));
     m_actMove->setIconText(tr("Move"));
     m_actAltSpeed->setIconText(tr("Limit"));
 
-    // Connect — как OLD tbConnect (Style = tbsDropDown, DropdownMenu =
-    // pmConnections): вся кнопка — дропдаун списка подключений, ВСЕГДА активна
-    // (и при подключении, чтобы переключать профили). Подпись — как в OLD:
-    // «Connect to Transmission» в отключённом состоянии / имя активного
-    // профиля при подключении (см. setConnectedUi).
-    m_connectButton = new QToolButton(m_toolBar);
+    m_actDaemonOptions->setIconText(QStringLiteral("Transmission"));
+    m_actOptions->setIconText(tr("Options"));
+
+    m_connectButton = new ConnectButton(m_toolBar);
     m_connectButton->setObjectName(QStringLiteral("connectButton"));
-    m_connectButton->setIcon(tgui::theme::icon(Icon::Disconnect));
-    m_connectButton->setIconSize(QSize(16, 16));
-    m_connectButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_connectButton->setText(tr("Connect to Transmission"));
-    m_connectButton->setPopupMode(QToolButton::InstantPopup);
-    m_connectButton->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_K));
-    m_connectButton->setToolTip(tr("Connect to daemon (Ctrl+K)"));
+    m_connectButton->setToolTip(tr("Connection profiles (Ctrl+K)"));
+    updateConnectionButton();
     auto* profilesMenu = new QMenu(m_connectButton);
     connect(profilesMenu, &QMenu::aboutToShow, this, [this, profilesMenu] {
         profilesMenu->clear();
@@ -668,15 +794,22 @@ void MainWindow::createActions()
         connect(manage, &QAction::triggered, this, &MainWindow::onConnectionOptions);
     });
     m_connectButton->setMenu(profilesMenu);
+    auto* profilesShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_K), this);
+    connect(profilesShortcut, &QShortcut::activated, this, [this, profilesMenu] {
+        if (m_connectButton->isVisible())
+            m_connectButton->showMenu();
+        else
+            profilesMenu->popup(mapToGlobal(QPoint(0, menuBar()->height())));
+    });
     m_toolBar->addWidget(m_connectButton);
     m_toolBar->addSeparator();
 
-    m_toolBar->addAction(m_actAdd);
-    m_toolBar->addAction(m_actAddLink);
+    addToolbarButton(m_actAdd);
+    addToolbarButton(m_actAddLink);
     m_toolBar->addSeparator();
-    m_toolBar->addAction(m_actStart);
-    m_toolBar->addAction(m_actStop);
-    m_toolBar->addAction(m_actRemove);
+    addToolbarButton(m_actStart);
+    addToolbarButton(m_actStop);
+    addToolbarButton(m_actRemove);
     m_toolBar->addSeparator();
 
     m_actQueue = new QAction(tgui::theme::icon(Icon::Queue), tr("Queue"), this);
@@ -692,12 +825,14 @@ void MainWindow::createActions()
     connect(down, &QAction::triggered, this, &MainWindow::onQueueDown);
     connect(last, &QAction::triggered, this, &MainWindow::onQueueBottom);
     m_actQueue->setMenu(queueMenu);
-    m_toolBar->addAction(m_actQueue);
-    auto* queueButton = qobject_cast<QToolButton*>(m_toolBar->widgetForAction(m_actQueue));
+    auto* queueButton = addToolbarButton(m_actQueue);
     queueButton->setObjectName(QStringLiteral("queueButton"));
     queueButton->setPopupMode(QToolButton::InstantPopup);
-    m_toolBar->addAction(m_actMove);
-    m_toolBar->addAction(m_actAltSpeed);
+    addToolbarButton(m_actMove);
+    addToolbarButton(m_actAltSpeed);
+    m_toolBar->addSeparator();
+    addToolbarButton(m_actDaemonOptions);
+    addToolbarButton(m_actOptions);
 
     // Поиск — в тулбаре, как edSearch в transgui.
     auto* spacer = new QWidget(m_toolBar);
@@ -705,28 +840,55 @@ void MainWindow::createActions()
     m_toolBar->addWidget(spacer);
     m_searchEdit = new QLineEdit(m_toolBar);
     m_searchEdit->setObjectName(QStringLiteral("searchEdit"));
-    m_searchEdit->setPlaceholderText(tr("Search torrents"));
+    const QKeySequence searchShortcut(QKeySequence::Find);
+    const QString searchHint = searchShortcut.toString(QKeySequence::NativeText);
+    m_searchEdit->setPlaceholderText(tr("Search torrents") + QStringLiteral("  ") + searchHint);
+    m_searchEdit->setAccessibleName(tr("Search torrents"));
+    m_searchEdit->setToolTip(m_searchEdit->placeholderText());
     m_searchEdit->setClearButtonEnabled(true);
     m_searchEdit->addAction(tgui::theme::icon(Icon::Search), QLineEdit::LeadingPosition);
-    m_searchEdit->setMinimumWidth(140);
-    m_searchEdit->setFixedHeight(28);
-    m_searchEdit->setMaximumWidth(360);
+    m_searchEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_searchEdit->setMinimumWidth(120);
+    m_searchEdit->setMaximumWidth(250);
     connect(m_searchEdit, &QLineEdit::textChanged, this,
             [this](const QString& text) {
                 m_proxy.setSearchText(text.trimmed());
                 updateStatusBarTotals();
             });
-    m_toolBar->addWidget(m_searchEdit);
-    auto* find = new QAction(this);
-    find->setShortcut(QKeySequence::Find);
+    auto* find = new ToolbarSearchAction(m_searchEdit);
+    find->setText(tr("Search torrents"));
+    find->setIcon(tgui::theme::icon(Icon::Search));
+    find->setShortcut(searchShortcut);
+    m_toolBar->addAction(find);
     addAction(find);
-    connect(find, &QAction::triggered, m_searchEdit, [this] { m_searchEdit->setFocus(); m_searchEdit->selectAll(); });
+    connect(find, &QAction::triggered, m_searchEdit, [this] {
+        if (m_searchEdit->isVisible()) {
+            m_searchEdit->setFocus();
+            m_searchEdit->selectAll();
+            return;
+        }
+        bool accepted = false;
+        const QString text = QInputDialog::getText(this, tr("Search torrents"), tr("Search torrents"),
+                                                   QLineEdit::Normal, m_searchEdit->text(), &accepted);
+        if (accepted)
+            m_searchEdit->setText(text);
+    });
     auto applyStyle = [this](int value) {
         if (value < 0 || value > 2) value = 2;
         const Qt::ToolButtonStyle modes[]{Qt::ToolButtonIconOnly, Qt::ToolButtonTextBesideIcon, Qt::ToolButtonTextUnderIcon};
         m_toolBar->setToolButtonStyle(modes[value]);
         m_toolBar->setIconSize(value == 2 ? QSize(22, 22) : QSize(18, 18));
-        m_connectButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        if (value == 0) {
+            m_toolBar->setStyleSheet(QStringLiteral(
+                "QToolBar > QToolButton[toolbarAction=\"true\"] { min-width: 18px; padding: 5px; }"
+                "QToolBar > QToolButton#queueButton { padding-right: 16px; }"));
+        } else if (value == 1) {
+            m_toolBar->setStyleSheet(QStringLiteral(
+                "QToolBar > QToolButton[toolbarAction=\"true\"] { padding: 4px 7px; }"
+                "QToolBar > QToolButton#queueButton { padding-right: 17px; }"));
+        } else {
+            m_toolBar->setStyleSheet(QString());
+        }
     };
     applyStyle(QSettings().value("ui/toolbarButtonStyle", 2).toInt());
     m_toolBar->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -743,6 +905,9 @@ void MainWindow::createActions()
                 applyStyle(value); QSettings().setValue("ui/toolbarButtonStyle", value);
             });
         }
+        menu.addSeparator();
+        auto* hide = menu.addAction(tr("Hide toolbar"));
+        connect(hide, &QAction::triggered, this, [this] { m_actToolbar->setChecked(false); });
         menu.exec(m_toolBar->mapToGlobal(point));
     });
 
@@ -752,23 +917,7 @@ void MainWindow::setConnectedUi(bool on)
 {
     m_filterPanel->setEnabledUi(on);
     m_actConnect->setEnabled(!on && !m_rpc);
-    // Подпись кнопки — как в OLD (tbConnect.Caption): «Connect to
-    // Transmission» при отключении, имя активного профиля при подключении.
-    // Сама кнопка-дропдаун остаётся активной всегда (переключение профилей).
-    if (m_connectButton) {
-        QString caption = tr("Not connected");
-        if (on) {
-            caption = m_rpc ? m_rpc->options().url.host() : tr("Connected");
-            if (!m_connectionProfile.isEmpty())
-                caption = m_connectionProfile;
-        }
-        m_connectButton->setText(caption);
-        m_connectButton->setIcon(tgui::theme::icon(
-            on ? tgui::theme::Icon::Connect : tgui::theme::Icon::Disconnect));
-        m_connectButton->setProperty("connected", on);
-        m_connectButton->style()->unpolish(m_connectButton);
-        m_connectButton->style()->polish(m_connectButton);
-    }
+    updateConnectionButton();
     m_actDisconnect->setEnabled(m_rpc || m_reconnectOptions.has_value());
     m_actAdd->setEnabled(on);
     m_actAddLink->setEnabled(on);
@@ -785,6 +934,9 @@ void MainWindow::setConnectedUi(bool on)
     m_actDaemonOptions->setEnabled(on);
     for (auto* menu : m_speedLimitMenus)
         menu->setEnabled(on);
+    m_statusDownload->setEnabled(on);
+    m_statusUpload->setEnabled(on);
+    updateStatusBarTotals();
     updateSelectionActions();
 }
 
@@ -793,6 +945,7 @@ void MainWindow::setConnectedUi(bool on)
 void MainWindow::updateSelectionActions()
 {
     const bool hasSel = m_connected && !selectedTorrentIds().isEmpty();
+    updateInfoTitle();
     m_actStart->setEnabled(hasSel);
     m_actStop->setEnabled(hasSel);
     m_actRemove->setEnabled(hasSel);
@@ -802,13 +955,33 @@ void MainWindow::updateSelectionActions()
     m_actChooseLabel->setEnabled(hasSel && m_rpc && m_rpc->supports(16));
 }
 
+/** Обновляет подпись выбранного торрента справа от вкладок. */
+void MainWindow::updateInfoTitle()
+{
+    const auto* torrent = m_general ? m_general->torrent() : nullptr;
+    if (m_peerEmpty)
+        m_peerEmpty->setVisible(m_currentId >= 0 && m_peerModel.rowCount() == 0);
+    if (!m_infoTitle)
+        return;
+    QString title = torrent ? torrent->name.value_or(QString()) : QString();
+    if (!title.isEmpty()) {
+        const qsizetype count = selectedTorrentIds().size();
+        if (count > 1)
+            title += tr(" (+%1 more)").arg(count - 1);
+    }
+    const int textWidth = qMax(0, qMin(360, m_tabs->width() * 45 / 100) - 16);
+    m_infoTitle->setText(m_infoTitle->fontMetrics().elidedText(title, Qt::ElideRight, textWidth));
+    m_infoTitle->setToolTip(title);
+}
+
 /** Синхронизирует пункты меню и правую панель со списком меток. */
 void MainWindow::updateLabelUi()
 {
     const bool configured = !m_labels.isEmpty();
+    const bool hasLabelFilters = configured || m_hasUnlabelledTorrents;
     m_actChooseLabel->setVisible(configured);
-    m_actLabelGrouping->setVisible(configured);
-    m_filterPanel->setLabelGroupingEnabled(configured && m_actLabelGrouping->isChecked());
+    m_actLabelGrouping->setVisible(hasLabelFilters);
+    m_filterPanel->setLabelGroupingEnabled(hasLabelFilters && m_actLabelGrouping->isChecked());
 }
 
 void MainWindow::onConnect()
@@ -845,10 +1018,15 @@ void MainWindow::startConnect(const tgui::RpcClient::Options& opts, bool retry)
     connect(m_rpc.get(), &tgui::RpcClient::connected, this, &MainWindow::onConnected);
     connect(m_rpc.get(), &tgui::RpcClient::sessionInfoReceived, this,
             [this](const tgui::SessionInfo& info) {
+        const auto free = info.downloadDir == m_sessionInfo.downloadDir
+            ? m_sessionInfo.downloadDirFreeSpace : std::nullopt;
         m_sessionInfo = info;
+        if (!m_sessionInfo.downloadDirFreeSpace)
+            m_sessionInfo.downloadDirFreeSpace = free;
         const QSignalBlocker blocker(m_actAltSpeed);
         m_actAltSpeed->setChecked(info.altSpeedEnabled);
         if (m_general->torrent()) m_general->setSession(info);
+        updateStatusBarTotals();
     });
     connect(m_rpc.get(), &tgui::RpcClient::connectionFailed, this,
             &MainWindow::onConnectionFailed);
@@ -872,7 +1050,7 @@ void MainWindow::startConnect(const tgui::RpcClient::Options& opts, bool retry)
     connect(m_rpc.get(), &tgui::RpcClient::requestCompleted, this,
             &MainWindow::onRequestCompleted);
 
-    statusBar()->showMessage(tr("Connecting to %1…").arg(opts.url.toString()), 5000);
+    statusBar()->showMessage(tr("Connecting to %1…").arg(opts.url.toDisplayString(QUrl::RemoveUserInfo)), 5000);
     setConnectedUi(false);
     setConnectionState(tr("Connecting…"), tgui::theme::color::accent);
     m_rpc->connectToDaemon();
@@ -957,7 +1135,7 @@ void MainWindow::onDisconnect()
     m_reconnectOptions.reset();
     m_reconnectDelayMs = 1000;
     clearConnection();
-    setConnectionState(tr("Disconnected"), tgui::theme::color::textFaint);
+    setConnectionState(tr("Disconnected"), tgui::theme::palette().statusOfflineDot);
     statusBar()->showMessage(tr("Disconnected"), 5000);
 }
 
@@ -992,9 +1170,6 @@ void MainWindow::clearConnection()
     m_statsForm->clear();
     m_currentId = -1;
     setConnectedUi(false);
-    m_daemonLabel->clear();
-    m_speedLabel->clear();
-    m_countLabel->clear();
 }
 
 void MainWindow::onConnected(const tgui::SessionInfo& info)
@@ -1008,10 +1183,6 @@ void MainWindow::onConnected(const tgui::SessionInfo& info)
     }
     if (m_general->torrent())
         m_general->setSession(info);
-    m_daemonLabel->setText(
-        tr("Transmission %1 · RPC %2").arg(info.version).arg(info.rpcVersion));
-    if (m_rpc)
-        m_daemonLabel->setToolTip(m_rpc->options().url.toString());
     setConnectionState(tr("Connected"), tgui::theme::color::green);
     setConnectedUi(true);
     updateRefreshSchedule();
@@ -1272,9 +1443,6 @@ void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
     }
 
     updateStatusBarTotals();
-    const int count = static_cast<int>(torrents.size());
-    m_countLabel->setText(count == 1 ? tr("1 torrent") : tr("%1 torrents").arg(count));
-
     m_view->doItemsLayout();
     if (addedRow >= 0)
         m_view->scrollTo(m_view->currentIndex());
@@ -1334,11 +1502,11 @@ void MainWindow::restoreTorrentSelection(const QVector<int>& ids, int currentId)
 }
 
 void MainWindow::onFilterChanged(int group, const QString& folder,
-                                 const QString& tracker, const QString& label)
+                                 const QString& tracker, const QString& label, bool withoutLabels)
 {
     m_proxy.setStatusGroup(group);
     m_proxy.setFolderFilter(folder);
-    m_proxy.setLabelFilter(label);
+    m_proxy.setLabelFilter(label, withoutLabels);
     m_proxy.setTrackerFilter(tracker);
     updateStatusBarTotals();
 }
@@ -1347,6 +1515,7 @@ void MainWindow::onFilterChanged(int group, const QString& folder,
 void MainWindow::updateFilterPanel(const QVector<tgui::Torrent>& torrents)
 {
     int downloading = 0, completed = 0, active = 0, stopped = 0, error = 0, waiting = 0;
+    int unlabelled = 0;
     QHash<QString, int> folders;
     QHash<QString, int> labels;
     for (const auto& label : m_labels)
@@ -1368,7 +1537,9 @@ void MainWindow::updateFilterPanel(const QVector<tgui::Torrent>& torrents)
             waiting++;
         if (t.downloadDir.has_value() && !t.downloadDir->isEmpty())
             folders.insert(*t.downloadDir, folders.value(*t.downloadDir) + 1);
-        if (t.labels.has_value()) {
+        if (!t.labels || t.labels->isEmpty()) {
+            ++unlabelled;
+        } else {
             for (const QString& label : *t.labels) {
                 if (auto it = labels.find(label); it != labels.end())
                     ++it.value();
@@ -1391,9 +1562,14 @@ void MainWindow::updateFilterPanel(const QVector<tgui::Torrent>& torrents)
     };
 
     const int inactive = static_cast<int>(torrents.size()) - active - stopped;
+    auto labelRows = toPairs(labels);
+    if (unlabelled > 0)
+        labelRows.append({QString{}, unlabelled});
+    m_hasUnlabelledTorrents = unlabelled > 0;
+    updateLabelUi();
     m_filterPanel->setCounts(static_cast<int>(torrents.size()), downloading, completed,
                              active, inactive, stopped, error, waiting,
-                             toPairs(folders), toPairs(labels), toPairs(trackers));
+                             toPairs(folders), labelRows, toPairs(trackers));
 }
 
 void MainWindow::onReadError(const QString& what, const QString& error)
@@ -1517,42 +1693,170 @@ void MainWindow::onRemoveSelected()
         runTorrentAction("torrent-remove", ids);
 }
 
+/** Считает скорости, объёмы и число выбранных торрентов для строки состояния. */
 void MainWindow::updateStatusBarTotals()
 {
-    if (!m_speedLabel)
+    if (!m_statusStrip)
         return;
-    double down = 0.0;
-    double up = 0.0;
-    for (const auto& t : m_model.torrents()) {
-        const auto rates = m_model.displayedRates(t);
-        down += rates.first;
-        up += rates.second;
-    }
-    m_speedLabel->setText(
-        QStringLiteral("<span style=\"color:%1;\">↓</span>&nbsp;%2&nbsp;&nbsp;"
-                       "<span style=\"color:%3;\">↑</span>&nbsp;%4")
-            .arg(tgui::theme::color::accent.name(),
-                 QString::fromStdString(tgui::formatRate(down)),
-                 tgui::theme::color::green.name(),
-                 QString::fromStdString(tgui::formatRate(up))));
-    if (m_totalsMode == 0)
-        return;
-    double size = 0.0;
-    double left = 0.0;
-    const auto sum = [&](const tgui::Torrent& torrent) {
-        size += torrent.totalSize.value_or(torrent.sizeWhenDone.value_or(0));
-        left += torrent.leftUntilDone.value_or(0);
+
+    struct Sizes {
+        double total = 0.0;
+        double done = 0.0;
+        double left = 0.0;
+
+        void add(const tgui::Torrent& torrent)
+        {
+            const double wanted = qMax(0.0, torrent.sizeWhenDone.value_or(torrent.totalSize.value_or(0.0)));
+            const double remaining = qBound(0.0, torrent.leftUntilDone.value_or(wanted), wanted);
+            total += torrent.totalSize.value_or(wanted);
+            done += wanted - remaining;
+            left += remaining;
+        }
     };
-    if (m_totalsMode == 1) {
-        for (int row = 0; row < m_proxy.rowCount(); ++row)
-            sum(m_proxy.torrentAt(row));
-    } else {
-        for (const auto& row : m_view->selectionModel()->selectedRows())
-            sum(m_proxy.torrentAt(row.row()));
+
+    m_statusDownRate = 0.0;
+    m_statusUpRate = 0.0;
+    Sizes totals;
+    for (const auto& torrent : m_model.torrents()) {
+        const auto rates = m_model.displayedRates(torrent);
+        m_statusDownRate += rates.first;
+        m_statusUpRate += rates.second;
+        if (m_totalsMode == 3)
+            totals.add(torrent);
     }
-    m_speedLabel->setText(m_speedLabel->text() + QStringLiteral(" &nbsp;·&nbsp; ") +
-        (m_totalsMode == 1 ? tr("Visible: %1, left %2") : tr("Selected: %1, left %2"))
-            .arg(QString::fromStdString(tgui::formatSize(size)), QString::fromStdString(tgui::formatSize(left))));
+    if (m_totalsMode == 1)
+        for (int row = 0; row < m_proxy.rowCount(); ++row)
+            totals.add(m_proxy.torrentAt(row));
+
+    const auto selected = m_view->selectionModel()->selectedRows();
+    Sizes selectedSizes;
+    if (m_totalsMode != 0)
+        for (const auto& row : selected)
+            selectedSizes.add(m_proxy.torrentAt(row.row()));
+    if (m_totalsMode == 2)
+        totals = selectedSizes;
+
+    const auto format = [](double bytes) { return QString::fromStdString(tgui::formatSize(bytes)); };
+    const QString sizeCaption = m_totalsMode == 1 ? tr("Visible: %1")
+        : m_totalsMode == 2 ? tr("Selected: %1") : tr("Total: %1");
+    m_statusSize->setText(sizeCaption.arg(format(totals.total)));
+    m_statusSelectedSize->setText(tr("Selected: %1").arg(format(selectedSizes.total)));
+    m_statusDone->setText(tr("Done: %1").arg(format(totals.done)));
+    m_statusLeft->setText(tr("Left: %1").arg(format(totals.left)));
+    if (const auto free = m_sessionInfo.downloadDirFreeSpace; free && *free >= 0) {
+        m_statusFree->setText(tr("Free: %1").arg(format(static_cast<double>(*free))));
+    } else {
+        m_statusFree->clear();
+    }
+
+    const int count = m_model.rowCount();
+    QString countText = count == 1 ? tr("1 torrent") : tr("%1 torrents").arg(count);
+    if (selected.size() > 1)
+        countText += tr(", %1 selected").arg(selected.size());
+    m_countLabel->setText(countText);
+    updateStatusBarPresentation();
+}
+
+/** Уплотняет сегменты при сужении окна, сохраняя доступ к обеим скоростям. */
+void MainWindow::updateStatusBarPresentation()
+{
+    if (!m_statusStrip)
+        return;
+
+    constexpr int connectionPadding = 35; // края, точка и зазор
+    constexpr int ratePadding = 42;       // края, иконка и зазор
+    const int width = m_statusStrip->width();
+    QString connection = m_connectionStateText;
+    if (m_connected) {
+        connection = tr("Transmission %1 (RPC %2)").arg(m_sessionInfo.version).arg(m_sessionInfo.rpcVersion);
+        if (m_rpc) {
+            const QString address = m_rpc->options().url.adjusted(QUrl::RemoveUserInfo).authority();
+            if (!address.isEmpty())
+                connection += tr(" on %1").arg(address);
+        }
+    }
+
+    const QString message = statusBar()->currentMessage();
+    const bool showMessage = !message.isEmpty() && message != tr("Connected") && message != tr("Disconnected");
+    if (showMessage)
+        connection = message;
+
+    const auto limitText = [this](bool download) {
+        if (m_sessionInfo.altSpeedEnabled)
+            return tr("%1 KB/s").arg(download ? m_sessionInfo.altSpeedDown : m_sessionInfo.altSpeedUp);
+        const bool enabled = download ? m_sessionInfo.speedLimitDownEnabled : m_sessionInfo.speedLimitUpEnabled;
+        return enabled ? tr("%1 KB/s").arg(download ? m_sessionInfo.speedLimitDown : m_sessionInfo.speedLimitUp)
+                       : QString();
+    };
+
+    const QString downLimit = limitText(true);
+    const QString upLimit = limitText(false);
+    const auto withLimit = [](QString text, const QString& limit) {
+        if (!limit.isEmpty())
+            text += QStringLiteral(" (%1)").arg(limit);
+        return text;
+    };
+    const auto rateText = [this, &withLimit](bool download, const QString& rate, const QString& limit) {
+        return withLimit(download ? tr("DL: %1").arg(rate) : tr("UL: %1").arg(rate), limit);
+    };
+    const QString sample = QStringLiteral("999.9 MB/s");
+    const auto metrics = m_statusDownload->fontMetrics();
+    const int wideDown = metrics.horizontalAdvance(rateText(true, sample, downLimit)) + ratePadding;
+    const int wideUp = metrics.horizontalAdvance(rateText(false, sample, upLimit)) + ratePadding;
+    const int narrowRate = qMax(metrics.horizontalAdvance(withLimit(sample, downLimit)),
+                                metrics.horizontalAdvance(withLimit(sample, upLimit))) + ratePadding;
+    const bool compact = width < wideDown + wideUp + 250;
+    const int compactWidth = qMax(0, qMin(narrowRate, (width - connectionPadding - 24) / 2));
+    const int downWidth = compact ? compactWidth : wideDown;
+    const int upWidth = compact ? compactWidth : wideUp;
+    const auto showRate = [&](QToolButton* button, bool download, double rate, const QString& limit, int segmentWidth) {
+        button->setVisible(m_connected);
+        if (!m_connected)
+            return;
+        const QString current = QString::fromStdString(tgui::formatRate(rate));
+        const QString full = rateText(download, current, limit);
+        button->setFixedWidth(segmentWidth);
+        const int textRoom = qMax(0, segmentWidth - ratePadding);
+        const QString compactText = withLimit(current, limit);
+        const QString shown = !compact ? full
+            : metrics.horizontalAdvance(compactText) <= textRoom ? compactText : current;
+        button->setText(metrics.elidedText(shown, Qt::ElideRight, textRoom));
+        button->setToolTip(full + QLatin1Char('
+') +
+            (download ? tr("Max download speed") : tr("Max upload speed")));
+        button->setAccessibleName(full);
+    };
+    showRate(m_statusDownload, true, m_statusDownRate, downLimit, downWidth);
+    showRate(m_statusUpload, false, m_statusUpRate, upLimit, upWidth);
+
+    int budget = qMax(0, width - (m_connected ? downWidth + upWidth : 0));
+    const auto textMetrics = m_statusText->fontMetrics();
+    const int maxConnection = m_connected ? qMin(budget, showMessage ? 480 : 360) : budget;
+    const int textWidth = qMax(0, maxConnection - connectionPadding);
+    QString shown = textMetrics.elidedText(connection, Qt::ElideRight, textWidth);
+    if (m_connected && compact && !showMessage && shown != connection)
+        shown = textMetrics.elidedText(m_connectionStateText, Qt::ElideRight, textWidth);
+    m_statusText->setText(shown);
+    m_statusText->setToolTip(shown == connection ? QString() : connection);
+    const int connectionWidth = qMin(budget, textMetrics.horizontalAdvance(shown) + connectionPadding);
+    m_statusConnection->setFixedWidth(connectionWidth);
+    budget -= connectionWidth;
+
+    const auto showSegment = [&](QWidget* segment, bool wanted) {
+        const int segmentWidth = segment->sizeHint().width();
+        const bool visible = m_connected && wanted && segmentWidth <= budget;
+        segment->setVisible(visible);
+        if (visible)
+            budget -= segmentWidth;
+    };
+    // Приоритет не зависит от визуального порядка: счётчик находится справа.
+    showSegment(m_countLabel, true);
+    showSegment(m_statusAlternative, m_sessionInfo.altSpeedEnabled);
+    showSegment(m_statusFree, !m_statusFree->text().isEmpty());
+    showSegment(m_statusSize, m_totalsMode != 0);
+    showSegment(m_statusSelectedSize, m_totalsMode != 0 && m_totalsMode != 2);
+    showSegment(m_statusDone, m_totalsMode != 0);
+    showSegment(m_statusLeft, m_totalsMode != 0);
 }
 
 void MainWindow::onShowProperties()
@@ -2187,6 +2491,7 @@ void MainWindow::createMenus()
     connect(actVerify, &QAction::triggered, this, &MainWindow::onVerifySelected);
     mTorrent->addAction(m_actMove);  // "Set data location..."
     m_actChooseLabel = mTorrent->addAction(tgui::theme::icon(Icon::Label), tr("Choose label…"));
+    m_general->setEditLabelsAction(m_actChooseLabel);
     m_actChooseLabel->setShortcut(QKeySequence(Qt::Key_F7));
     connect(m_actChooseLabel, &QAction::triggered, this, &MainWindow::onSetLabels);
     auto* actRename = mTorrent->addAction(tr("Rename"));
@@ -2247,7 +2552,7 @@ void MainWindow::createMenus()
     mView->addSeparator();
     auto* totals = mView->addMenu(tr("Size totals"));
     auto* totalChoices = new QActionGroup(totals);
-    const QStringList captions{tr("Hide size totals"), tr("Visible torrents"), tr("Selected torrents")};
+    const QStringList captions{tr("Hide size totals"), tr("Visible torrents"), tr("Selected torrents"), tr("All torrents")};
     for (int i = 0; i < captions.size(); ++i) {
         auto* action = totals->addAction(captions.at(i));
         action->setCheckable(true);
@@ -2280,6 +2585,18 @@ void MainWindow::createMenus()
     connect(m_actFilterPanel, &QAction::toggled, this, [this](bool on) {
         m_filterPanel->setVisible(on);
         QSettings().setValue("ui/filterPanel", on);
+    });
+    connect(m_filterPanel, &FilterPanel::contextMenuRequested, this, [this](const QPoint& position) {
+        QMenu menu(this);
+        menu.addAction(m_actFolderGrouping);
+        menu.addAction(m_actLabelGrouping);
+        menu.addAction(m_actTrackerGrouping);
+        menu.addSeparator();
+        auto* expand = menu.addAction(tr("Expand all sections"));
+        connect(expand, &QAction::triggered, m_filterPanel, &FilterPanel::expandSections);
+        auto* hide = menu.addAction(tr("Hide filter panel"));
+        connect(hide, &QAction::triggered, this, [this] { m_actFilterPanel->setChecked(false); });
+        menu.exec(position);
     });
 
     m_actInfoPanel = mView->addAction(tr("Info panel"));
@@ -3141,7 +3458,6 @@ void MainWindow::onOptions()
     const auto result = dlg.exec();
 
     m_labels = torrentlabels::configured();
-    updateLabelUi();
     updateFilterPanel(m_model.torrents());
 
     if (result != QDialog::Accepted)
@@ -3276,8 +3592,7 @@ void MainWindow::onSelectionChanged()
     // это обрабатывается onTorrentsReceived (восстановление по prevId).
     if (m_refreshing)
         return;
-    if (m_totalsMode == 2)
-        updateStatusBarTotals();
+    updateStatusBarTotals();
     int id = -1;
     if (m_view->selectionModel()) {
         for (const QModelIndex& vi : m_view->selectionModel()->selectedIndexes()) {
@@ -3385,6 +3700,11 @@ void MainWindow::onFilesContextMenu(const QPoint& pos)
     menu->addSeparator();
     auto* aSkip = menu->addAction(tr("Don't download"));
     aSkip->setEnabled(canIds);
+    menu->addSeparator();
+    auto* expand = menu->addAction(tr("Expand all"));
+    auto* collapse = menu->addAction(tr("Collapse all"));
+    connect(expand, &QAction::triggered, view, &QTreeView::expandAll);
+    connect(collapse, &QAction::triggered, view, &QTreeView::collapseAll);
     menu->addSeparator();
     auto* aCols = menu->addAction(tr("Setup columns..."));
 
@@ -3689,6 +4009,10 @@ void MainWindow::onTrackersContextMenu(const QPoint& pos)
 /** Обрабатывает Delete в таблице трекеров до глобальной команды удаления торрента. */
 bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 {
+    if (watched == m_statusStrip && event->type() == QEvent::Resize)
+        updateStatusBarPresentation();
+    if (watched == m_tabs && event->type() == QEvent::Resize)
+        updateInfoTitle();
     if (watched == m_trackersView &&
         (event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress)) {
         const auto* key = static_cast<QKeyEvent*>(event);
@@ -3828,7 +4152,12 @@ void MainWindow::dropEvent(QDropEvent* event)
 /** Наполняет меню подтверждёнными лимитами текущего демона и значениями его профиля. */
 void MainWindow::addSpeedLimitMenu(QMenu* parent, bool download)
 {
-    auto* menu = parent->addMenu(download ? tr("Max download speed") : tr("Max upload speed"));
+    parent->addMenu(createSpeedLimitMenu(parent, download));
+}
+
+QMenu* MainWindow::createSpeedLimitMenu(QWidget* parent, bool download)
+{
+    auto* menu = new QMenu(download ? tr("Max download speed") : tr("Max upload speed"), parent);
     menu->setObjectName(download ? QStringLiteral("quickDownloadSpeed") : QStringLiteral("quickUploadSpeed"));
     menu->setEnabled(m_connected);
     m_speedLimitMenus.append(menu);
@@ -3846,30 +4175,44 @@ void MainWindow::addSpeedLimitMenu(QMenu* parent, bool download)
             speeds.append(current);
             std::sort(speeds.begin(), speeds.end());
         }
-        const auto add = [this, menu, rpc, profile, download, current, alternate = session.altSpeedEnabled](
+        const auto setLimit = [this, rpc, profile, download](int speed) {
+            if (!rpc || rpc != m_rpc.get() || !m_connected || profile != m_connectionProfile)
+                return;
+            const auto key = download ? QStringLiteral("speed-limit-down") : QStringLiteral("speed-limit-up");
+            QJsonObject params{{key + "-enabled", speed >= 0}};
+            if (speed >= 0)
+                params.insert(key, speed);
+            if (rpc->sessionInfo().altSpeedEnabled)
+                params.insert("alt-speed-enabled", false);
+            rpc->setSession(params);
+        };
+        const auto add = [this, menu, setLimit, current, alternate = session.altSpeedEnabled](
                              const QString& caption, int speed) {
             auto* action = menu->addAction(caption);
             action->setCheckable(true);
             action->setChecked(!alternate && speed == current);
             action->setData(speed);
-            connect(action, &QAction::triggered, this, [this, rpc, profile, download, speed] {
-                if (!rpc || rpc != m_rpc.get() || !m_connected || profile != m_connectionProfile)
-                    return;
-                const auto key = download ? QStringLiteral("speed-limit-down") : QStringLiteral("speed-limit-up");
-                QJsonObject params{{key + "-enabled", speed >= 0}};
-                if (speed >= 0)
-                    params.insert(key, speed);
-                if (rpc->sessionInfo().altSpeedEnabled)
-                    params.insert("alt-speed-enabled", false);
-                rpc->setSession(params);
-            });
+            connect(action, &QAction::triggered, this, [setLimit, speed] { setLimit(speed); });
         };
         add(tr("Unlimited"), -1);
         if (!speeds.isEmpty())
             menu->addSeparator();
         for (auto it = speeds.crbegin(); it != speeds.crend(); ++it)
             add(tr("%1 KB/s").arg(*it), *it);
+        menu->addSeparator();
+        auto* custom = menu->addAction(tr("Other…"));
+        connect(custom, &QAction::triggered, this, [this, rpc, profile, setLimit, download, current] {
+            if (!rpc || rpc != m_rpc.get() || !m_connected || profile != m_connectionProfile)
+                return;
+            bool accepted = false;
+            const int speed = QInputDialog::getInt(this, download ? tr("Max download speed") : tr("Max upload speed"),
+                                                   tr("Limit (KB/s):"), qMax(0, current), 0,
+                                                   std::numeric_limits<int>::max(), 1, &accepted);
+            if (accepted)
+                setLimit(speed);
+        });
     });
+    return menu;
 }
 
 void MainWindow::createTray()

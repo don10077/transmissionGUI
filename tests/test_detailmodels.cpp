@@ -152,7 +152,7 @@ TEST(DetailPeerModel, CountryColumnWithoutGeoIp)
     m.setPeers(peers);
     ASSERT_EQ(m.rowCount(), 1);
     // Без GeoIP — пустая страна.
-    EXPECT_TRUE(m.data(m.index(0, PeerListModel::ColCountry), Qt::DisplayRole).toString().isEmpty());
+    EXPECT_EQ(m.data(m.index(0, PeerListModel::ColCountry), Qt::DisplayRole).toString(), QStringLiteral("—"));
     // Заголовок.
     EXPECT_EQ(m.headerData(PeerListModel::ColCountry, Qt::Horizontal, Qt::DisplayRole).toString(),
               QStringLiteral("Country"));
@@ -230,7 +230,7 @@ TEST(DetailPeerModel, CountryColumnInvalidIp)
     peers.push_back(p);
     m.setPeers(peers);
     // Невалидный IP → пустая страна.
-    EXPECT_TRUE(m.data(m.index(0, PeerListModel::ColCountry), Qt::DisplayRole).toString().isEmpty());
+    EXPECT_EQ(m.data(m.index(0, PeerListModel::ColCountry), Qt::DisplayRole).toString(), QStringLiteral("—"));
 }
 
 TEST(DetailTrackerModel, DataRendering)

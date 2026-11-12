@@ -4,6 +4,8 @@
 #include <QHash>
 #include <QSortFilterProxyModel>
 
+#include <optional>
+
 #include "tgui/models.h"
 
 // Модель списка торрентов (torrent-get). Строки UI — английский (см. WORKFLOW.md 0.3).
@@ -61,6 +63,7 @@ public:
         ErrorRole,                       // bool
         RateDownRole,                    // double, байт/с
         RateUpRole,                      // double, байт/с
+        LabelListRole,                    // QStringList, без склейки имён
     };
 
     explicit TorrentModel(QObject* parent = nullptr);
@@ -96,7 +99,11 @@ public:
     // TorrentModel::StatusGroup; GroupAll (-1) — без фильтра.
     void setStatusGroup(int group);
     void setFolderFilter(const QString& folder); // пусто — без фильтра
-    void setLabelFilter(const QString& label);   // пусто — без фильтра
+    /** Фильтрует по имени метки или по отсутствию меток.
+     * @param label Имя метки. Пустое имя при withoutLabels == false снимает фильтр.
+     * @param withoutLabels Включает фильтр «Без метки».
+     */
+    void setLabelFilter(const QString& label, bool withoutLabels = false);
     void setTrackerFilter(const QString& announce); // пусто — без фильтра
     void setSearchText(const QString& text);
 
@@ -111,7 +118,7 @@ private:
 
     int m_group = TorrentModel::GroupAll;
     QString m_folder;
-    QString m_label;
+    std::optional<QString> m_label; // nullopt — все, пустая строка — без меток
     QString m_tracker;
     QString m_search;
 };

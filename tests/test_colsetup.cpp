@@ -6,31 +6,32 @@
 #include <QSettings>
 
 #include "colsetup.h"
+#include "torrentmodel.h"
 
 TEST(ColumnLayout, Defaults)
 {
     const auto d = ColumnLayout::defaults(26);
     EXPECT_EQ(d.order.size(), 26);
     EXPECT_EQ(d.order.first(), 0);
-    EXPECT_EQ(d.order.last(), 25);
+    EXPECT_EQ(d.order.at(1), TorrentModel::ColLabels);
     int vis = 0;
     for (int i = 0; i < 26; ++i)
         if (d.visible.at(i))
             vis++;
-    EXPECT_EQ(vis, 9); // Name..ETA
-    EXPECT_TRUE(d.widths.contains(0));
+    EXPECT_EQ(vis, 12);
+    EXPECT_EQ(d.widths.value(TorrentModel::ColName), 330);
 }
 
 TEST(ColumnLayout, MoveItem)
 {
     auto d = ColumnLayout::defaults(26);
     d.moveItem(0, 1);
-    EXPECT_EQ(d.order.at(0), 1);
+    EXPECT_EQ(d.order.at(0), TorrentModel::ColLabels);
     EXPECT_EQ(d.order.at(1), 0);
     d.moveItem(25, 1); // out of range — no-op
-    EXPECT_EQ(d.order.at(25), 25);
+    EXPECT_EQ(d.order.at(25), TorrentModel::ColPrivate);
     d.moveItem(0, -1); // out of range — no-op
-    EXPECT_EQ(d.order.at(0), 1);
+    EXPECT_EQ(d.order.at(0), TorrentModel::ColLabels);
 }
 
 TEST(ColumnLayout, EnsureAtLeastOneVisible)
@@ -69,7 +70,7 @@ TEST(ColSetupDialog, OrderVisibleRoundTrip)
     auto* list = dlg.findChild<QListWidget*>();
     ASSERT_NE(list, nullptr);
     list->item(5)->setCheckState(Qt::Unchecked); // скрыть колонку 5
-    EXPECT_FALSE(dlg.layout().visible.at(5));
+    EXPECT_FALSE(dlg.layout().visible.at(layout.order.at(5)));
     list->item(0)->setCheckState(Qt::Unchecked); // Name (0) — всегда видима
     EXPECT_TRUE(dlg.layout().visible.at(0));
     EXPECT_EQ(dlg.layout().widths, layout.widths); // ширины сохраняются

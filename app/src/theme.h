@@ -83,15 +83,21 @@ struct Palette {
     QColor zebra;    // чётные строки
     QColor section;  // сетки/разделения (gridline)
     QColor headerBg; // заголовки колонок
+    QColor listHeaderHover;
+    QColor detailTabHover;
     // Границы
     QColor border;     // лейаутные границы
     QColor borderSoft; // мягкие границы
     QColor layoutBorder; // тулбар/статус-бар/spлиттер (мягкая лейаутная)
+    QColor listRowBorder;
+    QColor statusRateHover;
+    QColor statusOfflineDot;
     // Текст
     QColor text;
     QColor textMuted;
     QColor textFaint;
     QColor iconSlate;
+    QColor detailFieldLabel;
     // Акцент
     QColor accent;
     QColor accentDark;
@@ -104,6 +110,7 @@ struct Palette {
     QColor red;
     QColor redLight;
     QColor purple;
+    QColor statusNeutral;
     // Прогресс/куски
     QColor blue;            // «загрузка» (chunk)
     QColor progressGreen;   // «завершено»
@@ -125,11 +132,11 @@ struct Palette {
     QColor groupRow;     // .gr
     QColor toolbarBg;
     QColor toolbarSep;  // разделитель тулбара
+    QColor selectionBorder;
+    QColor connectOfflineBg;
+    QColor connectOfflineBorder;
     QColor sectionHeader; // .fh/.sec
-    // Чипы меток (.chip-s)
-    QColor chipBg;
-    QColor chipText;
-    QColor chipBorder;
+    QColor labelText;   // метки списка торрентов
     // PieceBar (.gbar)
     QColor pieceEmpty;
     QColor pieceBorder;

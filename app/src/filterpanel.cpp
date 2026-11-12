@@ -4,9 +4,12 @@
 
 #include <QAbstractItemView>
 #include <QFontMetrics>
+#include <QHeaderView>
+#include <QLocale>
+#include <QMouseEvent>
 #include <QPainter>
-#include <QPainterPath>
 #include <QScrollBar>
+#include <QSignalBlocker>
 #include <QStyledItemDelegate>
 #include <QStyleOptionViewItem>
 #include <QTreeWidget>
@@ -24,6 +27,7 @@ constexpr int kRoleBase = Qt::UserRole + 4; // базовое имя строк�
 constexpr int kRoleCount = Qt::UserRole + 5;
 constexpr int kRoleSection = Qt::UserRole + 6;
 constexpr int kRoleLabel = Qt::UserRole + 7;
+constexpr int kRoleCollapsed = Qt::UserRole + 8;
 
 tgui::theme::Icon statusIcon(int group)
 {
@@ -47,108 +51,121 @@ tgui::theme::Icon statusIcon(int group)
     }
 }
 
-// Строка панели фильтров: иконка, название и счётчик-бейдж справа.
-// Секции «Folders»/«Trackers» рисуются как заголовки с разделителем.
+/** Подбирает шрифт заголовка относительно текущего масштаба интерфейса. */
+QFont sectionFont(QFont font)
+{
+    font.setWeight(QFont::DemiBold);
+    if (font.pointSizeF() > 0)
+        font.setPointSizeF(font.pointSizeF() * 11.0 / 12.0);
+    else
+        font.setPixelSize(std::max(1, qRound(font.pixelSize() * 11.0 / 12.0)));
+    return font;
+}
+
+/** Рисует фильтры и заголовки секций по макету. */
 class FilterTreeDelegate : public QStyledItemDelegate {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
 
+    /** Рисует строку с названием и отдельным счётчиком или заголовок секции. */
     void paint(QPainter* painter, const QStyleOptionViewItem& option,
                const QModelIndex& index) const override
     {
-        using namespace tgui::theme;
-        const QRect r = option.rect;
-        if (!r.isValid())
+        if (!option.rect.isValid())
             return;
 
         painter->save();
-        painter->setRenderHint(QPainter::Antialiasing, true);
-
-        if (index.data(kRoleSection).toBool()) {
-            QFont f = option.font;
-            f.setBold(true);
-            f.setPointSizeF(qMax(7.5, f.pointSizeF() - 1.0));
-            painter->setFont(f);
-            painter->setPen(color::text);
-            const QRect textRect = r.adjusted(10, 6, -10, -4);
-            painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter,
-                              index.data(Qt::DisplayRole).toString().toUpper());
-            painter->setPen(color::borderSoft);
-            painter->drawLine(r.left() + 10, r.bottom() - 1, r.right() - 10,
-                              r.bottom() - 1);
-            painter->restore();
-            return;
-        }
-
-        const bool selected = option.state & QStyle::State_Selected;
-        const bool hovered = option.state & QStyle::State_MouseOver;
-        const QRect row = r.adjusted(3, 1, -3, -1);
-
-        painter->setPen(Qt::NoPen);
-        if (selected) {
-            painter->setBrush(color::accent);
-            painter->drawRoundedRect(row, 2, 2);
-        } else if (hovered) {
-            painter->setBrush(color::accentLight);
-            painter->drawRoundedRect(row, 2, 2);
-        }
-
-        QIcon ic;
-        const QVariant folder = index.data(kRoleFolder);
-        const QVariant tracker = index.data(kRoleTracker);
-        const QVariant labelValue = index.data(kRoleLabel);
-        if (folder.isValid())
-            ic = tgui::theme::icon(Icon::Folder);
-        else if (tracker.isValid())
-            ic = tgui::theme::icon(Icon::Tracker);
-        else if (labelValue.isValid())
-            ic = torrentlabels::labelIcon(labelValue.toString());
+        painter->setClipRect(option.rect, Qt::IntersectClip);
+        if (index.data(kRoleSection).toBool())
+            paintSection(*painter, option, index);
         else
-            ic = tgui::theme::icon(statusIcon(index.data(kRoleGroup).toInt()));
-
-        const QRect iconRect(row.left() + 7, row.top() + (row.height() - 16) / 2, 16, 16);
-        ic.paint(painter, iconRect, Qt::AlignCenter,
-                 selected ? QIcon::Selected : QIcon::Normal);
-
-        const int count = index.data(kRoleCount).toInt();
-        const QString countText = QString::number(count);
-        QFont countFont = option.font;
-        countFont.setBold(true);
-        countFont.setPointSizeF(qMax(7.5, option.font.pointSizeF() - 0.5));
-        const int badgeW = QFontMetrics(countFont).horizontalAdvance(countText) + 16;
-        const QRect badge(row.right() - badgeW - 3, row.top() + (row.height() - 18) / 2,
-                          badgeW, 18);
-        painter->setPen(Qt::NoPen);
-        painter->setBrush(selected ? QColor(255, 255, 255, 55) : QColor(0xEC, 0xEF, 0xF3));
-        painter->drawRoundedRect(badge, 9, 9);
-
-        QString label = index.data(kRoleBase).toString();
-        if (label.isEmpty())
-            label = index.data(Qt::DisplayRole).toString();
-
-        QFont f = option.font;
-        if (index.data(kRoleGroup).toInt() == TorrentModel::GroupAll)
-            f.setBold(true);
-        painter->setFont(f);
-        painter->setPen(selected ? QColor(Qt::white) : color::text);
-        QRect textRect(iconRect.right() + 7, row.top(), badge.left() - iconRect.right() - 13,
-                       row.height());
-        const QString elided =
-            QFontMetrics(f).elidedText(label, Qt::ElideRight, textRect.width());
-        painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, elided);
-
-        painter->setFont(countFont);
-        painter->setPen(selected ? QColor(Qt::white) : color::textMuted);
-        painter->drawText(badge, Qt::AlignCenter, countText);
+            paintFilter(*painter, option, index);
         painter->restore();
     }
 
+    /** Возвращает высоту, достаточную для шрифта и иконки. */
     QSize sizeHint(const QStyleOptionViewItem& option,
                    const QModelIndex& index) const override
     {
-        QSize size = QStyledItemDelegate::sizeHint(option, index);
-        size.setHeight(index.data(kRoleSection).toBool() ? 30 : 25);
-        return size;
+        const int height = index.data(kRoleSection).toBool()
+            ? std::max(15, QFontMetrics(sectionFont(option.font)).height()) + 20
+            : tgui::theme::rowHeightFor(option.font);
+        return QSize(0, height);
+    }
+
+private:
+    /** Рисует верхний разделитель, стрелку и заголовок секции. */
+    static void paintSection(QPainter& painter, const QStyleOptionViewItem& option,
+                             const QModelIndex& index)
+    {
+        const auto& palette = tgui::theme::palette();
+        const QRect rect = option.rect.adjusted(4, 8, -4, -4);
+        painter.setPen(palette.borderSoft);
+        painter.drawLine(rect.topLeft(), rect.topRight());
+
+        const QRect content = rect.adjusted(6, 8, -6, 0);
+        const int x = content.left() + 5;
+        const int y = content.center().y();
+        const bool collapsed = index.data(kRoleCollapsed).toBool();
+        const QPoint right[]{QPoint(x - 2, y - 3), QPoint(x - 2, y + 3), QPoint(x + 2, y)};
+        const QPoint down[]{QPoint(x - 3, y - 2), QPoint(x + 3, y - 2), QPoint(x, y + 2)};
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(palette.textMuted);
+        painter.drawPolygon(collapsed ? right : down, 3);
+
+        const QFont font = sectionFont(option.font);
+        painter.setFont(font);
+        painter.setPen(palette.textMuted);
+        const QRect titleRect = content.adjusted(14, 0, 0, 0);
+        const QString title = QLocale().toUpper(index.data(Qt::DisplayRole).toString());
+        painter.drawText(titleRect, Qt::AlignLeft | Qt::AlignVCenter,
+                         QFontMetrics(font).elidedText(title, Qt::ElideRight, titleRect.width()));
+    }
+
+    /** Рисует иконку, сокращаемое имя и выровненный справа счётчик. */
+    static void paintFilter(QPainter& painter, const QStyleOptionViewItem& option,
+                            const QModelIndex& index)
+    {
+        using namespace tgui::theme;
+        const auto& colors = palette();
+        const QRect row = option.rect.adjusted(2, 0, -2, 0);
+        const bool selected = option.state & QStyle::State_Selected;
+        if (selected) {
+            painter.setPen(colors.selectionBorder);
+            painter.setBrush(colors.selBg);
+            painter.drawRect(QRectF(row).adjusted(0.5, 0.5, -0.5, -0.5));
+        } else if (option.state & QStyle::State_MouseOver) {
+            painter.fillRect(row, colors.hoverBg);
+        }
+
+        QIcon glyph;
+        if (index.data(kRoleFolder).isValid())
+            glyph = icon(Icon::Folder);
+        else if (index.data(kRoleTracker).isValid())
+            glyph = icon(Icon::Tracker);
+        else if (const auto label = index.data(kRoleLabel); label.isValid())
+            glyph = torrentlabels::labelIcon(label.toString());
+        else
+            glyph = icon(statusIcon(index.data(kRoleGroup).toInt()));
+
+        const QRect iconRect(row.left() + 11, row.top() + (row.height() - 16) / 2, 16, 16);
+        glyph.paint(&painter, iconRect);
+
+        const QFontMetrics metrics(option.font);
+        const QString count = QString::number(index.data(kRoleCount).toInt());
+        const int countWidth = metrics.horizontalAdvance(count);
+        const QRect countRect(row.right() - 8 - countWidth, row.top(), countWidth, row.height());
+        painter.setFont(option.font);
+        painter.setPen(colors.textMuted);
+        painter.drawText(countRect, Qt::AlignRight | Qt::AlignVCenter, count);
+
+        const int textLeft = iconRect.right() + 7;
+        const int textWidth = std::max(0, countRect.left() - 12 - textLeft);
+        const QRect textRect(textLeft, row.top(), textWidth, row.height());
+        painter.setPen(colors.text);
+        painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter,
+                         metrics.elidedText(index.data(kRoleBase).toString(), Qt::ElideRight, textWidth));
     }
 };
 
@@ -157,24 +174,29 @@ public:
 FilterPanel::FilterPanel(QWidget* parent) : QWidget(parent)
 {
     setObjectName(QStringLiteral("filterPanel"));
+    setAttribute(Qt::WA_StyledBackground);
 
     m_tree = new QTreeWidget(this);
     m_tree->setObjectName(QStringLiteral("filterTree"));
     m_tree->setHeaderHidden(true);
+    m_tree->header()->setSectionResizeMode(QHeaderView::Stretch);
     m_tree->setRootIsDecorated(false);
-    m_tree->setIndentation(14);
+    m_tree->setIndentation(0);
+    m_tree->setExpandsOnDoubleClick(false);
     m_tree->setUniformRowHeights(false);
-    m_tree->setMinimumWidth(190);
+    setMinimumWidth(120);
+    setMaximumWidth(480);
     m_tree->setFocusPolicy(Qt::NoFocus);
     m_tree->setMouseTracking(true);
+    m_tree->viewport()->setAttribute(Qt::WA_Hover);
+    m_tree->viewport()->installEventFilter(this);
     m_tree->setSelectionMode(QAbstractItemView::SingleSelection);
     m_tree->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_tree->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_tree->setItemDelegate(new FilterTreeDelegate(m_tree));
 
     auto* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(8, 8, 8, 8);
-    layout->setSpacing(6);
+    layout->setContentsMargins(0, 3, 1, 3);
     layout->addWidget(m_tree, 1);
 
     // Статусные строки (порядок — как в референсе, lvFilter.Rows[0..7]).
@@ -219,17 +241,50 @@ FilterPanel::FilterPanel(QWidget* parent) : QWidget(parent)
                     return;
                 m_selStatus = cur->data(0, kRoleGroup).toInt();
                 m_selFolder = cur->data(0, kRoleFolder).toString();
-                m_selLabel = cur->data(0, kRoleLabel).toString();
+                const QVariant label = cur->data(0, kRoleLabel);
+                m_selLabel = label.toString();
+                m_withoutLabels = label.isValid() && m_selLabel.isEmpty();
                 m_selTracker = cur->data(0, kRoleTracker).toString();
                 const bool plainStatus = m_selFolder.isEmpty() && m_selLabel.isEmpty() &&
-                                         m_selTracker.isEmpty();
+                                         m_selTracker.isEmpty() && !m_withoutLabels;
                 emit filterChanged(plainStatus ? m_selStatus : TorrentModel::GroupAll,
-                                   m_selFolder, m_selTracker, m_selLabel);
+                                   m_selFolder, m_selTracker, m_selLabel, m_withoutLabels);
             });
+
+    m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_tree, &QWidget::customContextMenuRequested, this, [this](const QPoint& point) {
+        emit contextMenuRequested(m_tree->viewport()->mapToGlobal(point));
+    });
 
     // По умолчанию выбран «All torrents» — как в эталоне.
     if (QTreeWidgetItem* first = itemAt(0))
         m_tree->setCurrentItem(first);
+}
+
+bool FilterPanel::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == m_tree->viewport() && (event->type() == QEvent::MouseButtonPress ||
+                                         event->type() == QEvent::MouseButtonDblClick)) {
+        const auto* mouse = static_cast<QMouseEvent*>(event);
+        auto* item = m_tree->itemAt(mouse->position().toPoint());
+        if (mouse->button() == Qt::LeftButton && item && item->data(0, kRoleSection).toBool()) {
+            if (event->type() == QEvent::MouseButtonPress) {
+                const bool collapsed = !item->data(0, kRoleCollapsed).toBool();
+                item->setData(0, kRoleCollapsed, collapsed);
+                item->setExpanded(!collapsed && item->childCount() > 0);
+            }
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+void FilterPanel::expandSections()
+{
+    for (auto* section : {m_foldersSection, m_labelsSection, m_trackersSection}) {
+        section->setData(0, kRoleCollapsed, false);
+        section->setExpanded(section->childCount() > 0);
+    }
 }
 
 QTreeWidgetItem* FilterPanel::itemAt(int row) const
@@ -239,7 +294,7 @@ QTreeWidgetItem* FilterPanel::itemAt(int row) const
 
 int FilterPanel::selectedGroup() const
 {
-    if (!m_selFolder.isEmpty() || !m_selLabel.isEmpty() || !m_selTracker.isEmpty())
+    if (!m_selFolder.isEmpty() || !m_selLabel.isEmpty() || !m_selTracker.isEmpty() || m_withoutLabels)
         return TorrentModel::GroupAll;
     return m_selStatus;
 }
@@ -262,7 +317,7 @@ void FilterPanel::setFolderGroupingEnabled(bool enabled)
 
 void FilterPanel::setLabelGroupingEnabled(bool enabled)
 {
-    if (!enabled && !m_selLabel.isEmpty())
+    if (!enabled && (!m_selLabel.isEmpty() || m_withoutLabels))
         selectAllTorrents();
     if (m_labelsSection)
         m_labelsSection->setHidden(!enabled);
@@ -310,8 +365,12 @@ void FilterPanel::setCounts(int all, int downloading, int completed, int active,
                 if (section->child(i)->data(0, role).toString() == name) {
                     it = section->child(i);
                     if (i != rowIndex) {
+                        const bool wasCurrent = m_tree->currentItem() == it;
+                        const QSignalBlocker blocker(m_tree);
                         section->takeChild(i);
                         section->insertChild(rowIndex, it);
+                        if (wasCurrent)
+                            m_tree->setCurrentItem(it);
                     }
                     break;
                 }
@@ -321,20 +380,19 @@ void FilterPanel::setCounts(int all, int downloading, int completed, int active,
                 section->insertChild(rowIndex, it);
             }
             ++rowIndex;
-            it->setText(0, QStringLiteral("%1 (%2)").arg(name).arg(count));
-            it->setData(0, kRoleBase, name);
+            const QString title = role == kRoleLabel && name.isEmpty() ? tr("No label") : name;
+            it->setText(0, QStringLiteral("%1 (%2)").arg(title).arg(count));
+            it->setData(0, kRoleBase, title);
             it->setData(0, kRoleCount, count);
             it->setData(0, role, name);
-            it->setToolTip(0, name);
+            it->setToolTip(0, title);
         }
         while (section->childCount() > rowIndex)
             delete section->takeChild(rowIndex);
-        // Секции всегда раскрыты: стрелки у заголовков скрыты (rootIsDecorated
-        // = false), поэтому свёрнутое состояние сделало бы строки недоступными.
-        section->setExpanded(!items.isEmpty());
+        section->setExpanded(!items.isEmpty() && !section->data(0, kRoleCollapsed).toBool());
     };
     fillSection(m_foldersSection, folders, kRoleFolder);
-    if (!m_selLabel.isEmpty() &&
+    if ((!m_selLabel.isEmpty() || m_withoutLabels) &&
         std::none_of(labels.cbegin(), labels.cend(),
                      [this](const auto& label) { return label.first == m_selLabel; }))
         selectAllTorrents();

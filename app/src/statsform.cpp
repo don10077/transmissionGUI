@@ -1,7 +1,6 @@
 #include "statsform.h"
 
 #include <QFrame>
-#include <QGridLayout>
 #include <QLabel>
 #include <QTableWidget>
 #include <QHeaderView>
@@ -82,37 +81,46 @@ void StatsForm::rebuild()
 
     m_content = new QWidget;
     auto* contentLayout = new QVBoxLayout(m_content);
-    contentLayout->setContentsMargins(4, 4, 4, 4);
-    contentLayout->setSpacing(4);
+    contentLayout->setContentsMargins(8, 6, 8, 6);
+    contentLayout->setSpacing(8);
     m_scroll->setWidget(m_content);
     auto* title = new QLabel(tr("Global statistics:"), m_content);
     contentLayout->addWidget(title);
-    auto* table = new QTableWidget(4, 3, m_content);
+    const QStringList names{tr("Downloaded"), tr("Uploaded"), tr("Ratio"), tr("Files added"), tr("Active for")};
+    auto* table = new QTableWidget(static_cast<int>(names.size()), 3, m_content);
     table->setObjectName(QStringLiteral("statisticsTable"));
     table->setHorizontalHeaderLabels({QString(), tr("Current"), tr("Cumulative")});
+    for (int column = 1; column < table->columnCount(); ++column)
+        table->horizontalHeaderItem(column)->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     table->verticalHeader()->hide();
-    table->verticalHeader()->setMinimumSectionSize(20);
-    table->verticalHeader()->setDefaultSectionSize(20);
-    table->setColumnWidth(0, 200);
-    table->setColumnWidth(1, 120);
-    table->setColumnWidth(2, 120);
+    const int rowHeight = qMax(21, table->fontMetrics().height() + 5);
+    table->verticalHeader()->setMinimumSectionSize(rowHeight);
+    table->verticalHeader()->setDefaultSectionSize(rowHeight);
+    table->setColumnWidth(0, 220);
+    table->setColumnWidth(1, 150);
+    table->setColumnWidth(2, 150);
+    table->setMaximumWidth(520);
+    table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
     table->horizontalHeader()->setStretchLastSection(false);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    table->setAlternatingRowColors(true);
-    table->setShowGrid(true);
+    table->setMouseTracking(true);
+    table->viewport()->setAttribute(Qt::WA_Hover);
+    table->setShowGrid(false);
     table->setFrameShape(QFrame::NoFrame);
-    table->setStyleSheet(QStringLiteral("QTableView { gridline-color: #D9D9D9; }"));
     const tgui::SessionStats stats = m_stats.value_or(tgui::SessionStats{});
-    const QStringList names{tr("Downloaded"), tr("Uploaded"), tr("Files added"), tr("Active for")};
     auto values = [](const tgui::StatsBlock& block) {
+        const QString ratio = block.downloadedBytes > 0.0
+            ? QString::fromStdString(tgui::formatRatio(block.uploadedBytes / block.downloadedBytes))
+            : block.uploadedBytes > 0.0 ? QStringLiteral("∞") : QStringLiteral("—");
         return QStringList{QString::fromStdString(tgui::formatSize(block.downloadedBytes)),
                            QString::fromStdString(tgui::formatSize(block.uploadedBytes)),
+                           ratio,
                            QString::number(block.filesAdded), fmtDuration(block.secondsActive)};
     };
     const auto current = values(stats.current);
     const auto cumulative = values(stats.cumulative);
-    for (int row = 0; row < 4; ++row)
+    for (int row = 0; row < table->rowCount(); ++row)
         for (int column = 0; column < 3; ++column) {
             auto* item = new QTableWidgetItem(column == 0 ? names.at(row) :
                 !m_stats ? QString() : column == 1 ? current.at(row) : cumulative.at(row));

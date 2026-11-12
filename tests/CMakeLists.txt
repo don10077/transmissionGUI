@@ -33,6 +33,7 @@ add_executable(tgui_tests
     ${CMAKE_SOURCE_DIR}/app/src/detailmodels.cpp
     # MainWindow + диалоги — нужны для E2E-теста вкладок.
     ${CMAKE_SOURCE_DIR}/app/src/theme.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/connectbutton.cpp
     ${CMAKE_SOURCE_DIR}/app/src/mainwindow.cpp
     ${CMAKE_SOURCE_DIR}/app/src/externalopen.cpp
     ${CMAKE_SOURCE_DIR}/app/src/propsform.cpp
