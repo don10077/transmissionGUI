@@ -19,7 +19,6 @@ _deps/
 *.log
 *.bin
 *.bak
-*.ps1
 !tools/package-windows.ps1
 !tools/package-installer.ps1
 tmp_*
