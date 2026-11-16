@@ -324,10 +324,10 @@ TEST_F(JsonRpcTest, PermanentRedirectRequiresSameOrigin)
 
 TEST_F(JsonRpcTest, RedirectUsesOriginalDeadline)
 {
-    server.enqueue({307, {}, {{"Location", "/new/rpc"}}, 130});
-    server.enqueue({200, R"({"result":"success","arguments":{}})", {}, 130});
+    server.enqueue({307, {}, {{"Location", "/new/rpc"}}, 300});
+    server.enqueue({200, R"({"result":"success","arguments":{}})", {}, 300});
     tgui::JsonRpcClient client(server.url());
-    client.setTimeout(std::chrono::milliseconds(220));
+    client.setTimeout(std::chrono::milliseconds(500));
     const auto result = client.callSync("session-get", {});
     EXPECT_EQ(server.requestCount(), 2);
     EXPECT_FALSE(result.ok);

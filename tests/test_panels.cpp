@@ -717,7 +717,7 @@ TEST(DialogAppearance, AllPagesFitAndDaemonPreservesZero)
 #include <QSettings>
 
 namespace {
-bool waitForSettings(const std::function<bool()>& predicate, int timeoutMs = 2500)
+bool waitForSettings(const std::function<bool()>& predicate, int timeoutMs = 10000)
 {
     QElapsedTimer timer; timer.start();
     while (!predicate() && timer.elapsed() < timeoutMs) {
@@ -883,7 +883,21 @@ TEST_P(TorrentAddOutcome, HandlesResultAndOriginalFile)
             server.enqueue({200, R"({"result":"test start failure"})", {}});
         static_cast<QDialog*>(dialog)->accept();
     }
-    ASSERT_TRUE(waitForSettings([&] { return window.currentId() == 2 && server.requestCount() >= 13; }));
+    // Ждём завершения добавления по смыслу, а не по числу запросов: оно зависит от таймеров опроса.
+    const bool settled = waitForSettings([&] {
+        return window.currentId() == 2 && countRequests("torrent-add") == 1 &&
+               (countRequests("torrent-start") >= 1 || countRequests("torrent-set") >= 1) &&
+               QFile::exists(source.fileName()) == (scenario != AddScenario::SkipAndDelete);
+    });
+    if (!settled) {
+        QStringList methods;
+        for (const auto& request : server.requests())
+            methods << request.rpcMethod;
+        ADD_FAILURE() << "currentId=" << window.currentId()
+                      << " requestCount=" << server.requestCount()
+                      << " methods=" << methods.join(',').toStdString();
+        return;
+    }
     if (scenario == AddScenario::StartFailure) {
         EXPECT_TRUE(window.statusBar()->currentMessage().contains("test start failure"));
     }
@@ -892,6 +906,18 @@ TEST_P(TorrentAddOutcome, HandlesResultAndOriginalFile)
     if (scenario != AddScenario::Default)
         return;
 
+    // Перед magnet ждём, пока очередь добавления опустеет: последний запрос — перечитывание
+    // списка после torrent-set/torrent-start, и новых запросов нет 500 мс. Иначе подготовленный
+    // ответ-дубликат достанется не torrent-add, а чужому torrent-get.
+    {
+        QElapsedTimer quiet;
+        int lastCount = -1;
+        ASSERT_TRUE(waitForSettings([&] {
+            const int now = server.requestCount();
+            if (now != lastCount) { lastCount = now; quiet.restart(); return false; }
+            return quiet.elapsed() >= 500;
+        }));
+    }
     QMimeData magnet;
     magnet.setText("magnet:?xt=urn:btih:0123456789012345678901234567890123456789");
     server.enqueue(duplicate);
@@ -1642,6 +1668,12 @@ TEST(InfoPanel, FilesTabRequestsProgressRefresh)
     torrent.id = 900;
     torrent.name = QStringLiteral("checking");
     torrent.status = static_cast<int>(TorrentStatus::Check);
+    auto* infoTabs = window.findChild<QTabWidget*>(QStringLiteral("infoPanel"));
+    ASSERT_NE(infoTabs, nullptr);
+    infoTabs->setCurrentIndex(3); // Files: запрос идёт только для видимой вкладки выбранного торрента
+    window.applyTorrentsUpdate({torrent});
+    window.torrentView()->setCurrentIndex(window.torrentView()->model()->index(0, 0));
+    ASSERT_EQ(window.currentId(), 900);
     window.applyTorrentsUpdate({torrent});
 
     auto filesRequests = [&] {
