@@ -36,14 +36,14 @@ ConnTest runTest(const tgui::RpcClient::Options& opts)
     auto* client = new tgui::RpcClient(opts);
     QEventLoop loop;
     bool done = false;
-    QObject::connect(client, &tgui::RpcClient::connected, [&](const tgui::SessionInfo& info) {
+    QObject::connect(client, &tgui::RpcClient::connected, &loop, [&](const tgui::SessionInfo& info) {
         if (done) return;
         done = true;
         r.ok = true;
         r.message = QObject::tr("Connected: Transmission %1 (RPC %2)").arg(info.version).arg(info.rpcVersion);
         loop.quit();
     });
-    QObject::connect(client, &tgui::RpcClient::authenticationFailed, [&](const QString& e) {
+    QObject::connect(client, &tgui::RpcClient::authenticationFailed, &loop, [&](const QString& e) {
         if (done) return;
         done = true;
         r.message = QObject::tr("Authentication failed: %1").arg(e);
@@ -55,14 +55,15 @@ ConnTest runTest(const tgui::RpcClient::Options& opts)
         r.message = e;
         loop.quit();
     };
-    QObject::connect(client, &tgui::RpcClient::connectionFailed, fail);
-    QObject::connect(client, &tgui::RpcClient::connectionInterrupted, fail);
-    QObject::connect(client, &tgui::RpcClient::clientTlsPassphraseRequired, [&] {
+    QObject::connect(client, &tgui::RpcClient::connectionFailed, &loop, fail);
+    QObject::connect(client, &tgui::RpcClient::connectionInterrupted, &loop, fail);
+    QObject::connect(client, &tgui::RpcClient::clientTlsPassphraseRequired, &loop, [&] {
+        if (done) return;
         done = true;
         r.needsPassphrase = true;
         loop.quit();
     });
-    QObject::connect(client, &tgui::RpcClient::readError, [&](const QString&, const QString& e) {
+    QObject::connect(client, &tgui::RpcClient::readError, &loop, [&](const QString&, const QString& e) {
         if (done) return;
         done = true;
         r.message = e;
@@ -74,7 +75,7 @@ ConnTest runTest(const tgui::RpcClient::Options& opts)
     client->connectToDaemon();
     if (!done)
         loop.exec();
-    timer->deleteLater();
+    QObject::disconnect(client, nullptr, nullptr, nullptr);
     client->deleteLater();
     if (!r.ok && !r.needsPassphrase && r.message.isEmpty())
         r.message = QObject::tr("No response (timeout).");
