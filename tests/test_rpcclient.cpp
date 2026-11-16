@@ -265,6 +265,13 @@ TEST_F(RpcClientTest, GetTorrentsRpc18FieldsAndTable)
     EXPECT_TRUE(fields.contains("downloadDir"));
     EXPECT_TRUE(fields.contains("trackerStats"));
     EXPECT_TRUE(fields.contains("uploadRatio"));
+    // BUG-01: отсутствующие до фикса поля
+    EXPECT_TRUE(fields.contains("eta"));
+    EXPECT_TRUE(fields.contains("peersSendingToUs"));
+    EXPECT_TRUE(fields.contains("peersGettingFromUs"));
+    EXPECT_TRUE(fields.contains("secondsDownloading"));
+    EXPECT_TRUE(fields.contains("isFinished"));
+    EXPECT_FALSE(fields.contains("announceResponse"));
     // сортировка полей
     QStringList sorted = fields;
     std::sort(sorted.begin(), sorted.end());

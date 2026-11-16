@@ -248,9 +248,11 @@ void RpcClient::getTorrents(const QStringList& extraFields)
 {
     // Базовый список полей torrent-get.
     QStringList fields = {
-        "id", "name", "status", "errorString", "announceResponse", "recheckProgress",
+        "id", "name", "status", "errorString", "recheckProgress",
         "sizeWhenDone", "leftUntilDone", "rateDownload", "rateUpload", "trackerStats",
         "metadataPercentComplete", "sequential_download", "downloadDir", "labels",
+        // Скорость, ETA, пиров (Bug: отсутствовали до BUG-01).
+        "eta", "peersSendingToUs", "peersGettingFromUs", "secondsDownloading", "isFinished",
         // Расширенные поля для списка и диалога «Свойства».
         "addedDate", "doneDate", "downloadedEver", "uploadedEver", "corruptEver",
         "isPrivate", "isStalled", "queuePosition", "uploadRatio",
