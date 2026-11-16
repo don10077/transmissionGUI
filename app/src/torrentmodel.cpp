@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <utility>
 
 #include "theme.h"
 #include "tgui/util.h"
@@ -28,35 +29,88 @@ QPair<double, double> TorrentModel::displayedRates(const tgui::Torrent& torrent)
                                                static_cast<double>(torrent.rateUpload.value_or(0))});
 }
 
-void TorrentModel::setTorrents(const QVector<tgui::Torrent>& torrents)
+/** Обновляет строки по ID. Возвращает true, если состав списка изменился. */
+bool TorrentModel::setTorrents(const QVector<tgui::Torrent>& torrents)
 {
-    if (m_smoothRates) {
-        QHash<int, QPair<double, double>> rates;
-        const auto smooth = [](double previous, double sample) {
-            return sample > 0.0 ? (previous + sample) / 2.0 : 0.0;
-        };
-        for (const auto& torrent : torrents) {
-            const double down = static_cast<double>(torrent.rateDownload.value_or(0));
-            const double up = static_cast<double>(torrent.rateUpload.value_or(0));
+    QHash<int, const tgui::Torrent*> incoming;
+    incoming.reserve(torrents.size());
+    QHash<int, QPair<double, double>> rates;
+    if (m_smoothRates)
+        rates.reserve(torrents.size());
+    for (const auto& torrent : torrents) {
+        incoming.insert(torrent.id, &torrent);
+        if (m_smoothRates) {
+            const double down = torrent.rateDownload.value_or(0);
+            const double up = torrent.rateUpload.value_or(0);
             const auto previous = m_displayedRates.value(torrent.id, {down, up});
-            rates.insert(torrent.id, {smooth(previous.first, down), smooth(previous.second, up)});
+            rates.insert(torrent.id, {down > 0 ? (previous.first + down) / 2 : 0,
+                                     up > 0 ? (previous.second + up) / 2 : 0});
         }
-        m_displayedRates.swap(rates);
     }
-    // Most RPC updates change values, not the set of rows. Keep the model's
-    // indexes and the view's scroll position intact in that common case.
-    bool sameRows = m_torrents.size() == torrents.size();
-    for (int i = 0; sameRows && i < torrents.size(); ++i)
-        sameRows = m_torrents.at(i).id == torrents.at(i).id;
-    if (sameRows) {
-        m_torrents = torrents;
-        if (!m_torrents.isEmpty())
-            emit dataChanged(index(0, 0), index(m_torrents.size() - 1, ColumnCount - 1));
-        return;
+
+    bool changed = false;
+    for (int row = rowCount() - 1; row >= 0;) {
+        if (incoming.contains(m_torrents.at(row).id)) {
+            --row;
+            continue;
+        }
+        const int end = row;
+        while (row >= 0 && !incoming.contains(m_torrents.at(row).id))
+            --row;
+        beginRemoveRows({}, row + 1, end);
+        m_torrents.remove(row + 1, end - row);
+        m_rowsChanged = changed = true;
+        endRemoveRows();
     }
-    beginResetModel();
-    m_torrents = torrents;
-    endResetModel();
+
+    const auto oldRates = std::exchange(m_displayedRates, std::move(rates));
+    QVector<int> dirty;
+    for (int row = 0; row < rowCount(); ++row) {
+        const auto& previous = m_torrents.at(row);
+        const int id = previous.id;
+        const auto* next = incoming.take(id);
+        const bool dataChanged = previous != *next;
+        if (dataChanged || oldRates.value(id) != m_displayedRates.value(id))
+            dirty.append(row);
+        if (dataChanged)
+            m_torrents[row] = *next;
+    }
+
+    QVector<tgui::Torrent> added;
+    added.reserve(incoming.size());
+    for (const auto& torrent : torrents) {
+        if (incoming.value(torrent.id) == &torrent)
+            added.append(torrent);
+    }
+    if (!added.isEmpty()) {
+        const int start = rowCount();
+        beginInsertRows({}, start, start + static_cast<int>(added.size()) - 1);
+        m_torrents.append(std::move(added));
+        m_rowsChanged = changed = true;
+        endInsertRows();
+    }
+
+    for (qsizetype i = 0; i < dirty.size();) {
+        const int first = dirty.at(i++);
+        int last = first;
+        while (i < dirty.size() && dirty.at(i) == last + 1)
+            last = dirty.at(i++);
+        emit dataChanged(index(first, 0), index(last, ColumnCount - 1));
+    }
+    return changed;
+}
+
+/** Возвращает строку торрента @p id или -1, если его нет. */
+int TorrentModel::rowForId(int id) const
+{
+    if (m_rowsChanged) {
+        m_rowById.clear();
+        m_rowById.reserve(m_torrents.size());
+        for (int row = 0; row < rowCount(); ++row)
+            m_rowById.insert(m_torrents.at(row).id, row);
+        m_rowsChanged = false;
+    }
+    return m_rowById.value(id, -1);
 }
 
 int TorrentModel::rowCount(const QModelIndex& parent) const

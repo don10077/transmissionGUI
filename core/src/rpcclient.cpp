@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QScopeGuard>
+#include <QSet>
 #include <QUrlQuery>
 
 namespace tgui {
@@ -69,6 +70,10 @@ QString RpcClient::describeError(const JsonRpcResult& r)
 void RpcClient::disconnectFromDaemon()
 {
     m_rpc.resetSession();
+    m_list.clear();
+    m_lastFullList.invalidate();
+    m_listPending = 0;
+    m_incrementalPolls = 0;
     m_connected = false;
     m_rpcVersion = 0;
     m_sessionInfo = SessionInfo{};
@@ -280,23 +285,32 @@ void removeFieldIfUnsupported(QStringList& fields, const QString& field,
 
 void RpcClient::getTorrents(const QStringList& extraFields)
 {
-    // Базовый список полей torrent-get.
+    requestTorrentList(false, extraFields);
+}
+
+/** Запрашивает изменения между полными снимками и ограничивает возраст кеша. */
+void RpcClient::pollTorrents()
+{
+    if (m_listPending)
+        return;
+    const bool incremental = supports(5) && m_lastFullList.isValid() &&
+        !m_lastFullList.hasExpired(30000) && m_incrementalPolls < 29;
+    requestTorrentList(incremental);
+}
+
+/** Получает список или изменения и публикует согласованный снимок по ID. */
+void RpcClient::requestTorrentList(bool incremental, const QStringList& extraFields)
+{
     QStringList fields = {
         "id", "name", "status", "errorString", "recheckProgress",
-        "sizeWhenDone", "leftUntilDone", "rateDownload", "rateUpload", "trackerStats",
+        "sizeWhenDone", "leftUntilDone", "rateDownload", "rateUpload",
         "metadataPercentComplete", "sequential_download", "downloadDir", "labels",
-        // Скорость, ETA, пиров (Bug: отсутствовали до BUG-01).
         "eta", "peersSendingToUs", "peersGettingFromUs", "secondsDownloading", "isFinished",
-        // Расширенные поля для списка и диалога «Свойства».
-        "addedDate", "doneDate", "downloadedEver", "uploadedEver", "corruptEver",
+        "addedDate", "doneDate", "downloadedEver", "uploadedEver",
         "isPrivate", "isStalled", "queuePosition", "uploadRatio",
-        // 26-колоночный грид (референс раскладки — см. WORKFLOW.md).
         "totalSize", "activityDate", "secondsSeeding", "bandwidthPriority",
-        // Вкладка «General» (референс — tabGeneral): hash, чанки, комментарий,
-        // magnet-ссылка, автор/дата создания, лимит пиров.
-        "hashString", "comment", "creator", "dateCreated", "pieceCount",
-        "pieceSize", "haveValid", "pieces", "magnetLink", "maxConnectedPeers",
-        "downloadLimited", "downloadLimit", "uploadLimited", "uploadLimit", "seedRatioMode", "seedRatioLimit", "seedIdleMode", "seedIdleLimit",
+        "hashString",
+        incremental ? "trackers" : "trackerStats",
     };
     fields += extraFields;
     removeFieldIfUnsupported(fields, "labels", m_rpcVersion, 16);
@@ -309,24 +323,117 @@ void RpcClient::getTorrents(const QStringList& extraFields)
     args.insert("fields", toJsonArray(fields));
     if (m_rpcVersion >= 16)
         args.insert("format", "table");
+    if (incremental)
+        args.insert("ids", "recently-active");
 
     const auto sequence = ++m_readSequence;
-    call("torrent-get", args, [this, sequence](const JsonRpcResult& r) {
+    m_listPending = sequence;
+    call("torrent-get", args, [this, sequence, incremental](const JsonRpcResult& r) {
+        if (m_listPending == sequence)
+            m_listPending = 0;
         if (sequence < m_listApplied)
             return;
         if (!r.ok) {
+            if (incremental)
+                m_lastFullList.invalidate();
             emit readError("torrent-get", describeError(r));
             return;
         }
-        const QJsonArray arr = r.arguments.value("torrents").toArray();
-        QVector<Torrent> torrents;
-        if (!arr.isEmpty() && arr.first().isArray())
-            torrents = parseTorrentsTable(r.arguments); // format=table
-        else
-            torrents = parseTorrents(arr);
+        const auto array = r.arguments.value("torrents").toArray();
+        if (!incremental) {
+            m_list = (!array.isEmpty() && array.first().isArray())
+                ? parseTorrentsTable(r.arguments) : parseTorrents(array);
+            m_lastFullList.start();
+            m_incrementalPolls = 0;
+        } else {
+            ++m_incrementalPolls;
+            QSet<int> removed;
+            for (const auto& value : r.arguments.value("removed").toArray()) {
+                if (value.isDouble())
+                    removed.insert(value.toInt());
+            }
+            if (!removed.isEmpty())
+                m_list.removeIf([&](const Torrent& torrent) { return removed.contains(torrent.id); });
+            const auto changes = torrentObjects(array);
+            if (!changes.isEmpty()) {
+                QHash<int, qsizetype> rows;
+                rows.reserve(m_list.size());
+                for (qsizetype i = 0; i < m_list.size(); ++i)
+                    rows.insert(m_list.at(i).id, i);
+                for (const auto& change : changes) {
+                    const int id = change.value("id").toInt(-1);
+                    if (id < 0 || removed.contains(id))
+                        continue;
+                    const auto row = rows.constFind(id);
+                    if (row != rows.cend()) {
+                        // Один и тот же числовой ID может получить другой торрент после перезапуска.
+                        const auto hash = change.value("hashString").toString();
+                        const bool same = hash.isEmpty() || m_list.at(*row).hashString.value_or(hash) == hash;
+                        parseTorrent(change, m_list[*row], same);
+                    } else {
+                        Torrent torrent;
+                        if (parseTorrent(change, torrent)) {
+                            rows.insert(id, m_list.size());
+                            m_list.append(std::move(torrent));
+                        }
+                    }
+                }
+            }
+        }
         m_listApplied = sequence;
-        emit torrentsReceived(torrents);
+        emit torrentsReceived(m_list);
     });
+}
+
+/** Запрашивает поля окна «Общие» и «Свойства» только для торрента @p id. */
+void RpcClient::getTorrentProperties(int id, TorrentCallback callback, TorrentProperties scope)
+{
+    QJsonArray fields{"id", "hashString"};
+    switch (scope) {
+        case TorrentProperties::General:
+            fields = toJsonArray({"id", "hashString", "comment", "creator", "dateCreated",
+                                  "pieceCount", "pieceSize", "haveValid", "magnetLink",
+                                  "maxConnectedPeers", "trackerStats", "corruptEver"});
+            if (supports(5))
+                fields.append("pieces");
+            break;
+        case TorrentProperties::Settings:
+            fields = toJsonArray({"id", "hashString", "name", "maxConnectedPeers", "downloadLimited",
+                                  "downloadLimit", "uploadLimited", "uploadLimit", "seedRatioMode",
+                                  "seedRatioLimit", "seedIdleMode", "seedIdleLimit"});
+            if (supports(18))
+                fields.append("sequential_download");
+            break;
+        case TorrentProperties::Magnet:
+            fields.append("magnetLink");
+            break;
+    }
+    call("torrent-get", {{"ids", QJsonArray{id}}, {"fields", fields}},
+        [id, cb = std::move(callback)](const JsonRpcResult& result) {
+            if (!cb)
+                return;
+            if (result.ok) {
+                const auto rows = torrentObjects(result.arguments.value("torrents").toArray());
+                for (const auto& row : rows) {
+                    Torrent torrent;
+                    if (parseTorrent(row, torrent) && torrent.id == id) {
+                        cb(torrent);
+                        return;
+                    }
+                }
+            }
+            cb(std::nullopt);
+        });
+}
+
+/** Получает ссылки для явного экспорта списка. */
+void RpcClient::getTorrentMagnets(std::function<void(const QVector<Torrent>&)> callback)
+{
+    call("torrent-get", {{"fields", QJsonArray{"id", "hashString", "magnetLink"}}},
+        [cb = std::move(callback)](const JsonRpcResult& result) {
+            if (cb)
+                cb(result.ok ? parseTorrents(result.arguments.value("torrents").toArray()) : QVector<Torrent>{});
+        });
 }
 
 /** Запрашивает только пути торрентов @p ids и передаёт ответ в @p callback. */

@@ -1,5 +1,6 @@
 # tests: unit-тесты core (GoogleTest + мок HTTP-сервер на QTcpServer).
 find_package(GTest REQUIRED)
+find_package(Qt6 REQUIRED COMPONENTS Test)
 
 add_executable(tgui_tests
     ../app/icons/icons.qrc
@@ -71,7 +72,7 @@ add_executable(tgui_tests
     ${CMAKE_SOURCE_DIR}/app/src/movedialog.h
 )
 target_include_directories(tgui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/app/src)
-target_link_libraries(tgui_tests PRIVATE tgui_core Qt6::Widgets Qt6::Network Qt6::Svg
+target_link_libraries(tgui_tests PRIVATE tgui_core Qt6::Widgets Qt6::Network Qt6::Svg Qt6::Test
     Qt6::Concurrent GTest::gtest ZLIB::ZLIB LibArchive::LibArchive)
 if(WIN32)
     target_link_libraries(tgui_tests PRIVATE shell32 crypt32)
@@ -88,3 +89,4 @@ add_test(NAME tgui_tests COMMAND tgui_tests)
 set_tests_properties(tgui_tests PROPERTIES TIMEOUT 180)
 add_test(NAME tgui_app_smoke COMMAND transmissiongui --smoke-test)
 set_tests_properties(tgui_app_smoke PROPERTIES TIMEOUT 15)
+

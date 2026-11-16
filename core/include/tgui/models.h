@@ -43,6 +43,7 @@ struct TrackerStat {
     int leecherCount = -1;
     int tier = 0;
     int torrentId = 0;
+    bool operator==(const TrackerStat&) const = default;
 };
 
 // Торрент (torrent-get). Опциональные поля зависят от запрошенных "fields".
@@ -94,6 +95,7 @@ struct Torrent {
     std::optional<int> maxConnectedPeers;
     QVector<TrackerStat> trackerStats;
     QJsonObject editableSettings;
+    bool operator==(const Torrent&) const = default;
 };
 
 /** Effective error, following transgui GetTorrentError, including tracker fallback. */
@@ -233,7 +235,9 @@ bool statusIsStopped(int status);     // Stopped
 bool torrentIsActive(int rateDownload, int rateUpload);
 
 // --- Парсинг ответов демона ---
-bool parseTorrent(const QJsonObject& torrent, Torrent& out);
+bool parseTorrent(const QJsonObject& torrent, Torrent& out, bool partial = false);
+/** Разворачивает строки torrent-get в объекты для обоих форматов RPC. */
+QVector<QJsonObject> torrentObjects(const QJsonArray& rows);
 QVector<Torrent> parseTorrents(const QJsonArray& array);
 // torrent-get с format=table (rpc ≥ 16): torrents[0] — имена полей,
 // остальные строки — значения (аналог TranslateTableToObjects).

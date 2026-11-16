@@ -4,6 +4,7 @@
 #include "tgui/models.h"
 
 #include <QJsonObject>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QNetworkProxy>
 #include <QStringList>
@@ -49,6 +50,8 @@ public:
     };
 
     using DetailsCallback = std::function<void(const std::optional<TorrentDetails>&)>;
+    using TorrentCallback = std::function<void(const std::optional<Torrent>&)>;
+    enum class TorrentProperties { General, Settings, Magnet };
     // Вызывается асинхронно один раз, если клиент ещё существует к моменту завершения запроса.
     using RequestCallback = JsonRpcClient::Callback;
     using AddCallback = std::function<void(const JsonRpcResult&, const QByteArray&)>;
@@ -70,6 +73,10 @@ public:
 
     // --- Чтение ---
     void getTorrents(const QStringList& extraFields = {});
+    void pollTorrents();
+    void getTorrentProperties(int id, TorrentCallback callback,
+                              TorrentProperties scope = TorrentProperties::General);
+    void getTorrentMagnets(std::function<void(const QVector<Torrent>&)> callback);
     void getTorrentLocations(const QVector<int>& ids, RequestCallback callback);
     void getTorrentDetails(int id, DetailsCallback callback = {});
     void getTorrentDetailsByHash(const QString& hash, DetailsCallback callback);
@@ -157,6 +164,7 @@ private:
     bool configureClientTls();
     void call(const QString& method, const QJsonObject& arguments, JsonRpcClient::Callback callback);
     void getTorrentDetails(const QJsonValue& identifier, DetailsCallback callback);
+    void requestTorrentList(bool incremental, const QStringList& extraFields = {});
     void request(const QString& method, const QJsonObject& arguments);
     void requestReport(const QString& method, const QJsonObject& arguments,
                        RequestCallback callback = {});
@@ -170,6 +178,10 @@ private:
     JsonRpcClient m_rpc;
     quint64 m_readSequence = 0;
     quint64 m_listApplied = 0;
+    quint64 m_listPending = 0;
+    int m_incrementalPolls = 0;
+    QElapsedTimer m_lastFullList;
+    QVector<Torrent> m_list;
     quint64 m_filesApplied = 0;
     quint64 m_trackersApplied = 0;
     quint64 m_peersApplied = 0;

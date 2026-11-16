@@ -211,7 +211,13 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
     // W07: интервал обновления из настроек (секунды), по умолчанию 2 (ранее 2000 ms).
     m_refreshTimer.setParent(this);
     m_refreshTimer.setObjectName(QStringLiteral("refreshTimer"));
-    connect(&m_refreshTimer, &QTimer::timeout, this, &MainWindow::onRefresh);
+    connect(&m_refreshTimer, &QTimer::timeout, this, [this] {
+        if (m_rpc && m_connected) {
+            m_rpc->pollTorrents();
+            m_rpc->getSessionStats();
+            refreshFilesDetails();
+        }
+    });
     m_reconnectTimer.setSingleShot(true);
     connect(&m_reconnectTimer, &QTimer::timeout, this, [this] {
         if (m_reconnectOptions)
@@ -982,21 +988,29 @@ void MainWindow::setConnectedUi(bool on)
 
 // Действия над торрентами активны только при непустом выделении (как в
 // transgui: acStartTorrent/acStopTorrent/… Enabled по SelectedCount).
-void MainWindow::updateSelectionActions()
+void MainWindow::updateSelectionActions(qsizetype count)
 {
-    const bool hasSel = m_connected && !selectedTorrentIds().isEmpty();
-    updateInfoTitle();
+    if (count < 0)
+        count = selectedTorrentIds().size();
+    const bool hasSel = m_connected && count != 0;
+    updateInfoTitleWithCount(count);
     m_actStart->setEnabled(hasSel);
     m_actStop->setEnabled(hasSel);
     m_actRemove->setEnabled(hasSel);
     m_actProperties->setEnabled(hasSel);
-    m_actMove->setEnabled(m_connected && selectedTorrentIds().size() == 1);
+    m_actMove->setEnabled(m_connected && count == 1);
     if (m_actQueue) m_actQueue->setEnabled(hasSel);
     m_actChooseLabel->setEnabled(hasSel && m_rpc && m_rpc->supports(16));
 }
 
 /** Обновляет подпись выбранного торрента справа от вкладок. */
 void MainWindow::updateInfoTitle()
+{
+    updateInfoTitleWithCount(selectedTorrentIds().size());
+}
+
+/** Обновляет заголовок, используя готовое количество выбранных строк. */
+void MainWindow::updateInfoTitleWithCount(qsizetype count)
 {
     const auto* torrent = m_general ? m_general->torrent() : nullptr;
     if (m_peerEmpty)
@@ -1005,7 +1019,6 @@ void MainWindow::updateInfoTitle()
         return;
     QString title = torrent ? torrent->name.value_or(QString()) : QString();
     if (!title.isEmpty()) {
-        const qsizetype count = selectedTorrentIds().size();
         if (count > 1)
             title += tr(" (+%1 more)").arg(count - 1);
     }
@@ -1220,6 +1233,8 @@ void MainWindow::suspendConnection()
     m_watchTimer.stop();
     m_moveVerifyTimer.stop();
     m_connected = false;
+    ++m_generalRequest;
+    m_generalLoading = false;
     setConnectedUi(false);
 }
 
@@ -1245,6 +1260,10 @@ void MainWindow::clearConnection()
     m_peerModel.setPeers({});
     m_trackerModel.setTrackers({});
     m_general->clear();
+    ++m_generalRequest;
+    m_generalLoading = false;
+    m_generalDetails.reset();
+    m_filePieceCount = 0;
     m_statsForm->clear();
     m_currentId = -1;
     setConnectedUi(false);
@@ -1427,6 +1446,8 @@ void MainWindow::refreshFilesDetails()
     // (старый transgui перезапрашивал детали каждый цикл обновления).
     if (!m_rpc || m_currentId < 0 || !m_tabs || m_tabs->isHidden())
         return;
+    if (m_tabs->currentWidget() == m_general)
+        refreshGeneralDetails();
     if (m_filesView && m_tabs->currentWidget() == m_filesView)
         m_rpc->getTorrentDetails(m_currentId);
     if (m_peersView && m_tabs->currentWidget() == m_peersView)
@@ -1435,184 +1456,144 @@ void MainWindow::refreshFilesDetails()
         m_rpc->getTrackers(m_currentId);
 }
 
+/** Обновляет тяжёлые поля видимой вкладки «Общие», привязывая ответ к выбору. */
+void MainWindow::refreshGeneralDetails()
+{
+    if (m_generalLoading || !m_rpc || !m_connected || m_currentId < 0 ||
+        m_tabs->isHidden() || m_tabs->currentWidget() != m_general)
+        return;
+    m_generalLoading = true;
+    const auto request = ++m_generalRequest;
+    const QPointer rpc(m_rpc.get());
+    m_rpc->getTorrentProperties(m_currentId, [this, rpc, request](const auto& details) {
+        if (!rpc || rpc != m_rpc.get() || request != m_generalRequest)
+            return;
+        m_generalLoading = false;
+        if (!details || details->id != m_currentId || !m_connected)
+            return;
+        if (const auto* torrent = torrentById(details->id)) {
+            if (details->hashString && torrent->hashString && details->hashString != torrent->hashString)
+                return;
+            m_generalDetails = details;
+            updateGeneralTorrent(*torrent);
+        }
+    });
+}
+
+/** Показывает свежие поля списка вместе с деталями того же торрента. */
+void MainWindow::updateGeneralTorrent(const tgui::Torrent& torrent)
+{
+    auto combined = torrent;
+    if (m_generalDetails && m_generalDetails->id == torrent.id &&
+        (!m_generalDetails->hashString || !torrent.hashString || m_generalDetails->hashString == torrent.hashString)) {
+        const auto& detail = *m_generalDetails;
+        combined.comment = detail.comment;
+        combined.creator = detail.creator;
+        combined.dateCreated = detail.dateCreated;
+        combined.pieceCount = detail.pieceCount;
+        combined.pieceSize = detail.pieceSize;
+        combined.haveValid = detail.haveValid;
+        combined.pieces = detail.pieces;
+        combined.magnetLink = detail.magnetLink;
+        combined.maxConnectedPeers = detail.maxConnectedPeers;
+        combined.corruptEver = detail.corruptEver;
+        if (!detail.trackerStats.isEmpty())
+            combined.trackerStats = detail.trackerStats;
+    }
+    m_general->setTorrent(combined);
+    if (m_sessionInfo.rpcVersion > 0)
+        m_general->setSession(m_sessionInfo);
+}
+
 void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
 {
-    QStringList completed;
-    QHash<int, const tgui::Torrent*> previous;
-    for (const auto& old : m_model.torrents()) previous.insert(old.id, &old);
-    for (const auto& torrent : torrents) {
-        const auto* old = previous.value(torrent.id, nullptr);
-        if (old && old->status.value_or(-1) == 4 && old->leftUntilDone.value_or(0) > 0 &&
-            torrent.leftUntilDone && *torrent.leftUntilDone == 0 &&
-            torrent.sizeWhenDone.value_or(0) > 0 && torrent.status.value_or(-1) != 2)
-            completed.append(torrent.name.value_or(QString::number(torrent.id)));
+    if (QSettings().value("ui/trayNotify", false).toBool()) {
+        QStringList completed;
+        for (const auto& torrent : torrents) {
+            const auto* old = torrentById(torrent.id);
+            if (old && old->status.value_or(-1) == 4 && old->leftUntilDone.value_or(0) > 0 &&
+                torrent.leftUntilDone && *torrent.leftUntilDone == 0 &&
+                torrent.sizeWhenDone.value_or(0) > 0 && torrent.status.value_or(-1) != 2) {
+                completed.append(torrent.name.value_or(QString::number(torrent.id)));
+            }
+        }
+        if (!completed.isEmpty())
+            emit downloadNotification(completed.size() == 1 ?
+                tr("Download completed: %1").arg(completed.first()) :
+                tr("Downloads completed: %1").arg(completed.size()));
     }
-    if (!completed.isEmpty() && QSettings().value("ui/trayNotify", false).toBool())
-        emit downloadNotification(completed.size() == 1 ?
-            tr("Download completed: %1").arg(completed.first()) :
-            tr("Downloads completed: %1").arg(completed.size()));
-    // setTorrents() (modelReset) сбрасывает выделение и текущий индекс вью,
-    // а вью прокручивается к началу. Запоминаем ВСЁ выделение (Select all
-    // должен переживать автообновление раз в 2 секунды), текущую строку и
-    // позицию прокрутки ДО сброса.
-    const QVector<int> prevSelected = selectedTorrentIds();
-    const int prevId = m_currentId;
-    const int prevScroll = m_view->verticalScrollBar()->value();
-    const bool firstLoad = m_model.rowCount() == 0;
 
-    // modelReset синхронно шлёт selectionChanged/currentChanged — не даём
-    // onSelectionChanged сбросить текущий торрент посреди обновления.
+    const int prevId = m_currentId;
+    const bool firstLoad = m_model.rowCount() == 0;
     m_refreshing = true;
     m_model.setTorrents(torrents);
-    updateFilterPanel(torrents);
+    updateFilterPanel(m_model.torrents());
 
-    auto rows = visibleTorrentRows();
-    // После добавления или обновления дубликата выбираем строку из подтверждённого списка.
-    int addedRow = -1;
-    if (m_addSelectionId >= 0 && std::any_of(torrents.cbegin(), torrents.cend(),
-            [this](const auto& torrent) { return torrent.id == m_addSelectionId; })) {
-        addedRow = rows.value(m_addSelectionId, -1);
-        if (addedRow < 0) {
-            m_filterPanel->selectAllTorrents();
-            m_searchEdit->clear();
-            rows = visibleTorrentRows();
-            addedRow = rows.value(m_addSelectionId, -1);
-        }
-    }
-
-    int nextId = prevId;
-    if (addedRow >= 0) {
-        nextId = std::exchange(m_addSelectionId, -1);
-        restoreTorrentSelection({nextId}, nextId, rows);
-    } else {
-        restoreTorrentSelection(prevSelected, prevId, rows);
-    }
-    if (nextId >= 0 && !rows.contains(nextId))
-        nextId = -1;
-    if (nextId < 0) {
-        for (int id : prevSelected) {
-            if (rows.contains(id)) {
-                nextId = id;
-                break;
+    auto* selection = m_view->selectionModel();
+    QModelIndex added;
+    if (m_addSelectionId >= 0) {
+        const auto source = m_model.index(m_model.rowForId(m_addSelectionId), TorrentModel::ColName);
+        if (source.isValid()) {
+            added = m_proxy.mapFromSource(source);
+            if (!added.isValid()) {
+                m_filterPanel->selectAllTorrents();
+                m_searchEdit->clear();
+                added = m_proxy.mapFromSource(source);
+            }
+            if (added.isValid()) {
+                m_addSelectionId = -1;
+                selection->setCurrentIndex(added, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+                m_view->scrollTo(added);
             }
         }
     }
-    // Первая загрузка: выбираем первую строку, как в эталоне, — иначе вкладка
-    // General остаётся пустой до ручного клика.
-    if (nextId < 0 && firstLoad && m_proxy.rowCount() > 0) {
-        const QModelIndex first = m_proxy.index(0, TorrentModel::ColName);
-        m_view->selectionModel()->select(
-            QItemSelection(first, first),
+
+    if (!added.isValid() && firstLoad && m_proxy.rowCount() > 0 && !m_view->currentIndex().isValid()) {
+        selection->setCurrentIndex(m_proxy.index(0, TorrentModel::ColName),
             QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
-        m_view->selectionModel()->setCurrentIndex(first, QItemSelectionModel::NoUpdate);
-        nextId = m_proxy.torrentAt(0).id;
+    } else if (!added.isValid() && prevId >= 0 && m_model.rowForId(prevId) < 0 && !selection->hasSelection()) {
+        selection->setCurrentIndex({}, QItemSelectionModel::NoUpdate);
     }
+
+    const auto ids = selectedTorrentIds();
+    const auto current = m_proxy.mapToSource(selection->currentIndex());
+    const int nextId = current.isValid() && selection->isSelected(selection->currentIndex())
+        ? m_model.torrentAt(current.row()).id : (ids.isEmpty() ? -1 : ids.first());
     m_currentId = nextId;
     m_refreshing = false;
 
     if (nextId != prevId) {
+        ++m_generalRequest;
+        m_generalLoading = false;
+        m_generalDetails.reset();
+        m_filePieceCount = 0;
         m_fileModel.setFiles({});
         m_peerModel.setPeers({});
         m_trackerModel.setTrackers({});
     }
 
-    // Панель «General» подтягивается к актуальному состоянию выбранного.
-    if (nextId >= 0) {
-        for (const auto& t : torrents) {
-            if (t.id == nextId) {
-                const auto& currentFiles = m_fileModel.files();
-                const int status = t.status.value_or(-1);
-                if (!currentFiles.isEmpty() &&
-                    (status == static_cast<int>(tgui::TorrentStatus::Check) ||
-                     std::any_of(currentFiles.cbegin(), currentFiles.cend(),
-                         [](const tgui::FileStat& file) { return file.checkProgress >= 0.0; }))) {
-                    auto files = currentFiles;
-                    tgui::applyCheckProgress(files, status, t.recheckProgress,
-                                             t.pieceCount.value_or(0));
-                    m_fileModel.setFiles(files);
-                }
-                m_general->setTorrent(t);
-                if (m_sessionInfo.rpcVersion > 0)
-                    m_general->setSession(m_sessionInfo);
-                break;
-            }
+    if (const auto* torrent = torrentById(nextId)) {
+        const auto& currentFiles = m_fileModel.files();
+        const int status = torrent->status.value_or(-1);
+        if (!currentFiles.isEmpty() &&
+            (status == static_cast<int>(tgui::TorrentStatus::Check) ||
+             std::ranges::any_of(currentFiles, [](const tgui::FileStat& file) { return file.checkProgress >= 0.0; }))) {
+            auto files = currentFiles;
+            tgui::applyCheckProgress(files, status, torrent->recheckProgress,
+                                     torrent->pieceCount.value_or(m_filePieceCount));
+            m_fileModel.setFiles(files);
         }
+        updateGeneralTorrent(*torrent);
     } else {
         m_general->clear();
     }
-    // Если текущая строка сменилась из-за удаления торрента — обновить вкладки
-    // деталей (при обычном refresh тот же ID и запросы не нужны).
-    if (nextId != prevId && nextId >= 0 && m_rpc) {
-        m_rpc->getTorrentDetails(nextId);
-        m_rpc->getPeers(nextId);
-        m_rpc->getTrackers(nextId);
-    }
+    if (nextId != prevId || m_reconnecting)
+        refreshFilesDetails();
 
     updateStatusBarTotals();
-    m_view->doItemsLayout();
-    if (addedRow >= 0)
-        m_view->scrollTo(m_view->currentIndex());
-    else
-        m_view->verticalScrollBar()->setValue(prevScroll);
-    updateSelectionActions();
+    updateSelectionActions(ids.size());
     if (m_connected && std::exchange(m_reconnecting, false))
         resumeAddQueue(torrents);
-}
-
-QHash<int, int> MainWindow::visibleTorrentRows() const
-{
-    QHash<int, int> result;
-    const int count = m_proxy.rowCount();
-    result.reserve(count);
-    for (int row = 0; row < count; ++row)
-        result.insert(m_proxy.torrentAt(row).id, row);
-    return result;
-}
-
-void MainWindow::restoreTorrentSelection(const QVector<int>& ids, int currentId, const QHash<int, int>& rows)
-{
-    if (!m_view->selectionModel())
-        return;
-
-    QVector<int> wanted = ids;
-    if (wanted.isEmpty() && currentId >= 0)
-        wanted.push_back(currentId);
-
-    QVector<int> selectedRows;
-    selectedRows.reserve(wanted.size());
-    int currentRow = -1;
-    int firstRow = -1;
-    for (int id : wanted) {
-        const int row = rows.value(id, -1);
-        if (row < 0)
-            continue;
-        selectedRows.push_back(row);
-        if (firstRow < 0)
-            firstRow = row;
-        if (id == currentId)
-            currentRow = row;
-    }
-    if (firstRow < 0)
-        return;
-    if (currentRow < 0)
-        currentRow = firstRow;
-
-    std::sort(selectedRows.begin(), selectedRows.end());
-    QItemSelection selection;
-    for (qsizetype first = 0; first < selectedRows.size();) {
-        qsizetype last = first;
-        while (last + 1 < selectedRows.size() && selectedRows[last + 1] == selectedRows[last] + 1)
-            ++last;
-        selection.select(m_proxy.index(selectedRows[first], TorrentModel::ColName),
-                         m_proxy.index(selectedRows[last], TorrentModel::ColName));
-        first = last + 1;
-    }
-    m_view->selectionModel()->select(selection,
-                                     QItemSelectionModel::ClearAndSelect |
-                                         QItemSelectionModel::Rows);
-    m_view->selectionModel()->setCurrentIndex(
-        m_proxy.index(currentRow, TorrentModel::ColName),
-        QItemSelectionModel::NoUpdate);
 }
 
 void MainWindow::onFilterChanged(int group, const QString& folder,
@@ -1752,9 +1733,7 @@ QVector<int> MainWindow::selectedTorrentIds() const
         const QModelIndex src = m_proxy.mapToSource(vi);
         if (!src.isValid())
             continue;
-        const auto& t = m_model.torrentAt(src.row());
-        if (!ids.contains(t.id))
-            ids.push_back(t.id);
+        ids.push_back(m_model.torrentAt(src.row()).id);
     }
     if (ids.isEmpty()) {
         const auto current = m_proxy.mapToSource(m_view->currentIndex());
@@ -1782,10 +1761,12 @@ tgui::RpcClient::RequestCallback MainWindow::afterTorrentChange(const QString& m
         rpc->getTorrents();
         if (id != m_currentId)
             return;
-        if (refresh == RefreshAfter::Files || refresh == RefreshAfter::Properties)
+        if (refresh == RefreshAfter::Files)
             rpc->getTorrentDetails(id);
-        if (refresh == RefreshAfter::Trackers || refresh == RefreshAfter::Properties)
+        if (refresh == RefreshAfter::Trackers)
             rpc->getTrackers(id);
+        if (refresh == RefreshAfter::Properties)
+            refreshFilesDetails();
     };
 }
 
@@ -1984,18 +1965,24 @@ void MainWindow::onShowProperties()
 /** Открывает свойства конкретного торрента на указанной вкладке. */
 void MainWindow::showProperties(int id, int page)
 {
-    if (!m_rpc)
+    const auto* summary = torrentById(id);
+    if (!m_rpc || !m_connected || !summary)
         return;
-    for (const auto& t : m_model.torrents()) {
-        if (t.id == id) {
-            const QPointer<tgui::RpcClient> rpc(m_rpc.get());
-            PropsDialog dlg(t, this, rpc->rpcVersion(), page);
-            if (dlg.exec() == QDialog::Accepted && rpc && !dlg.changes().isEmpty())
-                rpc->torrentAction("torrent-set", {id}, dlg.changes(),
-                                   afterTorrentChange("torrent-set", RefreshAfter::Properties, id));
+    const QPointer rpc(m_rpc.get());
+    m_rpc->getTorrentProperties(id, [this, rpc, id, page, hash = summary->hashString](const auto& detail) {
+        if (!rpc || rpc != m_rpc.get() || !m_connected)
+            return;
+        if (!detail || (hash && detail->hashString && hash != detail->hashString)) {
+            onReadError(tr("Properties"), tr("Torrent not found."));
             return;
         }
-    }
+        PropsDialog dialog(*detail, this, rpc->rpcVersion(), page);
+        if (dialog.exec() == QDialog::Accepted && rpc && rpc == m_rpc.get() && m_connected &&
+            !dialog.changes().isEmpty()) {
+            rpc->torrentAction("torrent-set", {id}, dialog.changes(),
+                               afterTorrentChange("torrent-set", RefreshAfter::Properties, id));
+        }
+    }, tgui::RpcClient::TorrentProperties::Settings);
 }
 
 void MainWindow::onMoveSelected()
@@ -2086,12 +2073,13 @@ void MainWindow::onContextMenu(const QPoint& pos)
 
     const auto selectedIds = selectedTorrentIds();
     const bool hasSel = m_connected && !selectedIds.isEmpty();
-    const auto connectSelectionAction = [this, rpc = QPointer(m_rpc.get()), selectedIds]
+    const QSet<int> selectedSet(selectedIds.cbegin(), selectedIds.cend());
+    const auto connectSelectionAction = [this, rpc = QPointer(m_rpc.get()), selectedSet]
                                        (QAction* action, auto handler) {
-        connect(action, &QAction::triggered, this, [this, rpc, selectedIds, handler] {
+        connect(action, &QAction::triggered, this, [this, rpc, selectedSet, handler] {
             const auto current = selectedTorrentIds();
             if (rpc && rpc == m_rpc.get() &&
-                std::is_permutation(current.cbegin(), current.cend(), selectedIds.cbegin(), selectedIds.cend()))
+                QSet<int>(current.cbegin(), current.cend()) == selectedSet)
                 (this->*handler)();
         });
     };
@@ -3081,9 +3069,23 @@ void MainWindow::onImportSettings()
 /** Экспортирует весь подтверждённый список в переносимый файл magnet-ссылок. */
 void MainWindow::onExportTorrentList()
 {
+    if (m_rpc && m_connected) {
+        const QPointer rpc(m_rpc.get());
+        m_rpc->getTorrentMagnets([this, rpc](const auto& torrents) {
+            if (rpc && rpc == m_rpc.get() && m_connected)
+                exportTorrentLinks(torrents.isEmpty() ? m_model.torrents() : torrents);
+        });
+        return;
+    }
+    exportTorrentLinks(m_model.torrents());
+}
+
+/** Сохраняет подтверждённые magnet-ссылки из @p torrents. */
+void MainWindow::exportTorrentLinks(const QVector<tgui::Torrent>& torrents)
+{
     QStringList links;
     QSet<QString> identifiers;
-    for (const auto& torrent : m_model.torrents()) {
+    for (const auto& torrent : torrents) {
         auto link = torrent.magnetLink.value_or(QString());
         if (link.isEmpty() && torrent.hashString)
             link = QStringLiteral("magnet:?xt=urn:btih:") + *torrent.hashString;
@@ -3300,10 +3302,8 @@ void MainWindow::openTorrentObject(int id, bool containingFolder)
 
 const tgui::Torrent* MainWindow::torrentById(int id) const
 {
-    for (const auto& torrent : m_model.torrents())
-        if (torrent.id == id)
-            return &torrent;
-    return nullptr;
+    const int row = m_model.rowForId(id);
+    return row < 0 ? nullptr : &m_model.torrentAt(row);
 }
 
 QString MainWindow::mappedLocalPath(const QString& remotePath) const
@@ -3402,18 +3402,29 @@ void MainWindow::onCopyMagnet()
     const auto ids = selectedTorrentIds();
     if (ids.size() != 1)
         return;
-    for (const auto& t : m_model.torrents()) {
-        if (t.id == ids.first()) {
-            QString magnet = t.magnetLink.value_or(QString());
-            if (magnet.isEmpty() && t.hashString.has_value())
-                magnet = QStringLiteral("magnet:?xt=urn:btih:%1").arg(t.hashString.value());
-            if (magnet.isEmpty())
-                return;
-            QApplication::clipboard()->setText(magnet);
-            showToast(tr("Magnet link copied"));
+    const auto* torrent = torrentById(ids.first());
+    if (!torrent)
+        return;
+    const auto copy = [this](QString magnet, const std::optional<QString>& hash) {
+        if (magnet.isEmpty() && hash)
+            magnet = QStringLiteral("magnet:?xt=urn:btih:") + *hash;
+        if (magnet.isEmpty())
             return;
-        }
+        QApplication::clipboard()->setText(magnet);
+        showToast(tr("Magnet link copied"));
+    };
+    if (!m_rpc || !m_connected || torrent->magnetLink) {
+        copy(torrent->magnetLink.value_or(QString{}), torrent->hashString);
+        return;
     }
+    const QPointer rpc(m_rpc.get());
+    m_rpc->getTorrentProperties(torrent->id, [this, rpc, copy, hash = torrent->hashString](const auto& detail) {
+        if (!rpc || rpc != m_rpc.get() || !m_connected)
+            return;
+        if (detail && hash && detail->hashString && hash != detail->hashString)
+            return;
+        copy(detail ? detail->magnetLink.value_or(QString{}) : QString{}, hash);
+    }, tgui::RpcClient::TorrentProperties::Magnet);
 }
 
 void MainWindow::onRemoveWithDataSelected()
@@ -3970,6 +3981,7 @@ void MainWindow::onTorrentDetailsReceived(const tgui::TorrentDetails& details)
     // Вкладка «Файлы» для выбранного торрента.
     if (details.id != m_currentId)
         return;
+    m_filePieceCount = details.pieceCount;
     // Прогресс проверки берём из текущего снимка списка торрентов (а не из
     // ответа деталей): так список и вкладка показывают одно и то же число.
     QVector<tgui::FileStat> files = details.files;
@@ -3978,7 +3990,7 @@ void MainWindow::onTorrentDetailsReceived(const tgui::TorrentDetails& details)
             continue;
         tgui::applyCheckProgress(files, t.status.value_or(-1),
                                  t.recheckProgress,
-                                 t.pieceCount.value_or(0));
+                                 t.pieceCount.value_or(details.pieceCount));
         break;
     }
     m_fileModel.setFiles(files);
@@ -4022,6 +4034,10 @@ void MainWindow::onSelectionChanged()
         return;
     }
     m_currentId = id;
+    ++m_generalRequest;
+    m_generalLoading = false;
+    m_generalDetails.reset();
+    m_filePieceCount = 0;
     m_fileModel.setFiles({});
     m_peerModel.setPeers({});
     m_trackerModel.setTrackers({});
@@ -4029,7 +4045,7 @@ void MainWindow::onSelectionChanged()
     if (id >= 0) {
         for (const auto& t : m_model.torrents()) {
             if (t.id == id) {
-                m_general->setTorrent(t);
+                updateGeneralTorrent(t);
                 break;
             }
         }
@@ -4040,9 +4056,7 @@ void MainWindow::onSelectionChanged()
         updateSelectionActions();
         return;
     }
-    m_rpc->getTorrentDetails(id);
-    m_rpc->getPeers(id);
-    m_rpc->getTrackers(id);
+    refreshFilesDetails();
     updateSelectionActions();
 }
 

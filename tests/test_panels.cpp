@@ -261,10 +261,11 @@ TEST(MainWindowLayout, RefreshKeepsSelectionAndDetails)
     ASSERT_EQ(w.currentId(), 3);
     ASSERT_NE(w.generalForm()->torrent(), nullptr);
 
-    // Автообновление (раз в 2 с): модель пересоздаётся — выбранное,
-    // строка и «General» должны остаться на том же торренте, а не
-    // сброситься на первую строку.
+    int selectionChanges = 0;
+    QObject::connect(view->selectionModel(), &QItemSelectionModel::selectionChanged, &w,
+        [&] { ++selectionChanges; });
     w.applyTorrentsUpdate(torrents);
+    EXPECT_EQ(selectionChanges, 0);
     ASSERT_EQ(w.currentId(), 3);
     ASSERT_NE(w.generalForm()->torrent(), nullptr);
     EXPECT_EQ(w.generalForm()->torrent()->id, 3);
@@ -761,7 +762,7 @@ TEST_P(TorrentAddOutcome, HandlesResultAndOriginalFile)
     RpcClient::Options options;
     options.url = server.url();
     window.setAutoConnect(options);
-    ASSERT_TRUE(waitForSettings([&] { return window.currentId() == 1 && server.requestCount() >= 6; }));
+    ASSERT_TRUE(waitForSettings([&] { return window.currentId() == 1 && server.requestCount() >= 4; }));
 
     QTemporaryDir sourceDir;
     ASSERT_TRUE(sourceDir.isValid());
@@ -974,7 +975,7 @@ TEST_F(MockDaemonWindow, ReconnectKeepsTorrentSnapshot)
         R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","download-dir":"/default","torrents":[{"id":7,"name":"Preserved"}]}})", {}});
     MainWindow window;
     connectWindow(window);
-    ASSERT_TRUE(waitForSettings([&] { return window.currentId() == 7 && server.requestCount() >= 6; }));
+    ASSERT_TRUE(waitForSettings([&] { return window.currentId() == 7 && server.requestCount() >= 4; }));
     int resets = 0;
     QObject::connect(&window.torrentModel(), &QAbstractItemModel::modelReset, &window, [&] { ++resets; });
 
@@ -2148,7 +2149,7 @@ TEST(TorrentActions, QueueSelectionIsBatchedAndRefreshWaitsForSuccess)
         return writes;
     };
     // Дожидаемся стартовых запросов, чтобы ответы очереди обслуживали только команды.
-    ASSERT_TRUE(waitForSettings([&] { return server.requestCount() >= 6; }));
+    ASSERT_TRUE(waitForSettings([&] { return server.requestCount() >= 4; }));
     const auto before = listReads();
     server.enqueue({200, R"({"result":"success","arguments":{}})", {}, 250});
     ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onQueueUp", Qt::DirectConnection));
@@ -2203,7 +2204,7 @@ TEST(TorrentActions, MoveSendsBatchAndVerifiesNewPath)
     ASSERT_TRUE(waitForSettings([&] { return window.torrentView()->model()->rowCount() == 3; }));
     window.torrentView()->selectAll();
     ASSERT_EQ(window.torrentView()->selectionModel()->selectedRows().size(), 3);
-    ASSERT_TRUE(waitForSettings([&] { return server.requestCount() >= 6; }));
+    ASSERT_TRUE(waitForSettings([&] { return server.requestCount() >= 4; }));
 
     bool accepted = false;
     QTimer::singleShot(0, [&] {
@@ -2309,7 +2310,7 @@ TEST(TorrentActions, ConfirmedRemovalCannotRetargetAnotherDaemon)
     });
     ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRemoveWithDataSelected", Qt::DirectConnection));
     ASSERT_TRUE(confirmed);
-    ASSERT_TRUE(waitForSettings([&] { return window.currentId() >= 0 && second.requestCount() >= 6; }));
+    ASSERT_TRUE(waitForSettings([&] { return window.currentId() >= 0 && second.requestCount() >= 4; }));
     for (const auto& request : first.requests() + second.requests())
         EXPECT_NE(request.rpcMethod, QStringLiteral("torrent-remove"));
     if (oldProfile.isValid()) settings.setValue("daemons/current", oldProfile);

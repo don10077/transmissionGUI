@@ -96,63 +96,80 @@ bool torrentIsActive(int rateDownload, int rateUpload)
     return rateDownload != 0 || rateUpload != 0;
 }
 
-bool parseTorrent(const QJsonObject& j, Torrent& t)
+bool parseTorrent(const QJsonObject& j, Torrent& t, bool partial)
 {
-    if (!j.contains("id"))
+    if (!j.value("id").isDouble() || j.value("id").toInt(-1) < 0)
         return false;
 
-    t.id = optInt(j, "id").value_or(0);
-    t.name = optStr(j, "name");
-    t.status = optInt(j, "status");
-    t.errorString = optStr(j, "errorString");
-    t.announceResponse = optStr(j, "announceResponse");
-    t.recheckProgress = optNum(j, "recheckProgress");
-    t.sizeWhenDone = optNum(j, "sizeWhenDone");
-    t.totalSize = optNum(j, "totalSize");
-    t.leftUntilDone = optNum(j, "leftUntilDone");
-    t.downloadedEver = optNum(j, "downloadedEver");
-    t.uploadedEver = optNum(j, "uploadedEver");
-    t.corruptEver = optNum(j, "corruptEver");
-    t.uploadRatio = optNum(j, "uploadRatio");
-    t.metadataPercentComplete = optNum(j, "metadataPercentComplete");
-    t.rateDownload = optInt(j, "rateDownload");
-    t.rateUpload = optInt(j, "rateUpload");
-    t.peersSendingToUs = optInt(j, "peersSendingToUs");
-    t.peersGettingFromUs = optInt(j, "peersGettingFromUs");
-    t.eta = optInt(j, "eta");
-    t.addedDate = optInt(j, "addedDate");
-    t.doneDate = optInt(j, "doneDate");
-    t.activityDate = optInt(j, "activityDate");
-    t.secondsSeeding = optInt(j, "secondsSeeding");
-    t.secondsDownloading = optInt(j, "secondsDownloading");
-    t.bandwidthPriority = optInt(j, "bandwidthPriority");
-    t.queuePosition = optInt(j, "queuePosition");
-    t.isPrivate = optBool(j, "isPrivate");
-    t.isFinished = optBool(j, "isFinished");
-    t.isStalled = optBool(j, "isStalled");
-    t.sequentialDownload = optBool(j, "sequential_download");
-    t.downloadDir = optStr(j, "downloadDir");
-    t.hashString = optStr(j, "hashString");
-    t.comment = optStr(j, "comment");
-    t.creator = optStr(j, "creator");
-    t.dateCreated = optInt(j, "dateCreated");
-    t.pieceCount = optInt(j, "pieceCount");
-    t.pieceSize = optNum(j, "pieceSize");
-    t.haveValid = optNum(j, "haveValid");
-    t.pieces = optStr(j, "pieces");
-    t.magnetLink = optStr(j, "magnetLink");
-    t.maxConnectedPeers = optInt(j, "maxConnectedPeers");
-    t.editableSettings = QJsonObject{};
+    if (!partial)
+        t = Torrent{};
+    t.id = j.value("id").toInt();
+    const auto assign = [&](auto& target, const char* key, auto read) {
+        if (!partial || j.contains(key))
+            target = read(j, key);
+    };
+    assign(t.name, "name", optStr);
+    assign(t.status, "status", optInt);
+    assign(t.errorString, "errorString", optStr);
+    assign(t.announceResponse, "announceResponse", optStr);
+    assign(t.recheckProgress, "recheckProgress", optNum);
+    assign(t.sizeWhenDone, "sizeWhenDone", optNum);
+    assign(t.totalSize, "totalSize", optNum);
+    assign(t.leftUntilDone, "leftUntilDone", optNum);
+    assign(t.downloadedEver, "downloadedEver", optNum);
+    assign(t.uploadedEver, "uploadedEver", optNum);
+    assign(t.corruptEver, "corruptEver", optNum);
+    assign(t.uploadRatio, "uploadRatio", optNum);
+    assign(t.metadataPercentComplete, "metadataPercentComplete", optNum);
+    assign(t.rateDownload, "rateDownload", optInt);
+    assign(t.rateUpload, "rateUpload", optInt);
+    assign(t.peersSendingToUs, "peersSendingToUs", optInt);
+    assign(t.peersGettingFromUs, "peersGettingFromUs", optInt);
+    assign(t.eta, "eta", optInt);
+    assign(t.addedDate, "addedDate", optInt);
+    assign(t.doneDate, "doneDate", optInt);
+    assign(t.activityDate, "activityDate", optInt);
+    assign(t.secondsSeeding, "secondsSeeding", optInt);
+    assign(t.secondsDownloading, "secondsDownloading", optInt);
+    assign(t.bandwidthPriority, "bandwidthPriority", optInt);
+    assign(t.queuePosition, "queuePosition", optInt);
+    assign(t.isPrivate, "isPrivate", optBool);
+    assign(t.isFinished, "isFinished", optBool);
+    assign(t.isStalled, "isStalled", optBool);
+    assign(t.sequentialDownload, "sequential_download", optBool);
+    assign(t.downloadDir, "downloadDir", optStr);
+    assign(t.hashString, "hashString", optStr);
+    assign(t.comment, "comment", optStr);
+    assign(t.creator, "creator", optStr);
+    assign(t.dateCreated, "dateCreated", optInt);
+    assign(t.pieceCount, "pieceCount", optInt);
+    assign(t.pieceSize, "pieceSize", optNum);
+    assign(t.haveValid, "haveValid", optNum);
+    assign(t.pieces, "pieces", optStr);
+    assign(t.magnetLink, "magnetLink", optStr);
+    assign(t.maxConnectedPeers, "maxConnectedPeers", optInt);
     for (const auto& key : QStringList{"downloadLimited","downloadLimit","uploadLimited","uploadLimit","seedRatioMode","seedRatioLimit","seedIdleMode","seedIdleLimit"})
         if (j.contains(key)) t.editableSettings.insert(key, j.value(key));
 
     const QJsonValue labels = j.value("labels");
     if (labels.isArray())
         t.labels = optStringList(labels.toArray());
+    else if (j.contains("labels"))
+        t.labels.reset();
 
     const QJsonValue ts = j.value("trackerStats");
-    if (ts.isArray())
+    if (j.contains("trackerStats")) {
         t.trackerStats = parseTrackerStats(ts.toArray());
+    } else if (j.value("trackers").isArray()) {
+        auto trackers = parseTrackerStats(j.value("trackers").toArray());
+        // Адреса приходят в облегчённом ответе, статистика сохраняется для того же трекера.
+        for (auto& tracker : trackers) {
+            const auto old = std::ranges::find(t.trackerStats, tracker.announce, &TrackerStat::announce);
+            if (old != t.trackerStats.cend())
+                tracker = *old;
+        }
+        t.trackerStats = std::move(trackers);
+    }
 
     return true;
 }
@@ -170,12 +187,18 @@ QVector<Torrent> parseTorrents(const QJsonArray& array)
     return result;
 }
 
-QVector<Torrent> parseTorrentsTable(const QJsonObject& body)
+QVector<QJsonObject> torrentObjects(const QJsonArray& arr)
 {
-    QVector<Torrent> result;
-    const QJsonArray arr = body.value("torrents").toArray();
-    if (arr.isEmpty() || !arr.first().isArray())
+    QVector<QJsonObject> result;
+    result.reserve(arr.size());
+    if (arr.isEmpty())
         return result;
+    if (!arr.first().isArray()) {
+        for (const auto& row : arr)
+            if (row.isObject())
+                result.append(row.toObject());
+        return result;
+    }
 
     const auto fields = arr.first().toArray();
     for (int i = 1; i < arr.size(); ++i) {
@@ -188,9 +211,23 @@ QVector<Torrent> parseTorrentsTable(const QJsonObject& body)
             if (fields.at(f).isString())
                 obj.insert(fields.at(f).toString(), row.at(f));
         }
-        Torrent t;
-        if (parseTorrent(obj, t))
-            result.push_back(t);
+        result.append(std::move(obj));
+    }
+    return result;
+}
+
+QVector<Torrent> parseTorrentsTable(const QJsonObject& body)
+{
+    const auto array = body.value("torrents").toArray();
+    if (array.isEmpty() || !array.first().isArray())
+        return {};
+    QVector<Torrent> result;
+    const auto objects = torrentObjects(array);
+    result.reserve(objects.size());
+    for (const auto& object : objects) {
+        Torrent torrent;
+        if (parseTorrent(object, torrent))
+            result.append(std::move(torrent));
     }
     return result;
 }

@@ -386,10 +386,38 @@ TEST(ModelStatus, Helpers)
 }
 
 #include <QCoreApplication>
+#include <QAbstractItemModelTester>
 #include <QVector>
 
 #include "groupedproxy.h"
 #include "torrentmodel.h"
+
+TEST(TorrentModel, IncrementalRowsKeepPersistentIndexes)
+{
+    TorrentModel model;
+    QAbstractItemModelTester tester(&model, QAbstractItemModelTester::FailureReportingMode::Fatal);
+    tgui::Torrent removed;
+    removed.id = 1;
+    tgui::Torrent retained;
+    retained.id = 2;
+    retained.name = "retained";
+    tgui::Torrent inserted;
+    inserted.id = 3;
+    int resets = 0;
+    QObject::connect(&model, &QAbstractItemModel::modelReset, &model, [&] { ++resets; });
+    ASSERT_TRUE(model.setTorrents({removed, retained}));
+    const QPersistentModelIndex index = model.index(1, TorrentModel::ColName);
+    ASSERT_TRUE(model.setTorrents({inserted, retained}));
+    EXPECT_TRUE(index.isValid());
+    EXPECT_EQ(index.row(), 0);
+    EXPECT_EQ(index.data().toString(), QStringLiteral("retained"));
+    EXPECT_EQ(model.rowForId(1), -1);
+    EXPECT_EQ(model.rowForId(3), 1);
+    retained.name = "renamed";
+    EXPECT_FALSE(model.setTorrents({retained, inserted}));
+    EXPECT_EQ(index.data().toString(), QStringLiteral("renamed"));
+    EXPECT_EQ(resets, 0);
+}
 
 namespace {
 

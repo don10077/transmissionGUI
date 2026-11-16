@@ -326,6 +326,9 @@ TEST_F(RpcClientTest, GetTorrentsRpc18FieldsAndTable)
     EXPECT_TRUE(fields.contains("sequential_download"));
     EXPECT_TRUE(fields.contains("downloadDir"));
     EXPECT_TRUE(fields.contains("trackerStats"));
+    EXPECT_FALSE(fields.contains("pieces"));
+    EXPECT_FALSE(fields.contains("magnetLink"));
+    EXPECT_FALSE(fields.contains("comment"));
     EXPECT_TRUE(fields.contains("uploadRatio"));
     // BUG-01: отсутствующие до фикса поля
     EXPECT_TRUE(fields.contains("eta"));
@@ -338,6 +341,39 @@ TEST_F(RpcClientTest, GetTorrentsRpc18FieldsAndTable)
     QStringList sorted = fields;
     std::sort(sorted.begin(), sorted.end());
     EXPECT_EQ(fields, sorted);
+}
+
+TEST_F(RpcClientTest, PollMergesChangedRowsAndRemovesMissingIds)
+{
+    connectWith(16);
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[
+        {"id":1,"name":"Keep","rateDownload":10,"trackerStats":[{"announce":"https://tracker.test","seederCount":8}]},
+        {"id":2,"name":"Unchanged"},{"id":3,"name":"Removed"}]}})", {}});
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[
+        ["id","rateDownload","trackers"],[1,50,[{"announce":"https://tracker.test"}]]],"removed":[3]}})", {}});
+    QEventLoop loop;
+    int updates = 0;
+    QVector<Torrent> result;
+    QObject::connect(client.get(), &RpcClient::torrentsReceived, &loop, [&](const QVector<Torrent>& torrents) {
+        result = torrents;
+        if (++updates == 1)
+            client->pollTorrents();
+        else
+            loop.quit();
+    });
+    QTimer::singleShot(2500, &loop, &QEventLoop::quit);
+    client->getTorrents();
+    loop.exec();
+    ASSERT_EQ(updates, 2);
+    ASSERT_EQ(result.size(), 2);
+    EXPECT_EQ(result.at(0).name, std::optional<QString>{"Keep"});
+    EXPECT_EQ(result.at(0).rateDownload, 50);
+    ASSERT_EQ(result.at(0).trackerStats.size(), 1);
+    EXPECT_EQ(result.at(0).trackerStats.first().seederCount, 8);
+    EXPECT_EQ(result.at(1).id, 2);
+    const auto request = server.requests().last().arguments;
+    EXPECT_EQ(request.value("ids").toString(), "recently-active");
+    EXPECT_FALSE(request.value("fields").toArray().contains("trackerStats"));
 }
 
 TEST_F(RpcClientTest, GetTorrentsOldRpcGates)

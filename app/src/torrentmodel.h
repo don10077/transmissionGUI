@@ -69,7 +69,8 @@ public:
 
     explicit TorrentModel(QObject* parent = nullptr);
 
-    void setTorrents(const QVector<tgui::Torrent>& torrents);
+    bool setTorrents(const QVector<tgui::Torrent>& torrents);
+    int rowForId(int id) const;
     void setSmoothRates(bool enabled);
     QPair<double, double> displayedRates(const tgui::Torrent& torrent) const;
     const QVector<tgui::Torrent>& torrents() const { return m_torrents; }
@@ -87,6 +88,8 @@ public:
 
 private:
     QVector<tgui::Torrent> m_torrents;
+    mutable QHash<int, int> m_rowById;
+    mutable bool m_rowsChanged = false;
     bool m_smoothRates = false;
     QHash<int, QPair<double, double>> m_displayedRates;
 };

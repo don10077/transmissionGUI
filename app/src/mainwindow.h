@@ -211,17 +211,19 @@ private:
     void updateRefreshSchedule();
     void saveWindowLayout();
     void updateFilterPanel(const QVector<tgui::Torrent>& torrents);
-    void updateSelectionActions();
+    void updateSelectionActions(qsizetype count = -1);
     void updateInfoTitle();
+    void updateInfoTitleWithCount(qsizetype count);
     void updateLabelUi();
     // Обновить видимую вкладку данных выбранного торрента («Файлы»/«Пиры»):
     // проценты файлов и набор пиров меняются во время проверки и загрузки —
     // одного запроса при выборе мало (в старом transgui детали
     // перезапрашивались каждый цикл обновления).
     void refreshFilesDetails();
+    void refreshGeneralDetails();
+    void updateGeneralTorrent(const tgui::Torrent& torrent);
+    void exportTorrentLinks(const QVector<tgui::Torrent>& torrents);
     void applyViewVisibility();
-    QHash<int, int> visibleTorrentRows() const;
-    void restoreTorrentSelection(const QVector<int>& ids, int currentId, const QHash<int, int>& rows);
     enum class AddOrigin { Interactive, WatchFolder, External };
     struct PendingAdd {
         tgui::RpcClient::AddTorrent params;
@@ -323,6 +325,10 @@ private:
     QLineEdit* m_searchEdit = nullptr;
     // ID торрента, для которого загружаются вкладки Файлы/Пиры/Трекеры.
     int m_currentId = -1;
+    int m_filePieceCount = 0;
+    quint64 m_generalRequest = 0;
+    bool m_generalLoading = false;
+    std::optional<tgui::Torrent> m_generalDetails;
     // true только в момент modelReset при автообновлении: onSelectionChanged
     // в этот момент не должен сбрасывать m_currentId и детали.
     bool m_refreshing = false;
