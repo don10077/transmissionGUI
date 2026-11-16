@@ -1,0 +1,34 @@
+# Build-каталоги CMake
+build/
+design/
+CMakeFiles/
+CMakeUserPresets.json
+compile_commands.json
+Release/
+_deps/
+
+# Объекты и артефакты
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.exe
+!tools/*.exe
+WORKFLOW.md
+problem.md
+test_err.txt
+test_out.txt
+*.torrent
+*.log
+*.bin
+*.bak
+*.txt
+*.ps1
+!tools/package-windows.ps1
+!tools/package-installer.ps1
+WORKFLOW.archive.md
+PARITY_PLAN.md
+tmp_*
+/transmissiongui.cmd
+/transmissiongui-daemon.cmd
