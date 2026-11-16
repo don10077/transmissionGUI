@@ -178,6 +178,7 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
     setWindowTitle(QStringLiteral("transmissionGUI"));
     setWindowIcon(tgui::theme::icon(tgui::theme::Icon::App));
     resize(1200, 780);
+    setAcceptDrops(true);
 
     m_proxy.setSourceModel(&m_model);
 
@@ -229,11 +230,8 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
 
     // После переноса демон может ответить раньше, чем обновится список.
     m_moveVerifyTimer.setSingleShot(true);
-    m_moveVerifyTimer.setInterval(250);
-    connect(&m_moveVerifyTimer, &QTimer::timeout, this, [this] {
-        if (m_rpc && m_connected)
-            m_rpc->getTorrents();
-    });
+    m_moveVerifyTimer.setInterval(1000);
+    connect(&m_moveVerifyTimer, &QTimer::timeout, this, &MainWindow::checkPendingMove);
 
     {
         QSettings s;
@@ -905,26 +903,9 @@ void MainWindow::createActions()
         if (accepted)
             m_searchEdit->setText(text);
     });
-    auto applyStyle = [this](int value) {
-        if (value < 0 || value > 2) value = 2;
-        const Qt::ToolButtonStyle modes[]{Qt::ToolButtonIconOnly, Qt::ToolButtonTextBesideIcon, Qt::ToolButtonTextUnderIcon};
-        m_toolBar->setToolButtonStyle(modes[value]);
-        m_toolBar->setIconSize(value == 2 ? QSize(22, 22) : QSize(18, 18));
-        if (value == 0) {
-            m_toolBar->setStyleSheet(QStringLiteral(
-                "QToolBar > QToolButton[toolbarAction=\"true\"] { min-width: 18px; padding: 5px; }"
-                "QToolBar > QToolButton#queueButton { padding-right: 16px; }"));
-        } else if (value == 1) {
-            m_toolBar->setStyleSheet(QStringLiteral(
-                "QToolBar > QToolButton[toolbarAction=\"true\"] { padding: 4px 7px; }"
-                "QToolBar > QToolButton#queueButton { padding-right: 17px; }"));
-        } else {
-            m_toolBar->setStyleSheet(QString());
-        }
-    };
-    applyStyle(QSettings().value("ui/toolbarButtonStyle", 2).toInt());
+    applyToolbarStyle(QSettings().value("ui/toolbarButtonStyle", 2).toInt());
     m_toolBar->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(m_toolBar, &QWidget::customContextMenuRequested, this, [this, applyStyle](const QPoint& point) {
+    connect(m_toolBar, &QWidget::customContextMenuRequested, this, [this](const QPoint& point) {
         QMenu menu(this);
         QActionGroup group(&menu);
         const QStringList names{tr("Icons only"), tr("Text beside icons"), tr("Text under icons")};
@@ -933,8 +914,9 @@ void MainWindow::createActions()
             action->setCheckable(true); group.addAction(action);
             const Qt::ToolButtonStyle modes[]{Qt::ToolButtonIconOnly, Qt::ToolButtonTextBesideIcon, Qt::ToolButtonTextUnderIcon};
             action->setChecked(m_toolBar->toolButtonStyle() == modes[value]);
-            connect(action, &QAction::triggered, &menu, [applyStyle, value] {
-                applyStyle(value); QSettings().setValue("ui/toolbarButtonStyle", value);
+            connect(action, &QAction::triggered, &menu, [this, value] {
+                applyToolbarStyle(value);
+                QSettings().setValue("ui/toolbarButtonStyle", value);
             });
         }
         menu.addSeparator();
@@ -943,6 +925,28 @@ void MainWindow::createActions()
         menu.exec(m_toolBar->mapToGlobal(point));
     });
 
+}
+
+/** Применяет режим кнопок, размеры значков и отступы панели инструментов. */
+void MainWindow::applyToolbarStyle(int value)
+{
+    if (value < 0 || value > 2)
+        value = 2;
+    constexpr Qt::ToolButtonStyle modes[]{Qt::ToolButtonIconOnly, Qt::ToolButtonTextBesideIcon,
+                                          Qt::ToolButtonTextUnderIcon};
+    m_toolBar->setToolButtonStyle(modes[value]);
+    m_toolBar->setIconSize(value == 2 ? QSize(22, 22) : QSize(18, 18));
+    if (value == 0) {
+        m_toolBar->setStyleSheet(QStringLiteral(
+            "QToolBar > QToolButton[toolbarAction=\"true\"] { min-width: 18px; padding: 5px; }"
+            "QToolBar > QToolButton#queueButton { padding-right: 16px; }"));
+    } else if (value == 1) {
+        m_toolBar->setStyleSheet(QStringLiteral(
+            "QToolBar > QToolButton[toolbarAction=\"true\"] { padding: 4px 7px; }"
+            "QToolBar > QToolButton#queueButton { padding-right: 17px; }"));
+    } else {
+        m_toolBar->setStyleSheet(QString());
+    }
 }
 
 void MainWindow::setConnectedUi(bool on)
@@ -1019,7 +1023,7 @@ void MainWindow::updateLabelUi()
 void MainWindow::onConnect()
 {
     if (m_reconnectOptions) {
-        startConnect(*std::exchange(m_reconnectOptions, std::nullopt));
+        startConnect(*std::exchange(m_reconnectOptions, std::nullopt), true);
         return;
     }
     if (m_rpc && !m_connected)
@@ -1037,15 +1041,15 @@ void MainWindow::onConnect()
 
 void MainWindow::startConnect(const tgui::RpcClient::Options& opts, bool retry)
 {
+    if (!retry && (m_rpc || m_reconnectOptions))
+        clearConnection();
     m_reconnectTimer.stop();
     m_reconnectOptions.reset();
+    m_reconnecting = retry;
     if (!retry)
         m_reconnectDelayMs = 1000;
     m_watchTimer.stop();
     m_watchCandidates.clear();
-    m_addQueue.clear();
-    m_addingTorrent = false;
-    m_addSelectionId = -1;
     m_rpc = std::make_unique<tgui::RpcClient>(opts, this);
     connect(m_rpc.get(), &tgui::RpcClient::connected, this, &MainWindow::onConnected);
     connect(m_rpc.get(), &tgui::RpcClient::sessionInfoReceived, this,
@@ -1069,7 +1073,10 @@ void MainWindow::startConnect(const tgui::RpcClient::Options& opts, bool retry)
     connect(m_rpc.get(), &tgui::RpcClient::clientTlsPassphraseRequired, this,
             &MainWindow::onClientTlsPassphraseRequired);
     connect(m_rpc.get(), &tgui::RpcClient::torrentsReceived, this,
-            &MainWindow::onTorrentsReceived);
+            [this](const QVector<tgui::Torrent>& torrents) {
+        if (m_connected)
+            onTorrentsReceived(torrents);
+    });
     connect(m_rpc.get(), &tgui::RpcClient::torrentDetailsReceived, this,
             &MainWindow::onTorrentDetailsReceived);
     connect(m_rpc.get(), &tgui::RpcClient::peersReceived, this,
@@ -1085,7 +1092,7 @@ void MainWindow::startConnect(const tgui::RpcClient::Options& opts, bool retry)
     statusBar()->showMessage(tr("Connecting to %1…").arg(opts.url.toDisplayString(QUrl::RemoveUserInfo)), 5000);
     setConnectedUi(false);
     setConnectionState(tr("Connecting…"), tgui::theme::color::accent);
-    m_rpc->connectToDaemon();
+    m_rpc->connectToDaemon(retry);
 }
 
 void MainWindow::setAutoConnect(const tgui::RpcClient::Options& opts)
@@ -1141,6 +1148,32 @@ void MainWindow::openExternalTorrents(const QStringList& inputs)
     }
 }
 
+/** Запрашивает согласие на добавление отложенных файлов в текущее подключение. */
+void MainWindow::confirmPendingExternalTorrents()
+{
+    if (m_pendingExternalTorrents.isEmpty() || !m_rpc || !m_connected)
+        return;
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    const auto profile = m_connectionProfile;
+    const auto destination = profile.isEmpty()
+        ? rpc->options().url.toDisplayString(QUrl::RemoveUserInfo) : profile;
+    auto* confirm = new QMessageBox(QMessageBox::Question, tr("Add pending torrents"),
+        tr("Add the pending torrents (%1) to %2?").arg(m_pendingExternalTorrents.size()).arg(destination),
+        QMessageBox::Yes | QMessageBox::No, this);
+    confirm->setTextFormat(Qt::PlainText);
+    confirm->setDefaultButton(QMessageBox::No);
+    confirm->setAttribute(Qt::WA_DeleteOnClose);
+    connect(rpc.data(), &QObject::destroyed, confirm, &QDialog::reject);
+    connect(confirm, &QDialog::finished, this, [this, rpc, profile](int result) {
+        if (!rpc || rpc != m_rpc.get() || !m_connected || profile != m_connectionProfile)
+            return;
+        auto inputs = std::exchange(m_pendingExternalTorrents, {});
+        if (result == QMessageBox::Yes)
+            openExternalTorrents(inputs);
+    });
+    confirm->open();
+}
+
 void MainWindow::maybeAutoConnect()
 {
     // W08: приоритет — параметры из командной строки; иначе — текущий профиль (ConnOptions).
@@ -1162,13 +1195,20 @@ void MainWindow::maybeAutoConnect()
 
 void MainWindow::onDisconnect()
 {
+    const auto discarded = m_addQueue.size();
     m_connectionProfile.clear();
     m_reconnectTimer.stop();
     m_reconnectOptions.reset();
     m_reconnectDelayMs = 1000;
     clearConnection();
     setConnectionState(tr("Disconnected"), tgui::theme::palette().statusOfflineDot);
-    statusBar()->showMessage(tr("Disconnected"), 5000);
+    if (discarded > 0) {
+        const auto notice = tr("Add queue cleared. Torrents not added: %1.").arg(discarded);
+        statusBar()->showMessage(notice, 8000);
+        showToast(notice);
+    } else {
+        statusBar()->showMessage(tr("Disconnected"), 5000);
+    }
 }
 
 /** Блокирует действия на старом соединении до завершения его обработчиков. */
@@ -1188,9 +1228,13 @@ void MainWindow::clearConnection()
     m_watchCandidates.clear();
     m_movePendingIds.clear();
     m_movePendingTarget.clear();
-    m_moveVerifyAttempts = 0;
+    ++m_moveGeneration;
     m_addQueue.clear();
     m_addingTorrent = false;
+    m_reconnecting = false;
+    m_addInterrupted = false;
+    m_unconfiguredTorrentId = -1;
+    m_unconfiguredTorrentHash.clear();
     m_addSelectionId = -1;
     m_rpc.reset();
     m_model.setTorrents({});
@@ -1221,8 +1265,9 @@ void MainWindow::onConnected(const tgui::SessionInfo& info)
     m_rpc->getTorrents();
     m_rpc->getSessionStats();
     updateWatchFolder();
+    checkPendingMove();
     statusBar()->showMessage(tr("Connected"), 3000);
-    openExternalTorrents(std::exchange(m_pendingExternalTorrents, {}));
+    confirmPendingExternalTorrents();
 }
 
 void MainWindow::onConnectionFailed(const QString& error)
@@ -1233,17 +1278,19 @@ void MainWindow::onConnectionFailed(const QString& error)
 /** Планирует новую сессию после временного сбоя или показывает постоянную ошибку. */
 void MainWindow::handleConnectionError(const QString& error, bool retry)
 {
+    m_addInterrupted = m_addInterrupted || m_addingTorrent;
     suspendConnection();
     const QPointer<tgui::RpcClient> failed(m_rpc.get());
     QTimer::singleShot(0, this, [this, failed, error, retry] {
         if (!failed || failed != m_rpc.get())
             return;
         const auto opts = failed->options();
-        clearConnection();
         bool reconnect = retry;
         if (reconnect && !m_connectionProfile.isEmpty())
             reconnect = ProfileStore().profile(m_connectionProfile).alwaysReconnect;
         if (reconnect) {
+            m_addingTorrent = false;
+            m_rpc.reset();
             m_reconnectOptions = opts;
             const int delay = m_reconnectDelayMs;
             m_reconnectDelayMs = std::min(delay * 2, 60000);
@@ -1253,6 +1300,7 @@ void MainWindow::handleConnectionError(const QString& error, bool retry)
             statusBar()->showMessage(tr("Retrying in %1 s: %2").arg(delay / 1000).arg(error), delay);
             return;
         }
+        clearConnection();
         m_reconnectDelayMs = 1000;
         setConnectionState(tr("Connection failed"), tgui::theme::color::red);
         statusBar()->showMessage(tr("Disconnected"), 5000);
@@ -1306,7 +1354,8 @@ void MainWindow::onAuthenticationFailed(const QString& error)
                     store.save(profile);
                 }
             }
-            startConnect(opts);
+            const auto& previous = rpc->options();
+            startConnect(opts, m_reconnecting && opts.url == previous.url && opts.rpcPath == previous.rpcPath);
         });
         dialog->open();
     });
@@ -1336,7 +1385,7 @@ void MainWindow::onClientTlsPassphraseRequired()
             }
             auto opts = rpc->options();
             opts.clientKeyPassphrase = dialog->textValue().toUtf8();
-            startConnect(opts);
+            startConnect(opts, m_reconnecting);
         });
         dialog->open();
     });
@@ -1508,7 +1557,8 @@ void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
     else
         m_view->verticalScrollBar()->setValue(prevScroll);
     updateSelectionActions();
-    checkPendingMove();
+    if (m_connected && std::exchange(m_reconnecting, false))
+        resumeAddQueue(torrents);
 }
 
 QHash<int, int> MainWindow::visibleTorrentRows() const
@@ -1963,7 +2013,9 @@ void MainWindow::onMoveSelected()
 
     const QPointer<tgui::RpcClient> rpc(m_rpc.get());
     const auto profile = m_connectionProfile;
-    MoveDialog dlg(found->downloadDir.value_or(QString()), this, profile);
+    const auto& options = rpc->options();
+    const bool localDaemon = options.proxy.type() == QNetworkProxy::NoProxy && tgui::isLocalDaemon(options.url);
+    MoveDialog dlg(found->downloadDir.value_or(QString()), this, profile, localDaemon);
     if (ids.size() > 1)
         dlg.setWindowTitle(tr("Move torrents - %1 selected").arg(ids.size()));
     if (dlg.exec() != QDialog::Accepted || !rpc || rpc != m_rpc.get() ||
@@ -1975,7 +2027,7 @@ void MainWindow::onMoveSelected()
     if (target.isEmpty())
         return;
     rpc->setLocation(ids, target, moveData,
-                     [this, rpc, ids, target, profile](const tgui::JsonRpcResult& result) {
+                     [this, rpc, ids, target, profile, moveData](const tgui::JsonRpcResult& result) {
         if (!rpc || rpc != m_rpc.get())
             return;
         if (!result.ok) {
@@ -1985,11 +2037,13 @@ void MainWindow::onMoveSelected()
         }
         ProfilePreferences(profile).rememberMove(target);
         statusBar()->showMessage(tr("Move started: %1").arg(target), 4000);
-        // Демон не возвращает новый путь в ответе — проверяем его в списке.
+        // Демон не возвращает новый путь в ответе.
+        m_moveVerifyTimer.stop();
         m_movePendingIds = ids;
         m_movePendingTarget = target;
-        m_moveVerifyAttempts = 0;
-        rpc->getTorrents();
+        m_moveDeadline = QDeadlineTimer(moveData ? 120000 : 10000);
+        ++m_moveGeneration;
+        checkPendingMove();
     });
 }
 
@@ -2176,7 +2230,7 @@ void MainWindow::onAddTorrent()
 void MainWindow::startAdd(const tgui::RpcClient::AddTorrent& params, AddOrigin origin)
 {
     m_addQueue.enqueue({params, origin, m_connectionProfile});
-    if (!m_addingTorrent)
+    if (!m_addingTorrent && !m_reconnecting)
         addNextTorrent();
 }
 
@@ -2462,6 +2516,10 @@ void MainWindow::submitTorrent(PendingAdd pending, QByteArray sourceBytes, std::
             finishAdd(rpc);
             return;
         }
+        m_unconfiguredTorrentId = id;
+        m_unconfiguredTorrentHash = added.value("hashString").toString();
+        if (!m_connected)
+            return;
         rpc->getTorrentDetails(id, [this, rpc, id, start, params, skipDialog, sourceBytes, fromWatchFolder, profile,
                                    finishWatch, choices, metainfo](const auto& details) {
             if (!rpc || rpc != m_rpc.get() || !m_connected)
@@ -2504,6 +2562,7 @@ void MainWindow::submitTorrent(PendingAdd pending, QByteArray sourceBytes, std::
             if (choices && std::ranges::equal(choices->files, details->files, [](const auto& preview, const auto& actual) {
                     return preview.index == actual.index && preview.name == actual.name && preview.size == actual.size;
                 })) {
+                m_unconfiguredTorrentHash.clear();
                 rpc->configureAddedTorrent(*details, choices->options, choices->saveAs, choices->unwanted, configured);
                 return;
             }
@@ -2513,6 +2572,7 @@ void MainWindow::submitTorrent(PendingAdd pending, QByteArray sourceBytes, std::
                 options.start = start;
                 options.sequential = options.sequential ||
                     tgui::automaticSequential(details->files, rpc->rpcVersion());
+                m_unconfiguredTorrentHash.clear();
                 rpc->configureAddedTorrent(*details, options, {}, {}, configured);
                 return;
             }
@@ -2523,10 +2583,13 @@ void MainWindow::submitTorrent(PendingAdd pending, QByteArray sourceBytes, std::
             connect(dialog, &QDialog::finished, this, [this, rpc, dialog, remove, details, configured](int dialogResult) {
                 if (!rpc || rpc != m_rpc.get())
                     return;
+                if (!m_connected)
+                    return;
                 if (dialogResult != QDialog::Accepted) {
                     remove(true);
                     return;
                 }
+                m_unconfiguredTorrentHash.clear();
                 rpc->configureAddedTorrent(*details, dialog->options(), dialog->saveAs(),
                                            dialog->unwanted(), configured);
             });
@@ -2879,41 +2942,69 @@ void MainWindow::onSetLabels()
     chipsGrid->setHorizontalSpacing(12);
     chipsGrid->setVerticalSpacing(6);
     QList<QCheckBox*> chips;
-    int chipRow = 0;
-    int chipColumn = 0;
-    for (const auto& label : m_labels) {
-        auto* chip = new QCheckBox(label, &dialog);
-        chip->setIcon(torrentlabels::labelIcon(label));
-        chip->setChecked(current.contains(label));
-        chipsGrid->addWidget(chip, chipRow, chipColumn);
-        chips.append(chip);
-        if (++chipColumn == 2) {
-            chipColumn = 0;
-            ++chipRow;
-        }
-    }
     chipsGrid->setColumnStretch(0, 1);
     chipsGrid->setColumnStretch(1, 1);
     root->addLayout(chipsGrid);
 
-    QStringList others;
-    for (const auto& label : current)
-        if (!m_labels.contains(label))
-            others.append(label);
     auto* otherRow = new QHBoxLayout;
     otherRow->setSpacing(8);
     otherRow->addWidget(new QLabel(tr("Other labels:"), &dialog));
-    auto* other = new QLineEdit(others.join(QStringLiteral(", ")), &dialog);
+    auto* other = new QLineEdit(&dialog);
     other->setObjectName(QStringLiteral("otherLabels"));
     otherRow->addWidget(other, 1);
     root->addLayout(otherRow);
 
+    const auto rebuild = [&](const QStringList& selected) {
+        qDeleteAll(chips);
+        chips.clear();
+        for (const auto& label : m_labels) {
+            auto* chip = new QCheckBox(label, &dialog);
+            chip->setIcon(torrentlabels::labelIcon(label));
+            chip->setChecked(selected.contains(label));
+            chipsGrid->addWidget(chip, chips.size() / 2, chips.size() % 2);
+            chips.append(chip);
+        }
+        QStringList others;
+        for (const auto& label : selected) {
+            if (!m_labels.contains(label))
+                others.append(label);
+        }
+        other->setText(others.join(QStringLiteral(", ")));
+    };
+    const auto selectedLabels = [&] {
+        QStringList labels;
+        for (auto* chip : chips) {
+            if (chip->isChecked())
+                labels.append(chip->text());
+        }
+        for (auto label : other->text().split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+            label = label.trimmed();
+            if (!label.isEmpty() && !labels.contains(label))
+                labels.append(label);
+        }
+        return labels;
+    };
+    rebuild(current);
+
     auto* editCatalog = new QPushButton(tr("Edit label catalog…"), &dialog);
     editCatalog->setObjectName(QStringLiteral("propertyLink"));
-    connect(editCatalog, &QPushButton::clicked, &dialog, [this] {
+    connect(editCatalog, &QPushButton::clicked, &dialog, [&] {
+        auto selected = selectedLabels();
         OptionsDialog options(this, m_rpc ? m_rpc->rpcVersion() : 0, m_rpc.get(), m_connectionProfile);
         options.setCurrentPage(OptionsDialog::LabelsPage);
+        connect(&options, &OptionsDialog::labelRenamed, &options, [&](const QString& from, const QString& to) {
+            for (auto* labels : {&selected, &current}) {
+                for (auto& label : *labels) {
+                    if (label == from)
+                        label = to;
+                }
+                labels->removeDuplicates();
+            }
+        });
         options.exec();
+        m_labels = torrentlabels::configured();
+        rebuild(selected);
+        updateFilterPanel(m_model.torrents());
     });
     root->addWidget(editCatalog, 0, Qt::AlignLeft);
 
@@ -2924,15 +3015,7 @@ void MainWindow::onSetLabels()
     tgui::theme::decorateDialog(&dialog);
     if (dialog.exec() != QDialog::Accepted || !rpc)
         return;
-    QStringList labels;
-    for (auto* chip : chips)
-        if (chip->isChecked())
-            labels.append(chip->text());
-    for (auto label : other->text().split(QLatin1Char(','), Qt::SkipEmptyParts)) {
-        label = label.trimmed();
-        if (!label.isEmpty() && !labels.contains(label))
-            labels.append(label);
-    }
+    const auto labels = selectedLabels();
     if (ids.size() == 1 && labels == current)
         return;
     QJsonArray torrentIds;
@@ -3221,7 +3304,7 @@ QString MainWindow::mappedLocalPath(const QString& remotePath) const
 /** Сверяет downloadDir выбранных торрентов с целью переноса после ответа демона. */
 void MainWindow::checkPendingMove()
 {
-    if (m_movePendingIds.isEmpty())
+    if (!m_rpc || !m_connected || m_movePendingIds.isEmpty())
         return;
     const auto normalize = [](const QString& path) {
         QString value = QDir::fromNativeSeparators(path.trimmed());
@@ -3233,33 +3316,35 @@ void MainWindow::checkPendingMove()
         return value;
 #endif
     };
-    const QString target = normalize(m_movePendingTarget);
-    bool confirmed = true;
-    for (const int id : m_movePendingIds) {
-        const tgui::Torrent* torrent = torrentById(id);
-        if (!torrent || normalize(torrent->downloadDir.value_or(QString())) != target) {
-            confirmed = false;
-            break;
-        }
-    }
-    if (confirmed) {
-        statusBar()->showMessage(tr("Move completed: %1").arg(m_movePendingTarget), 5000);
-        m_movePendingIds.clear();
-        m_movePendingTarget.clear();
-        m_moveVerifyAttempts = 0;
-        return;
-    }
-    // Даём демону несколько циклов на обновление пути (образец ждёт до 20 с).
-    if (++m_moveVerifyAttempts >= 20) {
-        statusBar()->showMessage(
-            tr("Move finished, but the daemon still reports another folder."), 8000);
-        m_movePendingIds.clear();
-        m_movePendingTarget.clear();
-        m_moveVerifyAttempts = 0;
-        return;
-    }
-    if (m_rpc && m_connected && !m_moveVerifyTimer.isActive())
-        m_moveVerifyTimer.start();
+    const auto target = normalize(m_movePendingTarget);
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    rpc->getTorrentLocations(m_movePendingIds,
+        [this, rpc, generation = m_moveGeneration, target, normalize](const tgui::JsonRpcResult& result) {
+            if (!rpc || rpc != m_rpc.get() || !m_connected || generation != m_moveGeneration)
+                return;
+            QSet<int> matching;
+            if (result.ok) {
+                for (const auto& row : result.arguments.value("torrents").toArray()) {
+                    const auto item = row.toObject();
+                    if (normalize(item.value("downloadDir").toString()) == target)
+                        matching.insert(item.value("id").toInt(-1));
+                }
+            }
+            const bool confirmed = std::ranges::all_of(m_movePendingIds,
+                [&](int id) { return matching.contains(id); });
+            if (!confirmed && !m_moveDeadline.hasExpired()) {
+                m_moveVerifyTimer.start();
+                return;
+            }
+            if (confirmed) {
+                statusBar()->showMessage(tr("Move completed: %1").arg(m_movePendingTarget), 5000);
+                rpc->getTorrents();
+            } else {
+                statusBar()->showMessage(tr("Could not confirm the new torrent folder."), 8000);
+            }
+            m_movePendingIds.clear();
+            m_movePendingTarget.clear();
+        });
 }
 
 // Открыть локальный путь: каталог — в проводнике; файл — по умолчанию запустить;
@@ -3595,7 +3680,11 @@ void MainWindow::onUpdateGeoIp()
 
 void MainWindow::onExit()
 {
-    close();
+    m_quitRequested = true;
+    if (close())
+        QCoreApplication::quit();
+    else
+        m_quitRequested = false;
 }
 
 void MainWindow::onRenameSelected()
@@ -3787,10 +3876,7 @@ void MainWindow::onOptions()
     m_model.setSmoothRates(QSettings().value("ui/smoothRates", false).toBool());
     updateStatusBarTotals();
     // Стиль кнопок панели инструментов — применяем сразу (вкладка «Интерфейс»).
-    const Qt::ToolButtonStyle toolbarModes[]{
-        Qt::ToolButtonIconOnly, Qt::ToolButtonTextBesideIcon, Qt::ToolButtonTextUnderIcon};
-    m_toolBar->setToolButtonStyle(
-        toolbarModes[qBound(0, QSettings().value("ui/toolbarButtonStyle", 2).toInt(), 2)]);
+    applyToolbarStyle(QSettings().value("ui/toolbarButtonStyle", 2).toInt());
     // Иконка трея — применяем сразу (показать/скрыть существующую).
     if (!m_tray && QSettings().value("ui/trayIcon", true).toBool())
         createTray();
@@ -3830,11 +3916,7 @@ void MainWindow::switchToProfile(const QString& name)
     const auto opts = store.profile(name).toOptions();
     if (m_connected && m_rpc) {
         const auto& active = m_rpc->options();
-        if (active.url == opts.url && active.rpcPath == opts.rpcPath &&
-            active.username == opts.username && active.password == opts.password &&
-            active.ignoreSslErrors == opts.ignoreSslErrors && active.proxy == opts.proxy &&
-            active.clientCertificatePath == opts.clientCertificatePath &&
-            active.clientKeyPath == opts.clientKeyPath) {
+        if (active == opts) {
             store.setCurrent(name);
             m_connectionProfile = name;
             setConnectedUi(true); // Renaming does not require reconnecting.
@@ -3917,23 +3999,16 @@ void MainWindow::onSelectionChanged()
         return;
     updateStatusBarTotals();
     int id = -1;
-    if (m_view->selectionModel()) {
-        for (const QModelIndex& vi : m_view->selectionModel()->selectedIndexes()) {
-            const QModelIndex src = m_proxy.mapToSource(vi);
-            if (!src.isValid())
-                continue;
-            id = m_model.torrentAt(src.row()).id;
-            break;
+    if (const auto* selection = m_view->selectionModel()) {
+        auto index = selection->currentIndex();
+        if (!selection->isSelected(index)) {
+            const auto rows = selection->selectedRows();
+            if (!rows.isEmpty())
+                index = rows.first();
         }
-        // Программный setCurrentIndex / навигация без выделения: берём current.
-        if (id < 0) {
-            const QModelIndex vi = m_view->selectionModel()->currentIndex();
-            if (vi.isValid()) {
-                const QModelIndex src = m_proxy.mapToSource(vi);
-                if (src.isValid())
-                    id = m_model.torrentAt(src.row()).id;
-            }
-        }
+        const auto source = m_proxy.mapToSource(index);
+        if (source.isValid())
+            id = m_model.torrentAt(source.row()).id;
     }
     if (id == m_currentId) {
         updateSelectionActions();
@@ -4416,15 +4491,74 @@ void MainWindow::finishAdd(const QPointer<tgui::RpcClient>& rpc, int selectedId)
     m_addingTorrent = false;
     if (!m_connected)
         return;
+    m_unconfiguredTorrentId = -1;
+    m_unconfiguredTorrentHash.clear();
     if (selectedId >= 0)
         m_addSelectionId = selectedId;
     rpc->getTorrents();
     addNextTorrent();
 }
 
+/** Продолжает очередь после получения свежего списка от того же демона. */
+void MainWindow::resumeAddQueue(const QVector<tgui::Torrent>& torrents)
+{
+    const bool interrupted = std::exchange(m_addInterrupted, false);
+    const int id = std::exchange(m_unconfiguredTorrentId, -1);
+    const auto hash = std::exchange(m_unconfiguredTorrentHash, {});
+    const auto torrent = std::find_if(torrents.cbegin(), torrents.cend(), [&](const auto& item) {
+        return item.id == id && !hash.isEmpty() && item.hashString &&
+            item.hashString->compare(hash, Qt::CaseInsensitive) == 0;
+    });
+    if (torrent != torrents.cend() &&
+        torrent->status == static_cast<int>(tgui::TorrentStatus::Stopped)) {
+        m_addingTorrent = true;
+        m_unconfiguredTorrentId = id;
+        m_unconfiguredTorrentHash = hash;
+        const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+        rpc->torrentActionByHash("torrent-remove", hash, {{"delete-local-data", false}},
+            [this, rpc](const tgui::JsonRpcResult& result) {
+                if (!rpc || rpc != m_rpc.get() || !m_connected)
+                    return;
+                if (!result.ok)
+                    onReadError(tr("Interrupted torrent add"), result.error);
+                finishAdd(rpc);
+            });
+        return;
+    }
+    if (interrupted)
+        statusBar()->showMessage(tr("A torrent add was interrupted. Check the list before adding it again."), 10000);
+    addNextTorrent();
+}
+
+/** Возвращает только локальные .torrent-файлы и поддерживаемые ссылки из @p mime. */
+static QStringList droppedTorrentInputs(const QMimeData& mime)
+{
+    QStringList raw;
+    if (mime.hasUrls()) {
+        for (const auto& url : mime.urls())
+            raw.append(url.toString(QUrl::FullyEncoded));
+    } else if (mime.hasText()) {
+        raw = mime.text().split(QLatin1Char('\n'));
+    }
+
+    QStringList accepted;
+    for (const auto& line : raw) {
+        const auto input = line.trimmed();
+        const QUrl url(input, QUrl::StrictMode);
+        if (url.isValid() && !url.host().isEmpty() && (url.scheme() == "http" || url.scheme() == "https")) {
+            accepted.append(url.toString(QUrl::FullyEncoded));
+            continue;
+        }
+        const auto torrent = externalTorrentInput(input);
+        if (!torrent.isEmpty() && (torrent.startsWith("magnet:") || QFileInfo(torrent).isFile()))
+            accepted.append(torrent);
+    }
+    return accepted;
+}
+
 void MainWindow::dragEnterEvent(QDragEnterEvent* event)
 {
-    if (event->mimeData()->hasUrls() || event->mimeData()->hasText())
+    if (m_connected && !droppedTorrentInputs(*event->mimeData()).isEmpty())
         event->acceptProposedAction();
 }
 
@@ -4432,41 +4566,21 @@ void MainWindow::dropEvent(QDropEvent* event)
 {
     if (!m_rpc || !m_connected)
         return;
-
-    QStringList items;
-    if (event->mimeData()->hasUrls()) {
-        for (const QUrl& u : event->mimeData()->urls())
-            items << u.toString();
-    } else if (event->mimeData()->hasText()) {
-        for (const QString& line : event->mimeData()->text().split(QLatin1Char('\n')))
-            if (!line.trimmed().isEmpty())
-                items << line.trimmed();
-    }
-
+    const auto items = droppedTorrentInputs(*event->mimeData());
+    if (items.isEmpty())
+        return;
     const auto& s = m_rpc->sessionInfo();
-    for (const QString& sItem : items) {
-        if (sItem.startsWith(QLatin1String("magnet:")) ||
-            sItem.startsWith(QLatin1String("http://")) ||
-            sItem.startsWith(QLatin1String("https://"))) {
-            tgui::RpcClient::AddTorrent p;
+    for (const auto& item : items) {
+        tgui::RpcClient::AddTorrent p;
+        if (item.startsWith("magnet:") || item.startsWith("http://") || item.startsWith("https://")) {
             p.source = tgui::RpcClient::AddTorrent::Source::Url;
-            p.url = sItem;
-            p.downloadDir = s.downloadDir;
-            p.start = s.startAddedTorrents;
-            startAdd(p);
+            p.url = item;
         } else {
-            QString path = sItem;
-            if (sItem.startsWith(QLatin1String("file:")))
-                path = QUrl(sItem).toLocalFile();
-            if (QFile::exists(path)) {
-                tgui::RpcClient::AddTorrent p;
-                p.source = tgui::RpcClient::AddTorrent::Source::File;
-                p.file = path;
-                p.downloadDir = s.downloadDir;
-                p.start = s.startAddedTorrents;
-                startAdd(p);
-            }
+            p.file = item;
         }
+        p.downloadDir = s.downloadDir;
+        p.start = s.startAddedTorrents;
+        startAdd(p);
     }
     event->acceptProposedAction();
 }
@@ -4571,7 +4685,7 @@ void MainWindow::createTray()
     QObject::connect(actStartAll, &QAction::triggered, this, [this] { onStartAll(); });
     QObject::connect(actStopAll, &QAction::triggered, this, [this] { onStopAll(); });
     QObject::connect(actRefresh, &QAction::triggered, this, [this] { onRefresh(); });
-    QObject::connect(actExit, &QAction::triggered, qApp, &QApplication::quit);
+    connect(actExit, &QAction::triggered, this, &MainWindow::onExit);
     m_tray->setContextMenu(menu);
 
     connect(m_tray, &QSystemTrayIcon::activated, this,
@@ -4590,7 +4704,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
     saveWindowLayout();
     // W07: «close to tray» из настроек; иначе — выход.
     const bool closeToTray = QSettings().value("ui/closeToTray", true).toBool();
-    if (closeToTray && m_tray && m_tray->isVisible()) {
+    if (!m_quitRequested && closeToTray && m_tray && m_tray->isVisible()) {
         event->ignore();
         hide();
         return;

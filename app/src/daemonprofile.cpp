@@ -1,6 +1,8 @@
 #include "daemonprofile.h"
 
+#include <QHash>
 #include <QSettings>
+#include <QSet>
 #include <QRegularExpression>
 #include <algorithm>
 
@@ -26,6 +28,8 @@ void migratePreferences()
         return;
     ProfileStore store;
     for (const auto& name : store.names()) {
+        if (!ProfileStore::isValidName(name))
+            continue;
         const auto options = store.profile(name).toOptions();
         for (const auto& [key, legacy] : {
                 std::pair{QStringLiteral("mappings"), QStringLiteral("paths/mappings")},
@@ -77,6 +81,16 @@ tgui::RpcClient::Options DaemonProfile::toOptions() const
 
 // --- ProfileStore ---
 
+/** Проверяет, можно ли использовать @p name в группе настроек демонов. */
+bool ProfileStore::isValidName(const QString& name)
+{
+    static const QSet<QString> reserved{"names", "current", "preferencesmigrated"};
+    return !name.isEmpty() && name.size() <= 64 && name.trimmed() == name &&
+        !name.contains('/') && !name.contains('\\') &&
+        !reserved.contains(name.toCaseFolded()) &&
+        std::ranges::none_of(name, [](QChar ch) { return ch.category() == QChar::Other_Control; });
+}
+
 QStringList ProfileStore::names() const
 {
     QSettings s;
@@ -98,6 +112,8 @@ bool ProfileStore::hasCurrent() const
 
 void ProfileStore::setCurrent(const QString& name)
 {
+    if (!name.isEmpty() && !isValidName(name))
+        return;
     QSettings().setValue(QStringLiteral("daemons/current"), name);
 }
 
@@ -111,6 +127,8 @@ DaemonProfile ProfileStore::profile(const QString& name) const
     QSettings s;
     DaemonProfile p;
     p.name = name;
+    if (!isValidName(name))
+        return p;
     const QString base = sec(name);
     p.host = s.value(base + "/host").toString();
     p.port = s.value(base + "/port", 9091).toInt();
@@ -131,9 +149,10 @@ DaemonProfile ProfileStore::profile(const QString& name) const
     return p;
 }
 
-void ProfileStore::save(const DaemonProfile& p)
+/** Записывает поля @p p в @p settings без изменения настроек путей и скоростей. */
+static void writeProfile(QSettings& settings, const DaemonProfile& p)
 {
-    QSettings s;
+    auto& s = settings;
     const QString base = sec(p.name);
     s.setValue(base + "/host", p.host);
     s.setValue(base + "/port", p.port);
@@ -151,15 +170,81 @@ void ProfileStore::save(const DaemonProfile& p)
     s.setValue(base + "/proxyPort", p.proxyPort);
     s.setValue(base + "/proxyUser", p.proxyUser);
     s.setValue(base + "/proxyPass", p.proxyPass);
+}
+
+void ProfileStore::save(const DaemonProfile& p)
+{
+    if (!isValidName(p.name))
+        return;
+    QSettings s;
+    writeProfile(s, p);
     s.sync();
+}
+
+/** Применяет @p drafts и выбирает @p current, перенося настройки переименованных профилей. */
+bool ProfileStore::saveDrafts(const QList<Draft>& drafts, const QString& current)
+{
+    QStringList nextNames;
+    QSet<QString> usedNames;
+    const auto oldNames = names();
+    QSet<QString> sourceNames;
+    for (const auto& [original, profile] : drafts) {
+        const auto key = profile.name.toCaseFolded();
+        if (!isValidName(profile.name) || usedNames.contains(key) ||
+            (!original.isEmpty() && (!oldNames.contains(original) || sourceNames.contains(original))))
+            return false;
+        usedNames.insert(key);
+        if (!original.isEmpty())
+            sourceNames.insert(original);
+        nextNames.append(profile.name);
+    }
+    if (!current.isEmpty() && !nextNames.contains(current))
+        return false;
+
+    migratePreferences();
+    QSettings settings;
+    QSet<QString> unchanged;
+    QHash<QString, QVariantMap> moved;
+    for (const auto& [original, profile] : drafts) {
+        if (original == profile.name) {
+            unchanged.insert(original);
+        } else if (isValidName(original)) {
+            settings.beginGroup(sec(original));
+            QVariantMap values;
+            for (const auto& key : settings.allKeys())
+                values.insert(key, settings.value(key));
+            settings.endGroup();
+            moved.insert(profile.name, std::move(values));
+        }
+    }
+    for (const auto& name : oldNames) {
+        if (isValidName(name) && !unchanged.contains(name))
+            settings.remove(sec(name));
+    }
+    for (const auto& [original, profile] : drafts) {
+        const auto previous = moved.constFind(profile.name);
+        if (previous != moved.cend()) {
+            settings.beginGroup(sec(profile.name));
+            for (auto it = previous->cbegin(); it != previous->cend(); ++it)
+                settings.setValue(it.key(), it.value());
+            settings.endGroup();
+        }
+        writeProfile(settings, profile);
+    }
+    settings.setValue("daemons/names", nextNames);
+    settings.setValue("daemons/current", current);
+    settings.sync();
+    return settings.status() == QSettings::NoError;
 }
 
 void ProfileStore::add(const QString& name)
 {
-    if (name.isEmpty())
+    if (!isValidName(name))
         return;
     migratePreferences();
     auto list = names();
+    if (!list.contains(name) && list.contains(name, Qt::CaseInsensitive))
+        return;
     if (!list.contains(name)) {
         list << name;
         QSettings().setValue(QStringLiteral("daemons/names"), list);
@@ -177,7 +262,8 @@ void ProfileStore::remove(const QString& name)
         return;
     QSettings s;
     s.setValue(QStringLiteral("daemons/names"), list);
-    s.remove(sec(name));
+    if (isValidName(name))
+        s.remove(sec(name));
     if (currentName() == name) {
         s.setValue(QStringLiteral("daemons/current"),
                    list.isEmpty() ? QString() : list.first());
@@ -187,10 +273,10 @@ void ProfileStore::remove(const QString& name)
 
 void ProfileStore::rename(const QString& oldName, const QString& newName)
 {
-    if (oldName.isEmpty() || newName.isEmpty() || oldName == newName)
+    if (!isValidName(oldName) || !isValidName(newName) || oldName == newName)
         return;
     auto list = names();
-    if (!list.contains(oldName) || list.contains(newName))
+    if (!list.contains(oldName) || list.contains(newName, Qt::CaseInsensitive))
         return;
     QSettings s;
     s.beginGroup(sec(oldName));

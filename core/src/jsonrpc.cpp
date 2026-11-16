@@ -15,9 +15,23 @@
 
 namespace tgui {
 
+/** Присоединяет @p rpcPath к закодированному префиксу @p base, сохраняя query. */
+static QUrl buildRpcUrl(QUrl base, const QString& rpcPath)
+{
+    QString prefix = base.path(QUrl::FullyEncoded);
+    while (prefix.endsWith('/'))
+        prefix.chop(1);
+    base.setPath(prefix + rpcPath, QUrl::TolerantMode);
+    base.setFragment({});
+    return base;
+}
+
 JsonRpcClient::JsonRpcClient(const QUrl& url, const QString& rpcPath)
     : m_url(url), m_rpcPath(rpcPath.isEmpty() ? kDefaultRpcPath : rpcPath)
 {
+    if (!m_rpcPath.startsWith('/'))
+        m_rpcPath.prepend('/');
+    m_requestUrl = buildRpcUrl(m_url, m_rpcPath);
     m_nam = std::make_unique<QNetworkAccessManager>();
 }
 
@@ -52,7 +66,15 @@ void JsonRpcClient::setTimeout(std::chrono::milliseconds timeout)
 
 void JsonRpcClient::call(const QString& method, const QJsonObject& arguments, Callback cb)
 {
-    doRequest({method, arguments, ++m_nextId, m_modern}, std::move(cb));
+    doRequest({method, arguments, ++m_nextId, m_modern, m_connectGeneration}, std::move(cb));
+}
+
+/** Сбрасывает параметры сессии и отбрасывает ответы предыдущего подключения. */
+void JsonRpcClient::resetSession()
+{
+    ++m_connectGeneration;
+    m_modern = false;
+    m_sessionId.clear();
 }
 
 JsonRpcResult JsonRpcClient::callSync(const QString& method, const QJsonObject& arguments,
@@ -62,7 +84,11 @@ JsonRpcResult JsonRpcClient::callSync(const QString& method, const QJsonObject& 
     QEventLoop loop;
     QTimer timer;
     timer.setSingleShot(true);
-    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(&timer, &QTimer::timeout, &loop, [&] {
+        out.error = QStringLiteral("Timeout");
+        out.networkError = QNetworkReply::TimeoutError;
+        loop.quit();
+    });
     call(method, arguments, [loop = QPointer<QEventLoop>(&loop), &out](const JsonRpcResult& r) {
         if (!loop)
             return;
@@ -118,8 +144,7 @@ void parseModern(JsonRpcResult& result, const QString& method, qint64 id)
 
 void JsonRpcClient::doRequest(Request rpc, Callback cb)
 {
-    const QString fullUrl = m_url.toString() + m_rpcPath;
-    QNetworkRequest request(fullUrl);
+    QNetworkRequest request(m_requestUrl);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("Accept", "application/json");
     // Редиректы обрабатываем сами (301 → новый RPC-путь, Transmission 4.x).
@@ -164,6 +189,10 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
         m_nam->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     QObject::connect(reply, &QNetworkReply::finished, reply,
             [this, reply, rpc = std::move(rpc), cb = std::move(cb)]() mutable {
+                if (rpc.generation != m_connectGeneration) {
+                    reply->deleteLater();
+                    return;
+                }
                 JsonRpcResult res;
                 res.httpCode =
                     reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -204,6 +233,8 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
                             path = location.left(location.size() - 3) + "rpc";
                         if (!path.isEmpty()) {
                             m_rpcPath = path;
+                            m_requestUrl.setPath(path, QUrl::TolerantMode);
+                            m_requestUrl.setQuery(QString{});
                             rpc.redirected = true;
                             reply->deleteLater();
                             doRequest(std::move(rpc), std::move(cb));

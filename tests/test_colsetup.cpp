@@ -51,8 +51,10 @@ TEST(ColumnLayout, SettingsRoundTrip)
     auto d = ColumnLayout::defaults(26);
     d.order.swapItemsAt(0, 5);
     d.visible[8] = false;
+    d.visible[ColumnLayout::persistentColumn()] = false;
     d.saveToSettings();
     const auto loaded = ColumnLayout::fromSettings(26);
+    d.visible[ColumnLayout::persistentColumn()] = true;
     EXPECT_EQ(loaded.order, d.order);
     EXPECT_EQ(loaded.visible, d.visible);
     EXPECT_EQ(loaded.widths, d.widths);

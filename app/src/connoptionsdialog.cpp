@@ -263,59 +263,52 @@ ConnOptionsDialog::ConnOptionsDialog(QWidget* parent)
         m_certToggle->setArrowType(on ? Qt::DownArrow : Qt::RightArrow);
         m_certPanel->setVisible(on);
     });
-    connect(buttons, &QDialogButtonBox::accepted, this, [this] {
-        saveCurrent();
-        accept();
-    });
+    connect(buttons, &QDialogButtonBox::accepted, this, &ConnOptionsDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     connect(m_protocol, &QComboBox::currentIndexChanged, this, [this] {
         m_ignoreSsl->setEnabled(m_protocol->currentData().toString() == "https");
     });
 
-    refreshList();
-    setProfile(DaemonProfile{});
     const QString cur = m_store.currentName();
     const auto names = m_store.names();
-    selectProfile(cur.isEmpty() ? (names.isEmpty() ? QString() : names.first()) : cur);
+    for (const auto& name : names)
+        m_drafts.append({name, m_store.profile(name)});
+    refreshList();
+    selectProfile(names.contains(cur) ? cur : names.value(0));
     tgui::theme::decorateDialog(this);
 }
 
 void ConnOptionsDialog::refreshList()
 {
-    m_profiles->blockSignals(true);
+    const QSignalBlocker blocker(m_profiles);
     m_profiles->clear();
-    for (const QString& n : m_store.names())
-        m_profiles->addItem(n);
-    m_profiles->blockSignals(false);
+    for (const auto& entry : m_drafts)
+        m_profiles->addItem(entry.second.name);
 }
 
 void ConnOptionsDialog::selectProfile(const QString& name)
 {
-    const int index = m_profiles->findText(name);
-    if (index >= 0) {
-        m_profiles->setCurrentIndex(index);
-        onProfileSelected();
-        return;
-    }
-    m_profiles->setCurrentIndex(-1);
+    const QSignalBlocker blocker(m_profiles);
+    m_profiles->setCurrentIndex(m_profiles->findText(name, Qt::MatchExactly | Qt::MatchCaseSensitive));
+    onProfileSelected();
 }
 
 void ConnOptionsDialog::onProfileSelected()
 {
-    const QString name = m_profiles->currentText();
-    if (name.isEmpty())
-        return;
-    setProfile(m_store.profile(name));
+    saveDraft();
+    const int index = m_profiles->currentIndex();
+    setProfile(index >= 0 ? m_drafts.at(index).second : DaemonProfile{});
 }
 
 void ConnOptionsDialog::setProfile(const DaemonProfile& p)
 {
     // Выбор профиля в ComboBox без рекурсивного onProfileSelected.
     const QSignalBlocker blocker(m_profiles);
-    const int index = m_profiles->findText(p.name);
+    const int index = m_profiles->findText(p.name, Qt::MatchExactly | Qt::MatchCaseSensitive);
     if (index >= 0)
         m_profiles->setCurrentIndex(index);
+    m_editingName = p.name;
 
     m_host->setText(p.host);
     m_port->setValue(p.port > 0 ? p.port : 9091);
@@ -351,7 +344,7 @@ void ConnOptionsDialog::setProfile(const DaemonProfile& p)
 DaemonProfile ConnOptionsDialog::current() const
 {
     DaemonProfile p;
-    p.name = m_profiles->currentText();
+    p.name = m_editingName;
     p.host = m_host->text().trimmed();
     p.port = m_port->value();
     p.useSsl = (m_protocol->currentData().toString() == "https");
@@ -371,29 +364,56 @@ DaemonProfile ConnOptionsDialog::current() const
     return p;
 }
 
-void ConnOptionsDialog::saveCurrent()
+/** Сохраняет заполненную форму в черновике до переключения профиля. */
+void ConnOptionsDialog::saveDraft()
 {
-    DaemonProfile p = current();
-    if (p.name.isEmpty())
+    for (auto& entry : m_drafts) {
+        if (entry.second.name == m_editingName) {
+            entry.second = current();
+            return;
+        }
+    }
+}
+
+/** Записывает черновики и закрывает диалог после успешного сохранения. */
+void ConnOptionsDialog::accept()
+{
+    saveDraft();
+    if (!m_store.saveDrafts(m_drafts, m_editingName)) {
+        QMessageBox::warning(this, windowTitle(), tr("Could not save the connection profiles."));
         return;
-    m_store.save(p);
-    // Профиль, который редактируем, становится активным (аналог OLD: выбранный
-    // в списке = активное соединение). Иначе switchToProfile не узнал бы о нём.
-    m_store.setCurrent(p.name);
+    }
+    QDialog::accept();
+}
+
+/** Проверяет доступность нового @p name и показывает ошибку под заголовком @p title. */
+bool ConnOptionsDialog::canUseName(const QString& name, const QString& title)
+{
+    if (!ProfileStore::isValidName(name)) {
+        QMessageBox::warning(this, title, tr("Use a name of 1 to 64 characters without slashes or reserved names."));
+        return false;
+    }
+    for (const auto& entry : m_drafts) {
+        if (entry.second.name.compare(name, Qt::CaseInsensitive) == 0) {
+            QMessageBox::warning(this, title, tr("A connection named '%1' already exists.").arg(name));
+            return false;
+        }
+    }
+    return true;
 }
 
 void ConnOptionsDialog::onNew()
 {
     bool ok = false;
     const QString name = QInputDialog::getText(this, tr("New connection"), tr("Name:"), QLineEdit::Normal, QString(), &ok);
-    if (!ok || name.trimmed().isEmpty())
+    if (!ok)
         return;
     const QString n = name.trimmed();
-    if (m_store.exists(n)) {
-        QMessageBox::warning(this, tr("New connection"), tr("A connection named '%1' already exists.").arg(n));
+    if (!canUseName(n, tr("New connection")))
         return;
-    }
-    m_store.add(n);
+    DaemonProfile draft;
+    draft.name = n;
+    m_drafts.append({{}, std::move(draft)});
     refreshList();
     selectProfile(n);
 }
@@ -405,10 +425,10 @@ void ConnOptionsDialog::onDelete()
         return;
     if (QMessageBox::question(this, tr("Delete connection"), tr("Delete connection '%1'?").arg(name)) != QMessageBox::Yes)
         return;
-    m_store.remove(name);
+    m_drafts.removeAt(m_profiles->currentIndex());
+    m_editingName.clear();
     refreshList();
-    const auto names = m_store.names();
-    selectProfile(names.isEmpty() ? QString() : names.first());
+    selectProfile(m_drafts.isEmpty() ? QString() : m_drafts.first().second.name);
 }
 
 void ConnOptionsDialog::onRename()
@@ -418,14 +438,13 @@ void ConnOptionsDialog::onRename()
         return;
     bool ok = false;
     const QString newName = QInputDialog::getText(this, tr("Rename connection"), tr("New name:"), QLineEdit::Normal, oldName, &ok);
-    if (!ok || newName.trimmed().isEmpty() || newName.trimmed() == oldName)
+    if (!ok || newName.trimmed() == oldName)
         return;
-    if (m_store.exists(newName.trimmed())) {
-        QMessageBox::warning(this, tr("Rename connection"), tr("A connection named '%1' already exists.").arg(newName.trimmed()));
+    if (!canUseName(newName.trimmed(), tr("Rename connection")))
         return;
-    }
-    saveCurrent();
-    m_store.rename(oldName, newName.trimmed());
+    saveDraft();
+    m_drafts[m_profiles->currentIndex()].second.name = newName.trimmed();
+    m_editingName.clear();
     refreshList();
     selectProfile(newName.trimmed());
 }

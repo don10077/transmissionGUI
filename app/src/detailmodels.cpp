@@ -180,11 +180,21 @@ void PeerListModel::setResolveHost(bool on)
 
 void PeerListModel::setResolvedHost(const QString& ip, const QString& host)
 {
-    if (ip.isEmpty() || m_hostCache.value(ip) == host)
+    const auto existing = m_hostCache.constFind(ip);
+    if (ip.isEmpty() || (existing != m_hostCache.cend() && *existing == host))
         return;
+    const bool changed = existing == m_hostCache.cend() ? !host.isEmpty() : *existing != host;
+    constexpr qsizetype maxCachedHosts = 4096;
+    const bool expired = existing == m_hostCache.cend() && m_hostCache.size() >= maxCachedHosts;
+    if (expired)
+        m_hostCache.clear();
     m_hostCache.insert(ip, host);
-    if (host.isEmpty())
-        return; // кеш ошибки — показ остаётся IP, обновлять нечего
+    if (expired && !m_peers.isEmpty()) {
+        emit dataChanged(index(0, ColAddress), index(m_peers.size() - 1, ColAddress), {Qt::DisplayRole});
+        return;
+    }
+    if (!changed)
+        return;
     for (int r = 0; r < m_peers.size(); ++r)
         if (m_peers.at(r).address == ip)
             emit dataChanged(index(r, ColAddress), index(r, ColAddress), {Qt::DisplayRole});
@@ -198,7 +208,7 @@ void PeerListModel::startReverseLookups()
         // Только IP-адреса (IPv4/IPv6); hostname не резолвим.
         if (ip.isEmpty() || QHostAddress(ip).isNull())
             continue;
-        if (seen.contains(ip) || m_pendingLookups.contains(ip) || m_hostCache.contains(ip))
+        if (seen.contains(ip) || m_pendingLookups.contains(ip) || hasHostLookupResult(ip))
             continue; // кеш или уже в работе — не дублируем запрос
         seen.insert(ip);
         m_pendingLookups.insert(ip);

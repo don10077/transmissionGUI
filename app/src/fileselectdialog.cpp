@@ -548,8 +548,17 @@ void FileSelectDialog::browseDestination()
     const QPointer<FileSelectDialog> dialog(this);
     const auto selected = QFileDialog::getExistingDirectory(this, tr("Destination folder:"),
         QDir::fromNativeSeparators(local));
-    if (dialog && !selected.isEmpty())
-        m_destination->setCurrentText(tgui::mapLocalToRemote(selected, mappings));
+    if (!dialog || selected.isEmpty())
+        return;
+    const auto mapped = tgui::mapLocalToRemote(selected, mappings);
+    const bool localDaemon = m_rpc && m_rpc->options().proxy.type() == QNetworkProxy::NoProxy &&
+        tgui::isLocalDaemon(m_rpc->options().url);
+    if (!mapped && !localDaemon) {
+        QMessageBox::warning(this, windowTitle(),
+            tr("This folder has no path mapping. Enter the daemon path or configure a mapping."));
+        return;
+    }
+    m_destination->setCurrentText(mapped.value_or(selected));
 }
 
 void FileSelectDialog::setAll(Qt::CheckState state)

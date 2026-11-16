@@ -3,6 +3,7 @@
 #include <QBrush>
 
 #include <algorithm>
+#include <limits>
 
 #include "theme.h"
 #include "tgui/util.h"
@@ -258,6 +259,8 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
         return {};
     const auto& t = m_torrents.at(index.row());
     const int col = index.column();
+    if (role == SortRole)
+        return sortKey(t, col);
     const int status = t.status.value_or(-1);
     const auto isFinished = [&] {
         return tgui::statusIsFinished(status, t.sizeWhenDone.value_or(0.0), t.leftUntilDone.value_or(0.0));
@@ -346,7 +349,7 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
         case ColRateUp:
             return QString::fromStdString(tgui::formatRate(displayedRates(t).second));
         case ColEta:
-            if (!t.eta)
+            if (!t.eta || (*t.eta < 0 && *t.eta != -2))
                 return QStringLiteral("—");
             return t.eta.value() >= 0 ? QString::fromStdString(tgui::formatEta(t.eta.value()))
                                       : QStringLiteral("∞");
@@ -393,7 +396,7 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
         case ColSizeLeft:
             return QString::fromStdString(tgui::formatSize(t.leftUntilDone.value_or(0.0)));
         case ColPrivate:
-            return t.isPrivate ? QObject::tr("yes") : QObject::tr("no");
+            return t.isPrivate ? (*t.isPrivate ? QObject::tr("yes") : QObject::tr("no")) : QStringLiteral("—");
         case ColLabels:
             return t.labels.value_or(QStringList()).join(QStringLiteral(", "));
     }
@@ -480,8 +483,12 @@ QVariant TorrentModel::sortKey(const tgui::Torrent& t, int column)
                 return tgui::percentComplete(t.sizeWhenDone.value(),
                                              t.leftUntilDone.value_or(0.0));
             return t.metadataPercentComplete.value_or(0.0) * 100.0;
-        case ColStatus:
-            return t.status.value_or(-1);
+        case ColStatus: {
+            const int status = t.status.value_or(-1);
+            const bool finished = tgui::statusIsFinished(status, t.sizeWhenDone.value_or(0.0),
+                                                         t.leftUntilDone.value_or(0.0));
+            return tgui::torrentError(t).isEmpty() ? statusText(status, finished) : QObject::tr("Error");
+        }
         case ColSeeds:
             return t.peersSendingToUs.value_or(0);
         case ColPeers:
@@ -493,7 +500,7 @@ QVariant TorrentModel::sortKey(const tgui::Torrent& t, int column)
         case ColEta:
             if (t.eta && t.eta.value() >= 0)
                 return t.eta.value();
-            return 2147483647; // ∞ — в конец
+            return std::numeric_limits<double>::infinity();
         case ColRatio:
             return t.uploadRatio.value_or(-1.0);
         case ColDownloaded:
@@ -532,26 +539,20 @@ QVariant TorrentModel::sortKey(const tgui::Torrent& t, int column)
     return {};
 }
 
-void TorrentModel::sort(int column, Qt::SortOrder order)
+/** Проверяет, сравниваются ли значения столбца @p column как числа. */
+bool TorrentModel::isNumericColumn(int column)
 {
-    emit layoutAboutToBeChanged();
-    auto cmp = [column, order](const tgui::Torrent& a, const tgui::Torrent& b) {
-        const QVariant va = TorrentModel::sortKey(a, column);
-        const QVariant vb = TorrentModel::sortKey(b, column);
-        int c = 0;
-        if (va.canConvert<double>() && vb.canConvert<double>()) {
-            const double da = va.toDouble();
-            const double db = vb.toDouble();
-            c = (da < db ? -1 : da > db ? 1 : 0);
-        } else {
-            c = QString::localeAwareCompare(va.toString(), vb.toString());
-        }
-        if (c == 0)
-            c = (a.id < b.id ? -1 : a.id > b.id ? 1 : 0); // стабильный порядок
-        return order == Qt::AscendingOrder ? c < 0 : c > 0;
-    };
-    std::stable_sort(m_torrents.begin(), m_torrents.end(), cmp);
-    emit layoutChanged();
+    switch (column) {
+        case ColName:
+        case ColStatus:
+        case ColTracker:
+        case ColTrackerStatus:
+        case ColPath:
+        case ColLabels:
+            return false;
+        default:
+            return true;
+    }
 }
 
 // --- TorrentFilterProxy ---
@@ -559,6 +560,7 @@ void TorrentModel::sort(int column, Qt::SortOrder order)
 TorrentFilterProxy::TorrentFilterProxy(QObject* parent) : QSortFilterProxyModel(parent)
 {
     setSortCaseSensitivity(Qt::CaseInsensitive);
+    setSortRole(TorrentModel::SortRole);
     setDynamicSortFilter(true);
 }
 
@@ -640,4 +642,34 @@ bool TorrentFilterProxy::filterAcceptsRow(int row, const QModelIndex& parent) co
         !t.name.value_or(QString()).contains(m_search, Qt::CaseInsensitive))
         return false;
     return true;
+}
+
+/** Сравнивает исходные индексы @p left и @p right, разрешая равенство по ID. */
+bool TorrentFilterProxy::lessThan(const QModelIndex& left, const QModelIndex& right) const
+{
+    auto* model = qobject_cast<const TorrentModel*>(sourceModel());
+    if (!model)
+        return QSortFilterProxyModel::lessThan(left, right);
+
+    const int col = left.column();
+    const QVariant va = left.data(TorrentModel::SortRole);
+    const QVariant vb = right.data(TorrentModel::SortRole);
+
+    int c = 0;
+    if (TorrentModel::isNumericColumn(col)) {
+        const double da = va.toDouble();
+        const double db = vb.toDouble();
+        if (col == TorrentModel::ColEta && da != db) {
+            const auto unknown = std::numeric_limits<double>::infinity();
+            if (da == unknown || db == unknown)
+                return sortOrder() == Qt::AscendingOrder ? db == unknown : da == unknown;
+        }
+        c = (da < db ? -1 : da > db ? 1 : 0);
+    } else {
+        c = QString::localeAwareCompare(va.toString(), vb.toString());
+    }
+    if (c == 0)
+        return model->torrentAt(left.row()).id < model->torrentAt(right.row()).id;
+
+    return c < 0;
 }

@@ -54,6 +54,7 @@ public:
     void setProxy(const QNetworkProxy& proxy);
 
     void setTimeout(std::chrono::milliseconds timeout);
+    void resetSession();
 
     // Асинхронный вызов метода. Пустой arguments — без ключа "arguments".
     void call(const QString& method, const QJsonObject& arguments, Callback cb);
@@ -73,6 +74,7 @@ private:
         QJsonObject arguments;
         qint64 id;
         bool modern;
+        quint64 generation;
         bool sessionRetried = false;
         bool redirected = false;
     };
@@ -80,6 +82,7 @@ private:
 
     std::unique_ptr<QNetworkAccessManager> m_nam;
     QUrl m_url;
+    QUrl m_requestUrl;
     QString m_rpcPath;
     QString m_user;
     QString m_password;
@@ -89,6 +92,7 @@ private:
     QList<QSslCertificate> m_clientChain;
     QSslKey m_clientKey;
     bool m_modern = false;
+    quint64 m_connectGeneration = 0;
     qint64 m_nextId = 0;
 };
 

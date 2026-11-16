@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <memory>
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QEventLoop>
 #include <QFile>
@@ -137,6 +138,65 @@ TEST_F(RpcClientTest, ConnectFailure)
     EXPECT_TRUE(failed);
     EXPECT_EQ(error, "bad request");
     EXPECT_FALSE(client->isConnected());
+}
+
+TEST_F(RpcClientTest, FirstNetworkFailureDoesNotRequestReconnect)
+{
+    server.enqueue({503, "Service unavailable", {}}); // Временный сбой на первом подключении.
+    QEventLoop loop;
+    bool failed = false;
+    bool interrupted = false;
+    QObject::connect(client.get(), &RpcClient::connectionFailed, &loop, [&](const QString&) {
+        failed = true;
+        loop.quit();
+    });
+    QObject::connect(client.get(), &RpcClient::connectionInterrupted, &loop, [&](const QString&) {
+        interrupted = true;
+        loop.quit();
+    });
+    QTimer::singleShot(3000, &loop, &QEventLoop::quit);
+    client->connectToDaemon();
+    loop.exec();
+    EXPECT_TRUE(failed);
+    EXPECT_FALSE(interrupted);
+}
+
+TEST_F(RpcClientTest, EmptyFileSelectionCompletesOnceWithoutRequest)
+{
+    const int before = server.requestCount();
+    int completions = 0;
+    client->setFilesWanted(1, {}, {}, [&](const JsonRpcResult& result) {
+        ++completions;
+        EXPECT_TRUE(result.ok);
+    });
+    EXPECT_EQ(completions, 0);
+    QCoreApplication::processEvents();
+    EXPECT_EQ(completions, 1);
+    EXPECT_EQ(server.requestCount(), before);
+}
+
+TEST_F(RpcClientTest, ConfigureAddedTorrentWithEmptyLocationStillStarts)
+{
+    connectWith(14);
+    server.setDefault({200, R"({"result":"success","arguments":{}})", {}});
+    const int before = server.requestCount();
+    TorrentDetails details;
+    details.id = 7;
+    details.downloadDir = "/downloads";
+    RpcClient::AddTorrent options;
+    options.downloadDir = " ";
+    options.start = true;
+    QEventLoop loop;
+    bool ok = false;
+    QTimer::singleShot(3000, &loop, &QEventLoop::quit);
+    client->configureAddedTorrent(details, options, {}, {}, [&](const JsonRpcResult& result) {
+        ok = result.ok;
+        loop.quit();
+    });
+    loop.exec();
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(server.requestCount(), before + 1);
+    EXPECT_EQ(server.requests().last().rpcMethod, "torrent-start");
 }
 
 TEST_F(RpcClientTest, TlsHandshakeFailureIsNotRetryable)
@@ -383,6 +443,7 @@ TEST_F(RpcClientTest, AddTorrentRpc17NoSequential)
     add.url = "magnet:?xt=urn:btih:abc123";
     add.sequential = true; // rpc 17 < 18 — не шлём
     add.start = true;
+    add.labels = {"Movies"};
     client->addTorrent(add);
     loop.exec();
 
@@ -392,6 +453,7 @@ TEST_F(RpcClientTest, AddTorrentRpc17NoSequential)
     EXPECT_FALSE(req.arguments.value("paused").toBool());
     EXPECT_FALSE(req.arguments.contains("sequential_download"));
     EXPECT_FALSE(req.arguments.contains("peer-limit")); // 0 — не устанавливать
+    EXPECT_EQ(req.arguments.value("labels").toArray(), QJsonArray{"Movies"});
 }
 
 TEST_F(RpcClientTest, RemoveWithLocalData)
@@ -1002,7 +1064,8 @@ TEST_F(RpcClientTest, RenameLabelPreservesOtherAssignments)
     server.enqueue({200, R"({"result":"success","arguments":{"torrents":[
         {"id":7,"labels":["Video","Shared","Movies"]},
         {"id":8,"labels":["Music"]},
-        {"id":9,"labels":["Video"]}
+        {"id":9,"labels":["Video"]},
+        {"id":10,"labels":["Video","Shared"]}
     ]}})", {}});
     server.enqueue(MockRpcServer::Response{});
     server.enqueue(MockRpcServer::Response{});
@@ -1022,11 +1085,37 @@ TEST_F(RpcClientTest, RenameLabelPreservesOtherAssignments)
     ASSERT_GE(requests.size(), first + 3);
     EXPECT_EQ(requests.at(first).arguments.value("fields").toArray(), (QJsonArray{"id", "labels"}));
     EXPECT_EQ(requests.at(first + 1).rpcMethod, "torrent-set");
-    EXPECT_EQ(requests.at(first + 1).arguments.value("ids").toArray(), QJsonArray{7});
+    EXPECT_EQ(requests.at(first + 1).arguments.value("ids").toArray(), (QJsonArray{7, 10}));
     EXPECT_EQ(requests.at(first + 1).arguments.value("labels").toArray(), (QJsonArray{"Movies", "Shared"}));
     EXPECT_EQ(requests.at(first + 2).rpcMethod, "torrent-set");
     EXPECT_EQ(requests.at(first + 2).arguments.value("ids").toArray(), QJsonArray{9});
     EXPECT_EQ(requests.at(first + 2).arguments.value("labels").toArray(), QJsonArray{"Movies"});
+}
+
+TEST_F(RpcClientTest, ReconnectIgnoresDelayedHandshake)
+{
+    server.enqueue({200, R"({"result":"success","arguments":{"rpc-version":13}})", {}, 180});
+    server.enqueue({200, R"({"result":"success","arguments":{"rpc-version":14}})", {}});
+
+    QEventLoop loop;
+    QList<int> connectedVersions;
+    QObject::connect(client.get(), &RpcClient::connected, &loop, [&](const SessionInfo& info) {
+        connectedVersions.append(info.rpcVersion);
+    });
+    QTimer dispatch;
+    QObject::connect(&dispatch, &QTimer::timeout, &loop, [&] {
+        if (server.requestCount() != 1)
+            return;
+        dispatch.stop();
+        client->connectToDaemon();
+    });
+    dispatch.start(1);
+    QTimer::singleShot(500, &loop, &QEventLoop::quit);
+    client->connectToDaemon();
+    loop.exec();
+    EXPECT_EQ(server.requestCount(), 2);
+    EXPECT_EQ(connectedVersions, QList<int>{14});
+    EXPECT_EQ(client->rpcVersion(), 14);
 }
 
 TEST_F(RpcClientTest, SetLabelsVersionGate)

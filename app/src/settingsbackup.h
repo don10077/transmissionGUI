@@ -1,5 +1,7 @@
 #pragma once
 
+#include "daemonprofile.h"
+
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
@@ -91,9 +93,13 @@ inline std::optional<QVariantMap> read(const QString& path)
     const auto selected = values.value("daemons/current").toString();
     if (!selected.isEmpty() && !profiles.contains(selected))
         return std::nullopt;
-    for (const auto& name : profiles)
-        if (name.isEmpty() || !values.contains("daemons/" + name + "/host"))
+    QStringList uniqueNames;
+    for (const auto& name : profiles) {
+        if (!ProfileStore::isValidName(name) || uniqueNames.contains(name, Qt::CaseInsensitive) ||
+            !values.contains("daemons/" + name + "/host"))
             return std::nullopt;
+        uniqueNames.append(name);
+    }
     return values;
 }
 

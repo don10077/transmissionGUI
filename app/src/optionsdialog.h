@@ -50,6 +50,9 @@ public:
     // Язык/масштаб изменились → требуется перезапуск (применяется при следующем запуске).
     bool restartRequired() const { return m_restartRequired; }
 
+signals:
+    void labelRenamed(const QString& from, const QString& to);
+
 private:
     void reject() override;
     void editProgressColors();

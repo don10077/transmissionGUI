@@ -16,6 +16,7 @@
 #include <QEventLoop>
 #include <QHeaderView>
 #include <QImage>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -77,6 +78,20 @@ TEST(FilterPanel, WheelAndRefreshKeepFolderSelection)
     EXPECT_EQ(bar->value(), scrolled);
     EXPECT_EQ(panel.selectedFolder(), QStringLiteral("/folder/0"));
     EXPECT_EQ(tree->currentItem(), tree->topLevelItem(8)->child(0));
+}
+
+TEST(FilterPanel, MissingFolderReturnsToAllTorrents)
+{
+    FilterPanel panel;
+    panel.setCounts(2, 0, 0, 0, 0, 0, 0, 0, {{"/first", 1}, {"/second", 1}}, {}, {});
+    auto* tree = panel.findChild<QTreeWidget*>();
+    ASSERT_NE(tree, nullptr);
+    tree->setCurrentItem(tree->topLevelItem(8)->child(0));
+    ASSERT_EQ(panel.selectedFolder(), "/first");
+
+    panel.setCounts(1, 0, 0, 0, 0, 0, 0, 0, {{"/second", 1}}, {}, {});
+    EXPECT_TRUE(panel.selectedFolder().isEmpty());
+    EXPECT_EQ(tree->currentItem(), tree->topLevelItem(0));
 }
 
 namespace {
@@ -701,10 +716,10 @@ TEST(DialogAppearance, AllPagesFitAndDaemonPreservesZero)
 #include <QSettings>
 
 namespace {
-bool waitForSettings(const std::function<bool()>& predicate)
+bool waitForSettings(const std::function<bool()>& predicate, int timeoutMs = 2500)
 {
     QElapsedTimer timer; timer.start();
-    while (!predicate() && timer.elapsed() < 2500) {
+    while (!predicate() && timer.elapsed() < timeoutMs) {
         QCoreApplication::processEvents(); QThread::msleep(1);
     }
     return predicate();
@@ -742,6 +757,7 @@ TEST_P(TorrentAddOutcome, HandlesResultAndOriginalFile)
     public:
         using MainWindow::dropEvent;
     } window;
+    EXPECT_TRUE(window.acceptDrops());
     RpcClient::Options options;
     options.url = server.url();
     window.setAutoConnect(options);
@@ -749,6 +765,14 @@ TEST_P(TorrentAddOutcome, HandlesResultAndOriginalFile)
 
     QTemporaryDir sourceDir;
     ASSERT_TRUE(sourceDir.isValid());
+    QFile nonTorrent(sourceDir.filePath("video.mkv"));
+    ASSERT_TRUE(nonTorrent.open(QIODevice::WriteOnly));
+    nonTorrent.close();
+    QMimeData invalidFiles;
+    invalidFiles.setUrls({QUrl::fromLocalFile(nonTorrent.fileName()), QUrl::fromLocalFile(sourceDir.path())});
+    QDropEvent invalidDrop(QPointF(), Qt::CopyAction, &invalidFiles, Qt::LeftButton, Qt::NoModifier);
+    window.dropEvent(&invalidDrop);
+    EXPECT_FALSE(invalidDrop.isAccepted());
     QFile source(sourceDir.filePath("source.torrent"));
     ASSERT_TRUE(source.open(QIODevice::WriteOnly));
     const QByteArray metainfo = scenario == AddScenario::PreviewCancel
@@ -943,6 +967,108 @@ protected:
     MockRpcServer server;
     QHash<QString, QVariant> saved;
 };
+
+TEST_F(MockDaemonWindow, ReconnectKeepsTorrentSnapshot)
+{
+    server.setDefault({200,
+        R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","download-dir":"/default","torrents":[{"id":7,"name":"Preserved"}]}})", {}});
+    MainWindow window;
+    connectWindow(window);
+    ASSERT_TRUE(waitForSettings([&] { return window.currentId() == 7 && server.requestCount() >= 6; }));
+    int resets = 0;
+    QObject::connect(&window.torrentModel(), &QAbstractItemModel::modelReset, &window, [&] { ++resets; });
+
+    server.enqueue({503, "Service unavailable", {}});
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRefresh"));
+    ASSERT_TRUE(waitForSettings([&] { return !window.isConnectedNow(); }));
+    EXPECT_EQ(window.torrentModel().rowCount(), 1);
+    EXPECT_EQ(window.currentId(), 7);
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow(); }));
+    EXPECT_EQ(window.torrentModel().rowCount(), 1);
+    EXPECT_EQ(resets, 0);
+}
+
+TEST_F(MockDaemonWindow, ReconnectRemovesConfirmedPausedAddBeforeResumingQueue)
+{
+    MainWindow window;
+    connectWindow(window);
+    const QString first = QStringLiteral("0123456789012345678901234567890123456789");
+    const QString second = QStringLiteral("abcdef0123456789012345678901234567890123");
+    const auto magnet = [](const QString& hash) { return QStringLiteral("magnet:?xt=urn:btih:") + hash; };
+    server.enqueue({200,
+        QStringLiteral(R"({"result":"success","arguments":{"torrent-added":{"id":42,"hashString":"%1"}}})")
+            .arg(first).toUtf8(), {}});
+    server.enqueue({503, "Service unavailable", {}});
+    window.openExternalTorrents({magnet(first), magnet(second)});
+    ASSERT_TRUE(waitForSettings([&] { return !window.isConnectedNow(); }));
+    server.setDefault({200,
+        QStringLiteral(R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","torrents":[{"id":42,"status":0,"hashString":"%1"}]}})")
+            .arg(first).toUtf8(), {}});
+    const bool resumed = waitForSettings([&] { return additions().size() == 2; }, 4000);
+    QStringList calls;
+    for (const auto& request : server.requests())
+        calls.append(request.rpcMethod);
+    ASSERT_TRUE(resumed) << calls.join(", ").toStdString() << ": "
+                         << window.statusBar()->currentMessage().toStdString();
+    EXPECT_EQ(additions().last().value("filename"), magnet(second));
+    const auto requests = server.requests();
+    const auto removal = std::ranges::find_if(requests, [](const auto& request) {
+        return request.rpcMethod == "torrent-remove";
+    });
+    ASSERT_NE(removal, requests.cend());
+    EXPECT_EQ(removal->arguments.value("ids").toArray(), QJsonArray{first});
+    EXPECT_EQ(removal->arguments.value("delete-local-data"), QJsonValue(false));
+    const auto resumption = std::find_if(removal + 1, requests.cend(), [&](const auto& request) {
+        return request.rpcMethod == "torrent-add" && request.arguments.value("filename") == magnet(second);
+    });
+    EXPECT_NE(resumption, requests.cend());
+}
+
+TEST(ConnectionProfiles, SwitchingKeepsDraftAndCancelDiscardsNewProfile)
+{
+    ProfileStore store;
+    const auto previous = store.currentName();
+    const QString first = QStringLiteral("edit-draft-a");
+    const QString second = QStringLiteral("edit-draft-b");
+    const QString third = QStringLiteral("edit-draft-c");
+    store.add(first);
+    store.add(second);
+    store.setCurrent(first);
+    const auto cleanup = qScopeGuard([&] {
+        for (const auto& name : {first, second, third})
+            store.remove(name);
+        store.setCurrent(previous);
+    });
+    {
+        ConnOptionsDialog dialog;
+        auto edited = dialog.current();
+        ASSERT_EQ(edited.name, first);
+        edited.host = "changed.test";
+        dialog.setProfile(edited);
+        auto* combo = dialog.findChild<QComboBox*>(QStringLiteral("profileCombo"));
+        ASSERT_NE(combo, nullptr);
+        combo->setCurrentText(second);
+        EXPECT_NE(store.profile(first).host, edited.host);
+        dialog.accept();
+        EXPECT_EQ(store.profile(first).host, edited.host);
+        EXPECT_EQ(store.currentName(), second);
+    }
+    {
+        ConnOptionsDialog dialog;
+        QTimer::singleShot(0, &dialog, [&] {
+            auto* input = qobject_cast<QInputDialog*>(QApplication::activeModalWidget());
+            if (input) {
+                input->setTextValue(third);
+                input->accept();
+            }
+        });
+        ASSERT_TRUE(QMetaObject::invokeMethod(&dialog, "onNew", Qt::DirectConnection));
+        EXPECT_EQ(dialog.current().name, third);
+        dialog.reject();
+        EXPECT_FALSE(store.exists(third));
+        EXPECT_EQ(store.currentName(), second);
+    }
+}
 
 using AutomaticAddSources = MockDaemonWindow;
 
@@ -1228,6 +1354,19 @@ TEST_F(AutomaticAddSources, ExternalOpenForwardsUnicodeFileAndMagnetBeforeConnec
     EXPECT_TRUE(additions().isEmpty());
 
     ASSERT_NO_FATAL_FAILURE(connectWindow(window));
+    QMessageBox* confirm = nullptr;
+    ASSERT_TRUE(waitForSettings([&] {
+        for (auto* box : window.findChildren<QMessageBox*>()) {
+            if (box->isVisible() && box->windowTitle() == QStringLiteral("Add pending torrents")) {
+                confirm = box;
+                return true;
+            }
+        }
+        return false;
+    }));
+    EXPECT_TRUE(additions().isEmpty());
+    ASSERT_NE(confirm->button(QMessageBox::Yes), nullptr);
+    confirm->button(QMessageBox::Yes)->click();
     ASSERT_TRUE(waitForSettings([&] { return additions().size() >= 2; }));
     const auto result = additions();
     ASSERT_EQ(result.size(), 2);
@@ -1252,16 +1391,19 @@ protected:
 
 TEST_F(ConnectionRecovery, TimeoutAndTransportLossRecoverWithBackoff)
 {
-    auto slow = healthy;
-    slow.delayMs = 400;
-    server.enqueue(slow);
-    server.enqueue({503, "Service temporarily unavailable", {}});
     RpcClient::Options options;
     options.url = server.url();
     options.timeoutMs = 120;
     MainWindow window(nullptr, options);
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow() && server.requestCount() >= 3; }));
+    auto slow = healthy;
+    slow.delayMs = 400;
+    server.enqueue(slow);
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRefresh", Qt::DirectConnection));
     ASSERT_TRUE(waitForSettings([&] { return waitingForRetry(window, 1); }));
+    server.setDefault({503, "Service temporarily unavailable", {}});
     ASSERT_TRUE(waitForSettings([&] { return waitingForRetry(window, 2); }));
+    server.setDefault(healthy);
     ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow() && server.requestCount() >= 5; }));
 
     const int before = server.requestCount();
@@ -1276,12 +1418,14 @@ TEST_F(ConnectionRecovery, TimeoutAndTransportLossRecoverWithBackoff)
 
 TEST_F(ConnectionRecovery, DisconnectAndProfileSwitchCancelPendingRetry)
 {
-    server.setDefault({503, "Service temporarily unavailable", {}});
     RpcClient::Options options;
     options.url = server.url();
     MainWindow window(nullptr, options);
     auto* disconnect = window.findChild<QAction*>("disconnectAction");
     ASSERT_NE(disconnect, nullptr);
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow() && server.requestCount() >= 3; }));
+    server.setDefault({503, "Service temporarily unavailable", {}});
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRefresh", Qt::DirectConnection));
     ASSERT_TRUE(waitForSettings([&] { return waitingForRetry(window, 1); }));
     ASSERT_TRUE(disconnect->isEnabled());
     disconnect->trigger();
@@ -1290,7 +1434,12 @@ TEST_F(ConnectionRecovery, DisconnectAndProfileSwitchCancelPendingRetry)
     EXPECT_EQ(server.requestCount(), before);
     EXPECT_FALSE(disconnect->isEnabled());
 
+    server.setDefault(healthy);
+    const int beforeConnect = server.requestCount();
     window.setAutoConnect(options);
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow() && server.requestCount() >= beforeConnect + 3; }));
+    server.setDefault({503, "Service temporarily unavailable", {}});
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRefresh", Qt::DirectConnection));
     ASSERT_TRUE(waitForSettings([&] { return waitingForRetry(window, 1); }));
     MockRpcServer second;
     ASSERT_NE(second.start(), 0);
@@ -1401,7 +1550,7 @@ TEST(SettingsFixes, AltTogglePreservesLimitsAndEditedActiveProfileReconnects)
     QTimer::singleShot(0, [&] {
         auto* dialog = qobject_cast<ConnOptionsDialog*>(QApplication::activeModalWidget());
         if (!dialog) return;
-        dialog->setProfile(profile); dialog->saveCurrent(); dialog->accept();
+        dialog->setProfile(profile); dialog->accept();
     });
     ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onConnectionOptions", Qt::DirectConnection));
     ASSERT_TRUE(waitForSettings([&] { return second.requestCount() > 0 && window.isConnectedNow(); }));
@@ -2007,7 +2156,6 @@ TEST(TorrentActions, MoveSendsBatchAndVerifiesNewPath)
     ASSERT_EQ(window.torrentView()->selectionModel()->selectedRows().size(), 3);
     ASSERT_TRUE(waitForSettings([&] { return server.requestCount() >= 6; }));
 
-    server.setDefault({200, data(QStringLiteral("/server/target")), {}});
     bool accepted = false;
     QTimer::singleShot(0, [&] {
         auto* dialog = qobject_cast<MoveDialog*>(QApplication::activeModalWidget());
@@ -2036,8 +2184,23 @@ TEST(TorrentActions, MoveSendsBatchAndVerifiesNewPath)
     ASSERT_EQ(ids.size(), 3);
     for (const int id : {8, 9, 10})
         EXPECT_TRUE(ids.contains(id));
-    EXPECT_TRUE(waitForSettings([&] {
+    bool prematureWarning = false;
+    QObject::connect(window.statusBar(), &QStatusBar::messageChanged, &window,
+        [&](const QString& message) {
+            prematureWarning |= message.contains("Could not confirm") ||
+                                message.contains("still reports another folder");
+        });
+    QTimer::singleShot(8000, &server, [&] {
+        server.setDefault({200, data(QStringLiteral("/server/target")), {}});
+    });
+    ASSERT_TRUE(waitForSettings([&] {
         return window.statusBar()->currentMessage().contains("Move completed");
+    }, 12000));
+    EXPECT_FALSE(prematureWarning);
+    const auto requests = server.requests();
+    EXPECT_TRUE(std::ranges::any_of(requests, [&](const auto& request) {
+        return request.rpcMethod == "torrent-get" && request.arguments.value("ids").toArray() == ids &&
+            request.arguments.value("fields").toArray() == QJsonArray{"id", "downloadDir"};
     }));
     EXPECT_EQ(QSettings().value("paths/moveDirs").toStringList().first(),
               QStringLiteral("/server/target"));

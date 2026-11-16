@@ -64,6 +64,7 @@ public:
         RateDownRole,                    // double, байт/с
         RateUpRole,                      // double, байт/с
         LabelListRole,                    // QStringList, без склейки имён
+        SortRole,                         // исходное значение для сортировки
     };
 
     explicit TorrentModel(QObject* parent = nullptr);
@@ -78,11 +79,11 @@ public:
     int columnCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role) const override;
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
-    void sort(int column, Qt::SortOrder order = Qt::AscendingOrder) override;
 
     static QString statusText(int status, bool finished = false);
     static bool matchesGroup(const tgui::Torrent& t, int group);
     static QVariant sortKey(const tgui::Torrent& t, int column);
+    static bool isNumericColumn(int column);
 
 private:
     QVector<tgui::Torrent> m_torrents;
@@ -111,6 +112,7 @@ public:
     const tgui::Torrent& torrentAt(int row) const;
 
     bool filterAcceptsRow(int row, const QModelIndex& parent) const override;
+    bool lessThan(const QModelIndex& left, const QModelIndex& right) const override;
 
 private:
     template<typename T>

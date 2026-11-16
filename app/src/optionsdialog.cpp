@@ -798,5 +798,6 @@ void OptionsDialog::renameLabel(tgui::RpcClient& rpc)
             if (dialog->m_labelList->item(i)->text().trimmed() == from)
                 dialog->m_labelList->item(i)->setText(to);
         dialog->updateLabelActions();
+        emit dialog->labelRenamed(from, to);
     });
 }

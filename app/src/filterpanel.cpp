@@ -352,6 +352,17 @@ void FilterPanel::setCounts(int all, int downloading, int completed, int active,
         }
     }
 
+    const auto missing = [](const auto& entries, const QString& key) {
+        return std::none_of(entries.cbegin(), entries.cend(),
+                            [&](const auto& entry) { return entry.first == key; });
+    };
+    if ((!m_selFolder.isEmpty() && missing(folders, m_selFolder)) ||
+        (!m_selTracker.isEmpty() && missing(trackers, m_selTracker)) ||
+        ((!m_selLabel.isEmpty() || m_withoutLabels) && missing(labels, m_selLabel))) {
+        selectAllTorrents();
+    }
+
+    const QSignalBlocker blocker(m_tree);
     auto fillSection = [this](QTreeWidgetItem* section,
                               const QVector<QPair<QString, int>>& items,
                               int role) {
@@ -366,7 +377,6 @@ void FilterPanel::setCounts(int all, int downloading, int completed, int active,
                     it = section->child(i);
                     if (i != rowIndex) {
                         const bool wasCurrent = m_tree->currentItem() == it;
-                        const QSignalBlocker blocker(m_tree);
                         section->takeChild(i);
                         section->insertChild(rowIndex, it);
                         if (wasCurrent)
@@ -392,10 +402,6 @@ void FilterPanel::setCounts(int all, int downloading, int completed, int active,
         section->setExpanded(!items.isEmpty() && !section->data(0, kRoleCollapsed).toBool());
     };
     fillSection(m_foldersSection, folders, kRoleFolder);
-    if ((!m_selLabel.isEmpty() || m_withoutLabels) &&
-        std::none_of(labels.cbegin(), labels.cend(),
-                     [this](const auto& label) { return label.first == m_selLabel; }))
-        selectAllTorrents();
     fillSection(m_labelsSection, labels, kRoleLabel);
     fillSection(m_trackersSection, trackers, kRoleTracker);
     m_tree->doItemsLayout();

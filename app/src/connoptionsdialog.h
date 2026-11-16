@@ -21,7 +21,9 @@ public:
 
     DaemonProfile current() const;        // профиль, отображённый в форме
     void setProfile(const DaemonProfile& p); // заполнить форму
-    void saveCurrent();                   // записать форму в ProfileStore
+
+public slots:
+    void accept() override;
 
 private slots:
     void onProfileSelected();
@@ -33,8 +35,12 @@ private slots:
 private:
     void refreshList();
     void selectProfile(const QString& name);
+    void saveDraft();
+    bool canUseName(const QString& name, const QString& title);
 
     ProfileStore m_store;
+    QList<ProfileStore::Draft> m_drafts;
+    QString m_editingName;
     QComboBox* m_profiles = nullptr;
     QLineEdit* m_host = nullptr;
     QSpinBox* m_port = nullptr;

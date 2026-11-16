@@ -28,6 +28,7 @@ public:
         QString clientKeyPath;
         std::optional<QByteArray> clientKeyPassphrase; // Только в памяти на время подключения.
         QNetworkProxy proxy{ QNetworkProxy::NoProxy }; // по умолчанию — без прокси
+        bool operator==(const Options& other) const;
     };
 
     // Параметры torrent-add.
@@ -45,6 +46,7 @@ public:
     };
 
     using DetailsCallback = std::function<void(const std::optional<TorrentDetails>&)>;
+    // Вызывается асинхронно один раз, если клиент ещё существует к моменту завершения запроса.
     using RequestCallback = JsonRpcClient::Callback;
     using AddCallback = std::function<void(const JsonRpcResult&, const QByteArray&)>;
     using TrackerUpdateCallback = std::function<void(const QString& error, bool updated)>;
@@ -60,11 +62,12 @@ public:
     bool supports(int minRpcVersion) const { return m_rpcVersion >= minRpcVersion; }
 
     // --- Соединение (session-get) ---
-    void connectToDaemon();
+    void connectToDaemon(bool retryOnNetworkError = false);
     void disconnectFromDaemon();
 
     // --- Чтение ---
     void getTorrents(const QStringList& extraFields = {});
+    void getTorrentLocations(const QVector<int>& ids, RequestCallback callback);
     void getTorrentDetails(int id, DetailsCallback callback = {});
     void getTorrentDetailsByHash(const QString& hash, DetailsCallback callback);
     void getPeers(int id);
@@ -156,6 +159,7 @@ private:
                        RequestCallback callback = {});
     void reportResult(const QString& method, const JsonRpcResult& result,
                       const RequestCallback& callback);
+    void finishLocally(const QString& method, RequestCallback callback, QString error = {});
     void applyRequests(QList<QPair<QString, QJsonObject>> requests, RequestCallback callback);
     void torrentIds(QJsonObject& args, int id) const;
     static QString describeError(const JsonRpcResult& r);
@@ -165,6 +169,7 @@ private:
     quint64 m_listApplied = 0;
     quint64 m_filesApplied = 0;
     quint64 m_trackersApplied = 0;
+    quint64 m_peersApplied = 0;
     Options m_options;
     bool m_connected = false;
     bool m_connectionProblemReported = false;

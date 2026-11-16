@@ -169,6 +169,7 @@ private:
     bool eventFilter(QObject* watched, QEvent* event) override;
     void createUi();
     void createActions();
+    void applyToolbarStyle(int value);
     void createMenus();
     void createTray();
     void addSpeedLimitMenu(QMenu* parent, bool download);
@@ -183,6 +184,7 @@ private:
     void clearConnection();
     void handleConnectionError(const QString& error, bool retry);
     void maybeAutoConnect();
+    void confirmPendingExternalTorrents();
     void switchToProfile(const QString& name);
     // Двойной клик (референс: lvFilesDblClick / gTorrentsDblClick): файл → запустить,
     // папка → открыть; по строке списка торрентов → открыть его файл/папку.
@@ -233,6 +235,7 @@ private:
     };
     void startAdd(const tgui::RpcClient::AddTorrent& params, AddOrigin origin = AddOrigin::Interactive);
     void addNextTorrent();
+    void resumeAddQueue(const QVector<tgui::Torrent>& torrents);
     void submitTorrent(PendingAdd pending, QByteArray sourceBytes = {},
                        std::optional<AddChoices> choices = {});
     void onClipboardChanged();
@@ -258,6 +261,7 @@ private:
     QTimer m_reconnectTimer;
     std::optional<tgui::RpcClient::Options> m_reconnectOptions;
     int m_reconnectDelayMs = 1000;
+    bool m_reconnecting = false;
 
     // Параметры автоподключения (из командной строки).
     tgui::RpcClient::Options m_autoConnectOpts;
@@ -267,6 +271,9 @@ private:
     QQueue<PendingAdd> m_addQueue;
     QStringList m_pendingExternalTorrents;
     bool m_addingTorrent = false;
+    bool m_addInterrupted = false;
+    int m_unconfiguredTorrentId = -1;
+    QString m_unconfiguredTorrentHash;
     int m_addSelectionId = -1;
     QSet<QString> m_clipboardLinksSeen;
     QString m_watchFolder;
@@ -295,7 +302,8 @@ private:
     // Ожидание подтверждённого нового downloadDir после переноса.
     QVector<int> m_movePendingIds;
     QString m_movePendingTarget;
-    int m_moveVerifyAttempts = 0;
+    QDeadlineTimer m_moveDeadline;
+    quint64 m_moveGeneration = 0;
     QTimer m_moveVerifyTimer;
 
     QTabWidget* m_tabs = nullptr;
@@ -367,4 +375,5 @@ private:
     QAction* m_actTrackerGrouping = nullptr;
 
     QSystemTrayIcon* m_tray = nullptr;
+    bool m_quitRequested = false;
 };

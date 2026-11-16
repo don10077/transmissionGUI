@@ -38,6 +38,7 @@ PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion
     peers->setRange(1, 65535);
     peers->setMaximumWidth(160);
     peers->setValue(t.maxConnectedPeers.value_or(50));
+    const int initialPeerLimit = peers->value();
     peers->setEnabled(t.maxConnectedPeers.has_value());
     tgui::theme::addFormRow(form, tr("Peer limit"), peers);
     // Последовательная загрузка (W04): переключается и для уже добавленных
@@ -155,7 +156,8 @@ PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion
     connect(buttons, &QDialogButtonBox::accepted, this, [=, this] {
         QJsonObject changes;
         for (const auto& read : readers) read(changes);
-        if (t.maxConnectedPeers && peers->value() != *t.maxConnectedPeers) changes["peer-limit"] = peers->value();
+        if (t.maxConnectedPeers && peers->value() != initialPeerLimit)
+            changes["peer-limit"] = peers->value();
         if (sequentialSupported && sequential->isChecked() != sequentialInitial)
             changes["sequential_download"] = sequential->isChecked();
         const auto entered = trackers->toPlainText().trimmed();

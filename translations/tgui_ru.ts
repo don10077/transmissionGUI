@@ -108,6 +108,14 @@
   <context>
     <name>ConnOptionsDialog</name>
     <message>
+      <source>Could not save the connection profiles.</source>
+      <translation>Не удалось сохранить профили подключения.</translation>
+    </message>
+    <message>
+      <source>Use a name of 1 to 64 characters without slashes or reserved names.</source>
+      <translation>Введите имя длиной от 1 до 64 символов. Нельзя использовать косые черты и служебные имена.</translation>
+    </message>
+    <message>
       <source>Client TLS</source>
       <translation>Клиентский TLS</translation>
     </message>
@@ -910,6 +918,10 @@
   <context>
     <name>FileSelectDialog</name>
     <message>
+      <source>This folder has no path mapping. Enter the daemon path or configure a mapping.</source>
+      <translation>Для этой папки нет сопоставления. Введите путь на демоне или настройте сопоставление путей.</translation>
+    </message>
+    <message>
       <source>Find by torrent name or folder</source>
       <translation>Поиск по имени раздачи или папке</translation>
     </message>
@@ -1404,6 +1416,26 @@
       <translation>Отключено</translation>
     </message>
     <message>
+      <source>Add queue cleared. Torrents not added: %1.</source>
+      <translation>Очередь добавления очищена. Не добавлено торрентов: %1.</translation>
+    </message>
+    <message>
+      <source>Interrupted torrent add</source>
+      <translation>Добавление торрента прервано</translation>
+    </message>
+    <message>
+      <source>A torrent add was interrupted. Check the list before adding it again.</source>
+      <translation>Добавление торрента прервано. Проверьте список перед повторным добавлением.</translation>
+    </message>
+    <message>
+      <source>Add pending torrents</source>
+      <translation>Добавить отложенные торренты</translation>
+    </message>
+    <message>
+      <source>Add the pending torrents (%1) to %2?</source>
+      <translation>Добавить отложенные торренты (%1) на %2?</translation>
+    </message>
+    <message>
       <source>Columns…</source>
       <translation type="vanished">Колонки…</translation>
     </message>
@@ -1747,8 +1779,8 @@ Reason: %2</source>
       <translation>Перенос завершён: %1</translation>
     </message>
     <message>
-      <source>Move finished, but the daemon still reports another folder.</source>
-      <translation>Перенос выполнен, но демон всё ещё сообщает другой каталог.</translation>
+      <source>Could not confirm the new torrent folder.</source>
+      <translation>Не удалось подтвердить новый каталог торрента.</translation>
     </message>
     <message>
       <source>&lt;b&gt;transmissionGUI&lt;/b&gt; %1&lt;br/&gt;GUI client for the Transmission daemon (C++/Qt 6).&lt;br/&gt;&lt;br/&gt;License: GPL v3&lt;br/&gt;Mail: &lt;a href="mailto:don10077@mail.ru"&gt;don10077@mail.ru&lt;/a&gt;</source>
@@ -2569,6 +2601,10 @@ Restart the application to apply the changes.</source>
   </context>
   <context>
     <name>MoveDialog</name>
+    <message>
+      <source>This folder has no path mapping. Enter the daemon path or configure a mapping.</source>
+      <translation>Для этой папки нет сопоставления. Введите путь на демоне или настройте сопоставление путей.</translation>
+    </message>
     <message>
       <source>Move existing data</source>
       <translation>Переместить существующие данные</translation>

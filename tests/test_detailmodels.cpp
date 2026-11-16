@@ -549,9 +549,11 @@ TEST(DetailPeerModel, ResolveHostFailedLookupKeepsIp)
     p.port = 0;
     peers.push_back(p);
     m.setPeers(peers);
-    m.setResolveHost(true);
     // Ошибка reverse DNS (пустой host) — остаётся IP.
+    EXPECT_FALSE(m.hasHostLookupResult(p.address));
     m.setResolvedHost("1.2.3.4", QString());
+    ASSERT_TRUE(m.hasHostLookupResult(p.address));
+    m.setResolveHost(true);
     EXPECT_EQ(m.data(m.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(),
               "1.2.3.4");
 }

@@ -15,8 +15,8 @@
 #include <QPushButton>
 #include "theme.h"
 
-MoveDialog::MoveDialog(const QString& currentDir, QWidget* parent, const QString& profile)
-    : QDialog(parent), m_mappings(ProfilePreferences(profile).mappings())
+MoveDialog::MoveDialog(const QString& currentDir, QWidget* parent, const QString& profile, bool localDaemon)
+    : QDialog(parent), m_mappings(ProfilePreferences(profile).mappings()), m_localDaemon(localDaemon)
 {
     setWindowTitle(tr("Move torrent"));
     resize(560, 120);
@@ -85,5 +85,13 @@ void MoveDialog::onBrowse()
     }
     const QString dir = QFileDialog::getExistingDirectory(
         this, tr("Folder for the torrent files"), local);
-    if (!dir.isEmpty()) m_path->setCurrentText(tgui::mapLocalToRemote(dir, m_mappings));
+    if (dir.isEmpty())
+        return;
+    const auto mapped = tgui::mapLocalToRemote(dir, m_mappings);
+    if (!mapped && !m_localDaemon) {
+        QMessageBox::warning(this, windowTitle(),
+            tr("This folder has no path mapping. Enter the daemon path or configure a mapping."));
+        return;
+    }
+    m_path->setCurrentText(mapped.value_or(dir));
 }

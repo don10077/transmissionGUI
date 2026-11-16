@@ -78,6 +78,8 @@ public:
     bool resolveHost() const { return m_resolveHost; }
     // Записать результат reverse-DNS в кеш (host=="" — ошибка/отсутствие) и обновить колонку «Адрес».
     void setResolvedHost(const QString& ip, const QString& host);
+    /** Проверяет, закеширован ли результат для @p ip, включая отсутствие имени. */
+    bool hasHostLookupResult(const QString& ip) const { return m_hostCache.contains(ip); }
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     int columnCount(const QModelIndex& parent = QModelIndex()) const override;

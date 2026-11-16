@@ -59,6 +59,17 @@ TEST_F(JsonRpcTest, CustomRpcPath)
     EXPECT_EQ(server.requests().first().path, "/web/rpc");
 }
 
+TEST_F(JsonRpcTest, RpcPathJoinsBaseWithoutLosingEncoding)
+{
+    const auto base = QUrl::fromEncoded(server.url().toEncoded() + "/prefix%2Fsegment/");
+    for (const QString& path : {QString{}, QStringLiteral("transmission/rpc"),
+                                 QStringLiteral("/transmission/rpc")}) {
+        tgui::JsonRpcClient client(base, path);
+        ASSERT_TRUE(client.callSync("session-get", {}).ok);
+        EXPECT_EQ(server.requests().last().path, "/prefix%2Fsegment/transmission/rpc");
+    }
+}
+
 TEST_F(JsonRpcTest, SessionIdRetryOn409)
 {
     tgui::JsonRpcClient client(server.url());
@@ -304,10 +315,11 @@ TEST_F(JsonRpcTest, Timeout)
     });
 
     tgui::JsonRpcClient client(QUrl(QString("http://127.0.0.1:%1").arg(slow.serverPort())));
-    client.setTimeout(std::chrono::milliseconds(300));
     const tgui::JsonRpcResult r =
-        client.callSync("session-get", QJsonObject{}, std::chrono::seconds(3));
+        client.callSync("session-get", QJsonObject{}, std::chrono::milliseconds(150));
     EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.error, QStringLiteral("Timeout"));
+    EXPECT_EQ(r.networkError, QNetworkReply::TimeoutError);
 }
 
 } // namespace

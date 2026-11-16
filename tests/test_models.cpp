@@ -105,10 +105,10 @@ TEST(ModelTorrentsTable, ParseTable)
         {"result", "success"},
         {"arguments",
          QJsonObject{{"torrents",
-           QJsonArray{QJsonArray{"id", "name", "status", "sequential_download"},
-                        QJsonArray{1, "one", 4, true},
-                        QJsonArray{2, "two", 0, false},
-                        QJsonArray{3, "three", 6, true}}}}},
+           QJsonArray{QJsonArray{"id", 123, "name", "status", "sequential_download"},
+                        QJsonArray{1, "ignored", "one", 4, true},
+                        QJsonArray{2, "ignored", "two", 0, false},
+                        QJsonArray{3, "ignored", "three", 6, true}}}}},
     };
     const QVector<Torrent> list = parseTorrentsTable(body.value("arguments").toObject());
     ASSERT_EQ(list.size(), 3);
@@ -493,4 +493,101 @@ TEST(GuiListChain, OffscreenTreeViewRendersRows)
     qApp->processEvents();
     const QPixmap pm = view.grab();
     EXPECT_TRUE(pm.width() > 0 && pm.height() > 0);
+}
+
+TEST(GuiListChain, SortBySizeNumeric)
+{
+    TorrentModel model;
+    TorrentFilterProxy filter;
+    filter.setSourceModel(&model);
+    filter.setDynamicSortFilter(true);
+
+    QVector<tgui::Torrent> torrents;
+    // 500 KB, 9 MB, 10 GB — как строки: "9 MB" > "10 GB" в лексикографическом порядке
+    tgui::Torrent t1; t1.id = 1; t1.name = "small"; t1.totalSize = 512000.0;
+    tgui::Torrent t2; t2.id = 2; t2.name = "medium"; t2.totalSize = 9437184.0;
+    tgui::Torrent t3; t3.id = 3; t3.name = "large"; t3.totalSize = 10737418240.0;
+    torrents = {t3, t1, t2}; // намеренно не отсортированы
+    model.setTorrents(torrents);
+    qApp->processEvents();
+
+    // Сортируем по размеру — числовое сравнение
+    filter.sort(TorrentModel::ColSize, Qt::AscendingOrder);
+    qApp->processEvents();
+
+    // Ожидаемый порядок: 500 KB (id=1), 9 MB (id=2), 10 GB (id=3)
+    ASSERT_EQ(filter.rowCount(), 3);
+    EXPECT_EQ(filter.torrentAt(0).id, 1) << "500 KB должен быть первым";
+    EXPECT_EQ(filter.torrentAt(1).id, 2) << "9 MB должен быть вторым";
+    EXPECT_EQ(filter.torrentAt(2).id, 3) << "10 GB должен быть третьим";
+}
+
+TEST(GuiListChain, SortByEtaNumeric)
+{
+    TorrentModel model;
+    TorrentFilterProxy filter;
+    filter.setSourceModel(&model);
+    filter.setDynamicSortFilter(true);
+
+    tgui::Torrent t1; t1.id = 1; t1.name = "no-eta"; t1.eta = -1;
+    tgui::Torrent t2; t2.id = 2; t2.name = "short"; t2.eta = 30;
+    tgui::Torrent t3; t3.id = 3; t3.name = "long"; t3.eta = 3600;
+    model.setTorrents({t3, t1, t2});
+    qApp->processEvents();
+
+    filter.sort(TorrentModel::ColEta, Qt::AscendingOrder);
+    qApp->processEvents();
+
+    ASSERT_EQ(filter.rowCount(), 3);
+    EXPECT_EQ(filter.torrentAt(0).id, 2) << "30s должен быть первым";
+    EXPECT_EQ(filter.torrentAt(1).id, 3) << "3600s должен быть вторым";
+    EXPECT_EQ(filter.torrentAt(2).id, 1) << "no-eta должен быть последним";
+
+    filter.sort(TorrentModel::ColEta, Qt::DescendingOrder);
+    EXPECT_EQ(filter.torrentAt(0).id, 3);
+    EXPECT_EQ(filter.torrentAt(1).id, 2);
+    EXPECT_EQ(filter.torrentAt(2).id, 1);
+    EXPECT_EQ(filter.index(2, TorrentModel::ColEta).data().toString(), QStringLiteral("—"));
+
+    t1.eta = -2;
+    model.setTorrents({t3, t1, t2});
+    EXPECT_EQ(filter.index(2, TorrentModel::ColEta).data().toString(), QStringLiteral("∞"));
+}
+
+TEST(GuiListChain, SortByAddedDateChronologically)
+{
+    TorrentModel model;
+    TorrentFilterProxy filter;
+    filter.setSourceModel(&model);
+
+    tgui::Torrent december;
+    december.id = 1;
+    december.addedDate = 1735603200; // 31.12.2024 UTC
+    tgui::Torrent january;
+    january.id = 2;
+    january.addedDate = 1735776000; // 02.01.2025 UTC
+    model.setTorrents({january, december});
+
+    filter.sort(TorrentModel::ColAddedOn, Qt::AscendingOrder);
+    ASSERT_EQ(filter.rowCount(), 2);
+    EXPECT_EQ(filter.torrentAt(0).id, december.id);
+    EXPECT_EQ(filter.torrentAt(1).id, january.id);
+}
+
+TEST(GuiListChain, PrivateColumnDistinguishesPublicAndUnknown)
+{
+    TorrentModel model;
+    tgui::Torrent publicTorrent;
+    publicTorrent.id = 1;
+    publicTorrent.isPrivate = false;
+    tgui::Torrent privateTorrent;
+    privateTorrent.id = 2;
+    privateTorrent.isPrivate = true;
+    tgui::Torrent unknown;
+    unknown.id = 3;
+    model.setTorrents({publicTorrent, privateTorrent, unknown});
+
+    EXPECT_EQ(model.index(0, TorrentModel::ColPrivate).data().toString(), QStringLiteral("no"));
+    EXPECT_EQ(model.index(1, TorrentModel::ColPrivate).data().toString(), QStringLiteral("yes"));
+    EXPECT_EQ(model.index(2, TorrentModel::ColPrivate).data().toString(), QStringLiteral("—"));
 }

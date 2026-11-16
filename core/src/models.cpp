@@ -177,15 +177,17 @@ QVector<Torrent> parseTorrentsTable(const QJsonObject& body)
     if (arr.isEmpty() || !arr.first().isArray())
         return result;
 
-    const QStringList fields = optStringList(arr.first().toArray());
+    const auto fields = arr.first().toArray();
     for (int i = 1; i < arr.size(); ++i) {
         if (!arr.at(i).isArray())
             continue;
         const QJsonArray row = arr.at(i).toArray();
         QJsonObject obj;
         const int n = std::min(fields.size(), row.size());
-        for (int f = 0; f < n; ++f)
-            obj.insert(fields.at(f), row.at(f));
+        for (int f = 0; f < n; ++f) {
+            if (fields.at(f).isString())
+                obj.insert(fields.at(f).toString(), row.at(f));
+        }
         Torrent t;
         if (parseTorrent(obj, t))
             result.push_back(t);

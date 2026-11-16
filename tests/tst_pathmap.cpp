@@ -24,6 +24,14 @@ TEST(PathMap, NoMatchReturnsOriginal)
     EXPECT_EQ(tgui::mapRemoteToLocal("/other/file.mp4", m), "/other/file.mp4");
 }
 
+TEST(PathMap, LocalPathWithoutMappingHasNoRemotePath)
+{
+    const QStringList mappings{"/downloads=C:/shared"};
+    EXPECT_EQ(tgui::mapLocalToRemote("C:/other", mappings), std::nullopt);
+    EXPECT_EQ(tgui::mapLocalToRemote("C:/shared/movies", mappings).value_or(QString()),
+              QStringLiteral("/downloads/movies"));
+}
+
 TEST(PathMap, WindowsSeparatorsNormalized)
 {
     const QStringList m = {QStringLiteral("C:\\music=D:/music")};

@@ -62,6 +62,31 @@ bool makeSampleTorrent(const QString& path)
     return f.write(enc.data(), static_cast<qint64>(enc.size())) == enc.size();
 }
 
+/** Дожидается подтверждённого подключения или возвращает причину ошибки. */
+QString waitForConnection(tgui::RpcClient& client)
+{
+    QEventLoop loop;
+    QString error = QStringLiteral("Timeout");
+    const auto fail = [&](const QString& message) {
+        error = message.isEmpty() ? QStringLiteral("Connection failed.") : message;
+        loop.quit();
+    };
+    QObject::connect(&client, &tgui::RpcClient::connected, &loop, [&] {
+        error.clear();
+        loop.quit();
+    });
+    QObject::connect(&client, &tgui::RpcClient::connectionFailed, &loop, fail);
+    QObject::connect(&client, &tgui::RpcClient::connectionInterrupted, &loop, fail);
+    QObject::connect(&client, &tgui::RpcClient::authenticationFailed, &loop, fail);
+    QObject::connect(&client, &tgui::RpcClient::clientTlsPassphraseRequired, &loop, [&] {
+        fail(QStringLiteral("Client TLS passphrase is required."));
+    });
+    QTimer::singleShot(20000, &loop, &QEventLoop::quit);
+    QTimer::singleShot(0, &loop, [&] { client.connectToDaemon(); });
+    loop.exec();
+    return error;
+}
+
 int runAddTest(const QString& url, const QString& rpcPath, const QString& user,
                const QString& pass, const QString& torrentFile)
 {
@@ -89,18 +114,7 @@ int runAddTest(const QString& url, const QString& rpcPath, const QString& user,
     };
 
     // 1. connect
-    QString connErr;
-    auto c1 = QObject::connect(&client, &tgui::RpcClient::connected, &loop,
-                               &QEventLoop::quit);
-    auto c2 = QObject::connect(&client, &tgui::RpcClient::connectionFailed, &loop,
-                               [&](const QString& e) {
-                                   connErr = e;
-                                   loop.quit();
-                               });
-    client.connectToDaemon();
-    wait();
-    QObject::disconnect(c1);
-    QObject::disconnect(c2);
+    const auto connErr = waitForConnection(client);
     if (!connErr.isEmpty()) {
         std::fprintf(stderr, "FAIL connect: %s\n", connErr.toUtf8().constData());
         return 1;
@@ -225,17 +239,7 @@ int runRemoveByName(const QString& url, const QString& rpcPath, const QString& u
         timer.stop();
     };
 
-    QString connErr;
-    auto c1 = QObject::connect(&client, &tgui::RpcClient::connected, &loop, &QEventLoop::quit);
-    auto c2 = QObject::connect(&client, &tgui::RpcClient::connectionFailed, &loop,
-                               [&](const QString& e) {
-                                   connErr = e;
-                                   loop.quit();
-                               });
-    client.connectToDaemon();
-    wait();
-    QObject::disconnect(c1);
-    QObject::disconnect(c2);
+    const auto connErr = waitForConnection(client);
     if (!connErr.isEmpty()) {
         std::fprintf(stderr, "FAIL connect: %s\n", connErr.toUtf8().constData());
         return 1;

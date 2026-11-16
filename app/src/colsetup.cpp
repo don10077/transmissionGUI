@@ -16,6 +16,8 @@
 #include <QTreeView>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 int ColumnLayout::persistentColumn() { return 0; } // ColName
 
 ColumnLayout ColumnLayout::defaults(int count)
@@ -55,14 +57,7 @@ ColumnLayout ColumnLayout::defaults(int count)
 
 void ColumnLayout::ensureAtLeastOneVisible()
 {
-    bool any = false;
-    for (bool v : visible) {
-        if (v) {
-            any = true;
-            break;
-        }
-    }
-    if (!any)
+    if (persistentColumn() < visible.size())
         visible[persistentColumn()] = true;
 }
 
@@ -139,11 +134,11 @@ void ColumnLayout::applyToView(QTreeView* view) const
     if (!header)
         return;
     header->setSectionResizeMode(QHeaderView::Interactive);
-    const int n = order.size();
+    const auto n = std::min({order.size(), visible.size(), qsizetype(header->count())});
     for (int visual = 0; visual < n; ++visual) {
         const int logical = order.at(visual);
         const int cur = header->visualIndex(logical);
-        if (cur != visual)
+        if (cur >= 0 && cur != visual)
             header->moveSection(cur, visual);
     }
     for (int i = 0; i < n; ++i) {
@@ -161,11 +156,11 @@ void ColumnLayout::applyToView(QTableView* view) const
     if (!header)
         return;
     header->setSectionResizeMode(QHeaderView::Interactive);
-    const int n = order.size();
+    const auto n = std::min({order.size(), visible.size(), qsizetype(header->count())});
     for (int visual = 0; visual < n; ++visual) {
         const int logical = order.at(visual);
         const int cur = header->visualIndex(logical);
-        if (cur != visual)
+        if (cur >= 0 && cur != visual)
             header->moveSection(cur, visual);
     }
     for (int i = 0; i < n; ++i) {
@@ -180,16 +175,20 @@ ColumnLayout ColumnLayout::fromView(QTableView* view, int count)
     if (!view || !view->horizontalHeader())
         return defaults(count);
     auto* header = view->horizontalHeader();
-    ColumnLayout c;
-    c.visible = QList<bool>(count, false);
+    auto c = defaults(count);
+    c.order.clear();
     const int n = header->count();
     for (int visual = 0; visual < n; ++visual) {
         const int logical = header->logicalIndex(visual);
-        c.order << logical;
         if (logical >= 0 && logical < count) {
+            c.order << logical;
             c.visible[logical] = !view->isColumnHidden(logical);
             c.widths[logical] = view->columnWidth(logical);
         }
+    }
+    for (int logical = 0; logical < count; ++logical) {
+        if (!c.order.contains(logical))
+            c.order.append(logical);
     }
     c.ensureAtLeastOneVisible();
     return c;

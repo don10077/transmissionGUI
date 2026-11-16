@@ -1,7 +1,11 @@
 #pragma once
 
+#include <QHostAddress>
 #include <QString>
 #include <QStringList>
+#include <QUrl>
+
+#include <optional>
 
 namespace tgui {
 
@@ -35,8 +39,8 @@ inline QString mapRemoteToLocal(const QString& path, const QStringList& mappings
     return path;
 }
 
-/** Convert a folder selected locally back to the daemon namespace. */
-inline QString mapLocalToRemote(const QString& path, const QStringList& mappings)
+/** Возвращает путь демона для @p path по @p mappings или пустой результат. */
+inline std::optional<QString> mapLocalToRemote(const QString& path, const QStringList& mappings)
 {
     const QString localPath = QString(path).replace('\\', '/');
     for (const auto& mapping : mappings) {
@@ -56,7 +60,15 @@ inline QString mapLocalToRemote(const QString& path, const QStringList& mappings
         if (localPath.startsWith(local + '/', sensitivity))
             return remote + (remote.endsWith('/') ? QString() : QStringLiteral("/")) + localPath.mid(local.size() + 1);
     }
-    return path;
+    return std::nullopt;
+}
+
+/** Проверяет, указан ли в @p url адрес локального демона. */
+inline bool isLocalDaemon(const QUrl& url)
+{
+    const auto host = url.host();
+    return host.compare("localhost", Qt::CaseInsensitive) == 0 ||
+        host.compare("localhost.", Qt::CaseInsensitive) == 0 || QHostAddress(host).isLoopback();
 }
 
 // Разбирает текст настроек (одна строка "remote=local" в строке) в список правил.

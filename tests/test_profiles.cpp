@@ -196,6 +196,21 @@ TEST(ProfileStore, AddDuplicateIgnored)
     EXPECT_TRUE(names.contains("work"));
 }
 
+TEST(ProfileStore, RefusesNamesThatOverlapSettings)
+{
+    isolate();
+    clearStore();
+    ProfileStore store;
+    store.add("home");
+    for (const auto& invalid : {"names", "CURRENT", "preferencesMigrated", "a/b", "a\\b"}) {
+        EXPECT_FALSE(ProfileStore::isValidName(QString::fromLatin1(invalid)));
+        store.add(QString::fromLatin1(invalid));
+        store.rename("home", QString::fromLatin1(invalid));
+    }
+    EXPECT_EQ(store.names(), QStringList{"home"});
+    EXPECT_EQ(store.currentName(), QStringLiteral("home"));
+}
+
 TEST(ProfileStore, RemoveSwitchesCurrent)
 {
     isolate();

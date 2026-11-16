@@ -37,6 +37,9 @@ struct DaemonProfile {
 // CRUD имённых профилей в QSettings (раздел daemons/*, daemons/current).
 class ProfileStore {
 public:
+    using Draft = QPair<QString, DaemonProfile>; // исходное имя (пустое для нового), настройки
+    static bool isValidName(const QString& name);
+    bool saveDrafts(const QList<Draft>& drafts, const QString& current);
     QStringList names() const;
     QString currentName() const;
     bool hasCurrent() const;
