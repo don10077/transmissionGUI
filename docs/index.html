@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>transmissionGUI — Transmission remote GUI with sequential download</title>
+  <meta name="description" content="A native Qt 6 GUI for the Transmission BitTorrent daemon on Windows, Linux and macOS. Manage torrents remotely and enable sequential download for Transmission 4.1+.">
+  <meta name="keywords" content="Transmission GUI, transmissionGUI, Transmission remote GUI, sequential download, Transmission 4.1, BitTorrent client, Qt torrent client">
+  <link rel="canonical" href="https://don10077.github.io/transmissionGUI/">
+  <link rel="alternate" hreflang="en" href="https://don10077.github.io/transmissionGUI/">
+  <link rel="alternate" hreflang="ru" href="https://don10077.github.io/transmissionGUI/ru/">
+  <link rel="alternate" hreflang="x-default" href="https://don10077.github.io/transmissionGUI/">
+  <link rel="icon" type="image/png" href="assets/transmission-icon.png">
+  <link rel="stylesheet" href="assets/style.css">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="transmissionGUI">
+  <meta property="og:title" content="transmissionGUI — Transmission remote GUI with sequential download">
+  <meta property="og:description" content="Native Qt 6 client for the Transmission daemon: torrent management, sequential download, labels and speed schedules on Windows, Linux and macOS.">
+  <meta property="og:url" content="https://don10077.github.io/transmissionGUI/">
+  <meta property="og:image" content="https://don10077.github.io/transmissionGUI/assets/social-card.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="transmissionGUI — Transmission remote GUI with sequential download">
+  <meta name="twitter:description" content="Native Qt 6 client for the Transmission daemon: torrent management, sequential download, labels and speed schedules.">
+  <meta name="twitter:image" content="https://don10077.github.io/transmissionGUI/assets/social-card.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "transmissionGUI",
+    "alternateName": ["Transmission GUI", "Transmission Remote GUI"],
+    "applicationCategory": "FileTransferApplication",
+    "operatingSystem": "Windows, Linux, macOS",
+    "description": "A native Qt 6 GUI for the Transmission BitTorrent daemon with remote torrent management and sequential download.",
+    "url": "https://don10077.github.io/transmissionGUI/",
+    "softwareVersion": "0.1.0",
+    "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+    "inLanguage": ["en", "ru"],
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "sameAs": ["https://github.com/don10077/transmissionGUI"]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is transmissionGUI?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "transmissionGUI is a free, open-source Transmission GUI for Windows, Linux and macOS. It connects to the Transmission daemon over JSON-RPC and manages torrents in a native desktop window."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I enable sequential download in Transmission?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Open Application options → Sequential download to enable automatic rules for selected file extensions, or tick Sequential download in the Add torrent dialog or in Properties → General for one torrent. The daemon must be Transmission 4.1 or newer (RPC 18)."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Which Transmission versions are supported?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Transmission 2.x, 3.x and 4.0.x are supported through the legacy JSON-RPC API. Transmission 4.1+ is detected automatically and uses JSON-RPC 2.0."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does transmissionGUI need a web browser?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. transmissionGUI is a standalone Qt application. It does not embed the Transmission web interface and does not require a browser."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is transmissionGUI free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. The application is distributed under GPL-3.0. Download a package from GitHub Releases or build it from source."
+        }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="./">
+      <img src="assets/transmission-icon.png" alt="">
+      transmissionGUI
+    </a>
+    <nav class="site-nav" aria-label="Main navigation">
+      <a href="./" aria-current="page">Home</a>
+      <a href="sequential-download/">Sequential download</a>
+      <a href="https://github.com/don10077/transmissionGUI">GitHub</a>
+      <a class="lang" href="ru/" lang="ru" hreflang="ru">Русский</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <div>
+      <h1>Transmission GUI for your desktop</h1>
+      <p class="lead">Manage torrents on a local or remote Transmission daemon from one native
+        window — with sequential download, labels, speed schedules and detailed statistics.</p>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/don10077/transmissionGUI/releases/latest">Download transmissionGUI</a>
+        <a class="btn" href="sequential-download/">Enable sequential download</a>
+        <a class="btn" href="https://github.com/don10077/transmissionGUI">View on GitHub</a>
+      </div>
+    </div>
+    <img class="hero-icon" src="assets/transmission-icon.png" width="240" height="268" alt="transmissionGUI application icon">
+  </section>
+
+  <section>
+    <h2>A Transmission client, not just a web UI wrapper</h2>
+    <p>transmissionGUI is a native <strong>C++23 / Qt 6</strong> application for the
+      Transmission BitTorrent daemon. It speaks the daemon's JSON-RPC API directly, works on
+      Windows, Linux and macOS, and does not embed the Transmission web interface.</p>
+    <div class="cards">
+      <div class="card">
+        <h3>Remote control</h3>
+        <p>Connect over HTTP or HTTPS, use profiles, path mapping, proxies and client
+          certificates. Switch between several daemons in a couple of clicks.</p>
+      </div>
+      <div class="card">
+        <h3>Sequential download</h3>
+        <p>Download files in order instead of random pieces. Configure automatic rules by
+          extension or enable it per torrent.</p>
+      </div>
+      <div class="card">
+        <h3>Full torrent management</h3>
+        <p>Start, stop, queue, prioritize, label, rename, verify and remove torrents. Inspect
+          files, peers, trackers and session statistics.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What you can do</h2>
+    <ul>
+      <li>Sort and search torrents, filter by status, group by folder, label or tracker.</li>
+      <li>Add <code>.torrent</code> files, magnet links and URLs, choose files and peer limits,
+        drop files onto the window or watch a local folder.</li>
+      <li>Edit properties in batch, move several torrents with one request, export settings and
+        import them back.</li>
+      <li>Use the tray icon, keyboard shortcuts, configurable colors and column layout.</li>
+      <li>Update the GeoIP database, resolve peer hostnames, update the blocklist and check for
+        new releases.</li>
+    </ul>
+  </section>
+
+  <section id="sequential-download">
+    <h2>Sequential download in Transmission</h2>
+    <p>Transmission 4.1+ (RPC 18) can download a torrent in order. In transmissionGUI you can
+      enable it in two ways:</p>
+    <ol class="steps">
+      <li><strong>Automatically for selected files.</strong> Open <em>Application options →
+        Sequential download</em>, turn on “Enable automatically for files with these
+        extensions” and list the extensions you need.</li>
+      <li><strong>For a single torrent.</strong> Tick <em>Sequential download</em> in the Add
+        torrent dialog, or open <em>Properties → General</em> and enable it there.</li>
+    </ol>
+    <p><a href="sequential-download/">Read the full guide: how to enable sequential download in Transmission</a></p>
+  </section>
+
+  <section>
+    <h2>Works with Transmission 2.x, 3.x, 4.0 and 4.1+</h2>
+    <table>
+      <thead>
+      <tr><th>Daemon</th><th>RPC mode</th></tr>
+      </thead>
+      <tbody>
+      <tr><td>Transmission 2.x / 3.x / 4.0.x</td><td>Legacy JSON-RPC</td></tr>
+      <tr><td>Transmission 4.1+</td><td>JSON-RPC 2.0, detected automatically</td></tr>
+      </tbody>
+    </table>
+    <p>Sequential download requires Transmission 4.1 (RPC 18). Label renaming requires
+      Transmission 4.0 (RPC 16).</p>
+  </section>
+
+  <section id="install">
+    <h2>Install</h2>
+    <p>Download the package for your platform from
+      <a href="https://github.com/don10077/transmissionGUI/releases/latest">GitHub Releases</a>.</p>
+    <ul>
+      <li><strong>Windows x64</strong> — run the <code>-setup.exe</code> installer, or extract
+        the portable ZIP and run <code>transmissiongui.exe</code>.</li>
+      <li><strong>Linux</strong> — DEB package for Ubuntu and compatible distributions.</li>
+      <li><strong>macOS</strong> — DMG image with the application bundle.</li>
+    </ul>
+    <p>Prefer building from source? The project uses CMake presets; the
+      <a href="https://github.com/don10077/transmissionGUI/blob/master/README.md#building">README</a> lists the MSYS2,
+      Linux and macOS steps.</p>
+  </section>
+
+  <section class="faq">
+    <h2>Frequently asked questions</h2>
+    <details>
+      <summary>What is transmissionGUI?</summary>
+      <p>transmissionGUI is a free, open-source Transmission GUI for Windows, Linux and macOS.
+        It connects to the Transmission daemon over JSON-RPC and manages torrents in a native
+        desktop window.</p>
+    </details>
+    <details>
+      <summary>How do I enable sequential download in Transmission?</summary>
+      <p>Open <em>Application options → Sequential download</em> to enable automatic rules for
+        selected file extensions, or tick <em>Sequential download</em> in the Add torrent dialog
+        or in <em>Properties → General</em> for one torrent. The daemon must be Transmission 4.1
+        or newer (RPC 18).</p>
+    </details>
+    <details>
+      <summary>Which Transmission versions are supported?</summary>
+      <p>Transmission 2.x, 3.x and 4.0.x are supported through the legacy JSON-RPC API.
+        Transmission 4.1+ is detected automatically and uses JSON-RPC 2.0.</p>
+    </details>
+    <details>
+      <summary>Does transmissionGUI need a web browser?</summary>
+      <p>No. transmissionGUI is a standalone Qt application. It does not embed the Transmission
+        web interface and does not require a browser.</p>
+    </details>
+    <details>
+      <summary>Is transmissionGUI free?</summary>
+      <p>Yes. The application is distributed under GPL-3.0. Download a package from GitHub
+        Releases or build it from source.</p>
+    </details>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>© 2026 transmissionGUI · GPL-3.0 · <a href="https://github.com/don10077/transmissionGUI/blob/master/app/icons/transmission-upstream-license.md">Transmission icon</a></span>
+    <span>
+      <a href="https://github.com/don10077/transmissionGUI">GitHub</a> ·
+      <a href="https://github.com/don10077/transmissionGUI/issues">Issues</a> ·
+      <a href="ru/" hreflang="ru" lang="ru">Русская версия</a>
+    </span>
+  </div>
+</footer>
+</body>
+</html>

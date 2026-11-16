@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Последовательная загрузка в Transmission: как включить — transmissionGUI</title>
+  <meta name="description" content="Пошаговая инструкция: как включить последовательную загрузку в Transmission 4.1+ для одного торрента или автоматически по расширению файлов в transmissionGUI на Windows, Linux и macOS.">
+  <meta name="keywords" content="последовательная загрузка Transmission, Transmission последовательная загрузка, как включить последовательную загрузку, Transmission 4.1, transmissionGUI">
+  <link rel="canonical" href="https://don10077.github.io/transmissionGUI/ru/sequential-download/">
+  <link rel="alternate" hreflang="en" href="https://don10077.github.io/transmissionGUI/sequential-download/">
+  <link rel="alternate" hreflang="ru" href="https://don10077.github.io/transmissionGUI/ru/sequential-download/">
+  <link rel="alternate" hreflang="x-default" href="https://don10077.github.io/transmissionGUI/sequential-download/">
+  <link rel="icon" type="image/png" href="../../assets/transmission-icon.png">
+  <link rel="stylesheet" href="../../assets/style.css">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="transmissionGUI">
+  <meta property="og:title" content="Последовательная загрузка в Transmission: как включить">
+  <meta property="og:description" content="Включите последовательную загрузку для одного торрента или автоматически по расширению файлов в Transmission 4.1+.">
+  <meta property="og:url" content="https://don10077.github.io/transmissionGUI/ru/sequential-download/">
+  <meta property="og:image" content="https://don10077.github.io/transmissionGUI/assets/social-card.png">
+  <meta property="og:locale" content="ru_RU">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Как включить последовательную загрузку в Transmission",
+    "description": "Включение последовательной загрузки в Transmission 4.1+ для одного торрента или автоматически по расширению файлов.",
+    "inLanguage": "ru",
+    "totalTime": "PT2M",
+    "tool": [
+      { "@type": "HowToTool", "name": "Transmission 4.1 или новее (RPC 18)" },
+      { "@type": "HowToTool", "name": "transmissionGUI" }
+    ],
+    "step": [
+      {
+        "@type": "HowToStep",
+        "name": "Проверьте версию демона",
+        "text": "Последовательная загрузка — возможность демона. Нужен Transmission 4.1 или новее (RPC 18), иначе галочка остаётся недоступной."
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Включите для одного торрента",
+        "text": "Добавьте торрент и поставьте галочку «Последовательная загрузка» в диалоге добавления либо выберите существующий торрент и откройте «Свойства → General»."
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Включите автоматически по расширению",
+        "text": "Откройте «Параметры приложения → Последовательная загрузка», включите автоматическое правило для расширений и укажите нужные расширения."
+      }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "inLanguage": "ru",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "В какой версии Transmission появилась последовательная загрузка?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "В Transmission 4.1 и новее (RPC 18). В более старых версиях галочка недоступна, а демон не принимает соответствующее поле RPC."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Можно ли включить последовательную загрузку для уже качающегося торрента?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Да, настройку можно изменить в любой момент в «Свойства → General», но уже скачанные куски сохраняются. По порядку загружаются только оставшиеся."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Почему автоматическое правило по расширению не сработало?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Автоматическое правило работает только для торрентов из одного файла. Для многофайловых торрентов галочку нужно ставить вручную в диалоге добавления."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Обязательно ли использовать transmissionGUI?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Нет. Настройка хранится на демоне, поэтому её может изменить любой клиент, который её поддерживает. transmissionGUI просто предоставляет её в нативном окне вместе с остальным управлением торрентами."
+        }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="../">
+      <img src="../../assets/transmission-icon.png" alt="">
+      transmissionGUI
+    </a>
+    <nav class="site-nav" aria-label="Основная навигация">
+      <a href="../">Главная</a>
+      <a href="./" aria-current="page">Последовательная загрузка</a>
+      <a href="https://github.com/don10077/transmissionGUI">GitHub</a>
+      <a class="lang" href="../../sequential-download/" lang="en" hreflang="en">English</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="crumbs"><a href="../">Главная</a> › Последовательная загрузка</p>
+  <h1>Как включить последовательную загрузку в Transmission</h1>
+  <p class="lead">При последовательной (линейной) загрузке Transmission скачивает части торрента
+    по порядку. Это удобно для видео и других файлов, которые хочется открыть, пока загрузка
+    ещё идёт. Настройка хранится на демоне и работает при локальном и удалённом подключении.</p>
+
+  <div class="note">
+    <strong>Требование:</strong> Transmission 4.1 или новее (RPC 18). На более старых демонах
+    галочка остаётся недоступной — это ограничение демона, а не клиента.
+  </div>
+
+  <p>Для шагов ниже понадобится <a href="../#install">transmissionGUI</a>,
+    графический клиент для Transmission («Трансмишн»).</p>
+
+  <h2>Включить для одного торрента</h2>
+  <ol class="steps">
+    <li><strong>Добавьте торрент.</strong> Откройте <em>Торрент → Добавить торрент</em> (или перетащите
+      файл <code>.torrent</code> в окно), выберите папку и файлы и поставьте галочку
+      <em>Последовательная загрузка</em> в строке параметров.</li>
+    <li><strong>Или измените существующий.</strong> Выберите его в списке и откройте
+      <em>Свойства → Общие</em>. Галочка <em>Последовательная загрузка</em> применит изменение
+      к демону сразу после подтверждения диалога.</li>
+  </ol>
+  <p>Пакетное изменение тоже работает: выделите несколько торрентов, откройте свойства, задайте
+    для <em>Последовательная загрузка</em> значение <em>Включить</em> или <em>Выключить</em> и
+    подтвердите.</p>
+
+  <h2>Включить автоматически по расширению файлов</h2>
+  <ol class="steps">
+    <li>Откройте <em>Параметры приложения</em> сочетанием <kbd>Ctrl</kbd>+<kbd>F9</kbd> и
+      перейдите на вкладку <em>Последовательное скачивание</em>.</li>
+    <li>Включите пункт <em>Включать автоматически для файлов с расширениями</em>.</li>
+    <li>Перечислите расширения по одному в строке, например <code>mkv</code>, <code>mp4</code>,
+      <code>iso</code>.</li>
+    <li>Подтвердите кнопкой <em>OK</em>. Новые торренты из одного подходящего файла будут
+      добавляться с уже включённой последовательной загрузкой.</li>
+  </ol>
+  <p>Автоматическое правило применяется только к торрентам из одного файла. Для многофайловых
+    используйте галочку в диалоге добавления торрента.</p>
+
+  <h2>Если что-то не работает</h2>
+  <table>
+    <thead>
+    <tr><th>Симптом</th><th>Причина и решение</th></tr>
+    </thead>
+    <tbody>
+    <tr>
+      <td>Галочка недоступна</td>
+      <td>Демон старше Transmission 4.1 (RPC 18). Обновите демон и переподключитесь.</td>
+    </tr>
+    <tr>
+      <td>Правило по расширению игнорируется</td>
+      <td>Торрент содержит несколько файлов. Включите галочку вручную в диалоге добавления.</td>
+    </tr>
+    <tr>
+      <td>Файлы всё равно качаются не по порядку</td>
+      <td>Уже скачанные куски сохраняются. Последовательная загрузка влияет только на оставшиеся
+        куски.</td>
+    </tr>
+    <tr>
+      <td>Настройка пропадает после подключения к другому демону</td>
+      <td>Параметр принадлежит торренту на конкретном демоне. Каждый демон хранит своё
+        состояние.</td>
+    </tr>
+    </tbody>
+  </table>
+
+  <h2>Вопросы и ответы</h2>
+  <div class="faq">
+    <details>
+      <summary>В какой версии Transmission появилась последовательная загрузка?</summary>
+      <p>В Transmission 4.1 и новее (RPC 18). В более старых версиях галочка недоступна, а демон
+        не принимает соответствующее поле RPC.</p>
+    </details>
+    <details>
+      <summary>Можно ли включить последовательную загрузку для уже качающегося торрента?</summary>
+      <p>Да, настройку можно изменить в любой момент в <em>Свойства → Общие</em>, но уже
+        скачанные куски сохраняются. По порядку загружаются только оставшиеся.</p>
+    </details>
+    <details>
+      <summary>Почему автоматическое правило по расширению не сработало?</summary>
+      <p>Автоматическое правило работает только для торрентов из одного файла. Для многофайловых
+        торрентов галочку нужно ставить вручную в диалоге добавления.</p>
+    </details>
+    <details>
+      <summary>Обязательно ли использовать transmissionGUI?</summary>
+      <p>Нет. Настройка хранится на демоне, поэтому её может изменить любой клиент, который её
+        поддерживает. transmissionGUI просто предоставляет её в нативном окне вместе с остальным
+        управлением торрентами.</p>
+    </details>
+  </div>
+
+  <p><a class="btn primary" href="../#install">Где скачать transmissionGUI</a>
+    <a class="btn" href="../">Вернуться к обзору</a></p>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>© 2026 transmissionGUI · GPL-3.0 · <a href="https://github.com/don10077/transmissionGUI/blob/master/app/icons/transmission-upstream-license.md">Значок Transmission</a></span>
+    <span>
+      <a href="https://github.com/don10077/transmissionGUI">GitHub</a> ·
+      <a href="https://github.com/don10077/transmissionGUI/issues">Ошибки</a> ·
+      <a href="../../sequential-download/" hreflang="en" lang="en">English version</a>
+    </span>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>transmissionGUI — GUI для Transmission с последовательной загрузкой</title>
+  <meta name="description" content="Нативный Qt 6 GUI для демона Transmission на Windows, Linux и macOS. Удалённое управление торрентами и последовательная загрузка в Transmission 4.1+.">
+  <meta name="keywords" content="Transmission GUI, transmissionGUI, Transmission удалённое управление, последовательная загрузка Transmission, Transmission 4.1, торрент-клиент, Qt">
+  <link rel="canonical" href="https://don10077.github.io/transmissionGUI/ru/">
+  <link rel="alternate" hreflang="en" href="https://don10077.github.io/transmissionGUI/">
+  <link rel="alternate" hreflang="ru" href="https://don10077.github.io/transmissionGUI/ru/">
+  <link rel="alternate" hreflang="x-default" href="https://don10077.github.io/transmissionGUI/">
+  <link rel="icon" type="image/png" href="../assets/transmission-icon.png">
+  <link rel="stylesheet" href="../assets/style.css">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="transmissionGUI">
+  <meta property="og:title" content="transmissionGUI — GUI для Transmission с последовательной загрузкой">
+  <meta property="og:description" content="Нативный Qt 6 клиент демона Transmission: управление торрентами, последовательная загрузка, метки и расписание скоростей на Windows, Linux и macOS.">
+  <meta property="og:url" content="https://don10077.github.io/transmissionGUI/ru/">
+  <meta property="og:image" content="https://don10077.github.io/transmissionGUI/assets/social-card.png">
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:locale:alternate" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="transmissionGUI — GUI для Transmission с последовательной загрузкой">
+  <meta name="twitter:description" content="Нативный Qt 6 клиент демона Transmission: управление торрентами, последовательная загрузка, метки и расписание скоростей.">
+  <meta name="twitter:image" content="https://don10077.github.io/transmissionGUI/assets/social-card.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "transmissionGUI",
+    "alternateName": ["Transmission GUI", "GUI для Transmission", "Transmission Remote GUI"],
+    "applicationCategory": "FileTransferApplication",
+    "operatingSystem": "Windows, Linux, macOS",
+    "description": "Нативный Qt 6 GUI для демона Transmission с удалённым управлением торрентами и последовательной загрузкой.",
+    "url": "https://don10077.github.io/transmissionGUI/ru/",
+    "softwareVersion": "0.1.0",
+    "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+    "inLanguage": "ru",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "sameAs": ["https://github.com/don10077/transmissionGUI"]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "inLanguage": "ru",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Что такое transmissionGUI?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "transmissionGUI — бесплатный GUI для Transmission с открытым исходным кодом для Windows, Linux и macOS. Он подключается к демону Transmission по JSON-RPC и управляет торрентами в нативном окне."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Как включить последовательную загрузку в Transmission?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Откройте «Параметры приложения → Последовательная загрузка», чтобы включить автоматические правила для выбранных расширений файлов, или поставьте галочку «Последовательная загрузка» в диалоге добавления торрента либо в «Свойства → General» для одного торрента. Нужен демон Transmission 4.1 или новее (RPC 18)."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Какие версии Transmission поддерживаются?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Transmission 2.x, 3.x и 4.0.x поддерживаются через legacy JSON-RPC API. Для Transmission 4.1+ режим JSON-RPC 2.0 определяется автоматически."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Нужен ли браузер для transmissionGUI?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Нет. transmissionGUI — самостоятельное приложение на Qt. Оно не встраивает веб-интерфейс Transmission и не требует браузера."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Программа бесплатная?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Да. Приложение распространяется под GPL-3.0. Его можно скачать в GitHub Releases или собрать из исходников."
+        }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="./">
+      <img src="../assets/transmission-icon.png" alt="">
+      transmissionGUI
+    </a>
+    <nav class="site-nav" aria-label="Основная навигация">
+      <a href="./" aria-current="page">Главная</a>
+      <a href="sequential-download/">Последовательная загрузка</a>
+      <a href="https://github.com/don10077/transmissionGUI">GitHub</a>
+      <a class="lang" href="../" lang="en" hreflang="en">English</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <div>
+      <h1>GUI для Transmission на вашем рабочем столе</h1>
+      <p class="lead">Управляйте торрентами локального или удалённого демона Transmission из одного
+        нативного окна — с последовательной загрузкой, метками, расписанием скоростей и подробной
+        статистикой.</p>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/don10077/transmissionGUI/releases/latest">Скачать transmissionGUI</a>
+        <a class="btn" href="sequential-download/">Включить последовательную загрузку</a>
+        <a class="btn" href="https://github.com/don10077/transmissionGUI">Открыть на GitHub</a>
+      </div>
+    </div>
+    <img class="hero-icon" src="../assets/transmission-icon.png" width="240" height="268" alt="Значок приложения transmissionGUI">
+  </section>
+
+  <section>
+    <h2>Клиент Transmission, а не обёртка над веб-интерфейсом</h2>
+    <p>transmissionGUI — нативное приложение на <strong>C++23 / Qt 6</strong> для битторент-демона
+      Transmission. Оно работает напрямую с JSON-RPC API демона, поддерживает Windows, Linux и
+      macOS и не встраивает веб-интерфейс Transmission.</p>
+    <div class="cards">
+      <div class="card">
+        <h3>Удалённое управление</h3>
+        <p>Подключение по HTTP или HTTPS, профили, сопоставление путей, прокси и клиентские
+          сертификаты. Переключение между несколькими демонами в пару кликов.</p>
+      </div>
+      <div class="card">
+        <h3>Последовательная загрузка</h3>
+        <p>Файлы скачиваются по порядку, а не случайными кусками. Автоматические правила по
+          расширению или включение для отдельного торрента.</p>
+      </div>
+      <div class="card">
+        <h3>Полное управление торрентами</h3>
+        <p>Запуск, остановка, очередь, приоритеты, метки, переименование, проверка и удаление.
+          Файлы, пиры, трекеры и статистика сессии.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Что можно делать</h2>
+    <ul>
+      <li>Сортировать и искать торренты, фильтровать по статусу, группировать по папке, метке или
+        трекеру.</li>
+      <li>Добавлять <code>.torrent</code> файлы, magnet-ссылки и URL, выбирать файлы и лимит пиров,
+        перетаскивать файлы в окно или следить за локальной папкой.</li>
+      <li>Менять свойства пакетно, переносить несколько торрентов одним запросом, экспортировать и
+        импортировать настройки.</li>
+      <li>Пользоваться значком в трее, горячими клавишами, настраиваемыми цветами и столбцами.</li>
+      <li>Обновлять базу GeoIP, разрешать имена пиров, обновлять blocklist и проверять новые
+        версии.</li>
+    </ul>
+  </section>
+
+  <section id="sequential-download">
+    <h2>Последовательная загрузка в Transmission</h2>
+    <p>Transmission 4.1+ (RPC 18) умеет скачивать торрент по порядку. В transmissionGUI это
+      включается двумя способами:</p>
+    <ol class="steps">
+      <li><strong>Автоматически для выбранных файлов.</strong> Откройте <em>Параметры приложения →
+        Последовательная загрузка</em>, включите «Включать автоматически для файлов с
+        расширениями» и укажите нужные расширения.</li>
+      <li><strong>Для одного торрента.</strong> Поставьте галочку <em>Последовательная загрузка</em>
+        в диалоге добавления торрента или откройте <em>Свойства → General</em> и включите её
+        там.</li>
+    </ol>
+    <p><a href="sequential-download/">Полная инструкция: как включить последовательную загрузку в Transmission</a></p>
+  </section>
+
+  <section>
+    <h2>Работает с Transmission 2.x, 3.x, 4.0 и 4.1+</h2>
+    <table>
+      <thead>
+      <tr><th>Демон</th><th>Режим RPC</th></tr>
+      </thead>
+      <tbody>
+      <tr><td>Transmission 2.x / 3.x / 4.0.x</td><td>Legacy JSON-RPC</td></tr>
+      <tr><td>Transmission 4.1+</td><td>JSON-RPC 2.0, определяется автоматически</td></tr>
+      </tbody>
+    </table>
+    <p>Последовательная загрузка требует Transmission 4.1 (RPC 18). Переименование меток —
+      Transmission 4.0 (RPC 16).</p>
+  </section>
+
+  <section id="install">
+    <h2>Установка</h2>
+    <p>Скачайте пакет для своей платформы на странице
+      <a href="https://github.com/don10077/transmissionGUI/releases/latest">GitHub Releases</a>.</p>
+    <ul>
+      <li><strong>Windows x64</strong> — запустите установщик <code>-setup.exe</code>
+        или распакуйте portable ZIP и запустите <code>transmissiongui.exe</code>.</li>
+      <li><strong>Linux</strong> — пакет DEB для Ubuntu и совместимых дистрибутивов.</li>
+      <li><strong>macOS</strong> — образ DMG с бандлом приложения.</li>
+    </ul>
+    <p>Хотите собрать из исходников? Проект использует пресеты CMake; шаги для MSYS2, Linux и
+      macOS перечислены в
+      <a href="https://github.com/don10077/transmissionGUI/blob/master/README.ru.md">README</a>.</p>
+  </section>
+
+  <section class="faq">
+    <h2>Вопросы и ответы</h2>
+    <details>
+      <summary>Что такое transmissionGUI?</summary>
+      <p>transmissionGUI — бесплатный GUI для Transmission с открытым исходным кодом для Windows,
+        Linux и macOS. Он подключается к демону Transmission по JSON-RPC и управляет торрентами в
+        нативном окне.</p>
+    </details>
+    <details>
+      <summary>Как включить последовательную загрузку в Transmission?</summary>
+      <p>Откройте <em>Параметры приложения → Последовательная загрузка</em>, чтобы включить
+        автоматические правила для выбранных расширений файлов, или поставьте галочку
+        <em>Последовательная загрузка</em> в диалоге добавления торрента либо в
+        <em>Свойства → General</em> для одного торрента. Нужен демон Transmission 4.1 или новее
+        (RPC 18).</p>
+    </details>
+    <details>
+      <summary>Какие версии Transmission поддерживаются?</summary>
+      <p>Transmission 2.x, 3.x и 4.0.x поддерживаются через legacy JSON-RPC API. Для
+        Transmission 4.1+ режим JSON-RPC 2.0 определяется автоматически.</p>
+    </details>
+    <details>
+      <summary>Нужен ли браузер для transmissionGUI?</summary>
+      <p>Нет. transmissionGUI — самостоятельное приложение на Qt. Оно не встраивает веб-интерфейс
+        Transmission и не требует браузера.</p>
+    </details>
+    <details>
+      <summary>Программа бесплатная?</summary>
+      <p>Да. Приложение распространяется под GPL-3.0. Его можно скачать в GitHub Releases
+        или собрать из исходников.</p>
+    </details>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>© 2026 transmissionGUI · GPL-3.0 · <a href="https://github.com/don10077/transmissionGUI/blob/master/app/icons/transmission-upstream-license.md">Значок Transmission</a></span>
+    <span>
+      <a href="https://github.com/don10077/transmissionGUI">GitHub</a> ·
+      <a href="https://github.com/don10077/transmissionGUI/issues">Ошибки</a> ·
+      <a href="../" hreflang="en" lang="en">English version</a>
+    </span>
+  </div>
+</footer>
+</body>
+</html>

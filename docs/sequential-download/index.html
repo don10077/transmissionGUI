@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How to enable sequential download in Transmission — transmissionGUI</title>
+  <meta name="description" content="Step-by-step guide: enable sequential download in Transmission 4.1+ for one torrent or automatically by file extension, using transmissionGUI on Windows, Linux or macOS.">
+  <meta name="keywords" content="sequential download Transmission, Transmission sequential download, enable sequential download, Transmission 4.1, transmissionGUI">
+  <link rel="canonical" href="https://don10077.github.io/transmissionGUI/sequential-download/">
+  <link rel="alternate" hreflang="en" href="https://don10077.github.io/transmissionGUI/sequential-download/">
+  <link rel="alternate" hreflang="ru" href="https://don10077.github.io/transmissionGUI/ru/sequential-download/">
+  <link rel="alternate" hreflang="x-default" href="https://don10077.github.io/transmissionGUI/sequential-download/">
+  <link rel="icon" type="image/png" href="../assets/transmission-icon.png">
+  <link rel="stylesheet" href="../assets/style.css">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="transmissionGUI">
+  <meta property="og:title" content="How to enable sequential download in Transmission">
+  <meta property="og:description" content="Enable sequential download for a single torrent or automatically by file extension in Transmission 4.1+.">
+  <meta property="og:url" content="https://don10077.github.io/transmissionGUI/sequential-download/">
+  <meta property="og:image" content="https://don10077.github.io/transmissionGUI/assets/social-card.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "How to enable sequential download in Transmission",
+    "description": "Enable sequential download in Transmission 4.1+ for a single torrent or automatically by file extension.",
+    "totalTime": "PT2M",
+    "tool": [
+      { "@type": "HowToTool", "name": "Transmission 4.1 or newer (RPC 18)" },
+      { "@type": "HowToTool", "name": "transmissionGUI" }
+    ],
+    "step": [
+      {
+        "@type": "HowToStep",
+        "name": "Check the daemon version",
+        "text": "Sequential download is a daemon feature. The Transmission daemon must be version 4.1 or newer (RPC 18); otherwise the option stays disabled."
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Enable it for one torrent",
+        "text": "Add a torrent and tick Sequential download in the Add torrent dialog, or select an existing torrent and open Properties → General to toggle it."
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Enable it automatically by extension",
+        "text": "Open Application options → Sequential download, enable the automatic rule for file extensions and list the extensions you want."
+      }
+    ]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Which Transmission version supports sequential download?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Transmission 4.1 and newer (RPC 18). In older versions the checkbox is disabled and the RPC field is not accepted by the daemon."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does sequential download apply to torrents that are already downloading?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes, the setting can be changed at any time in Properties → General, but pieces that were already downloaded keep their state. Only the remaining pieces are fetched in order."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Why is the automatic extension rule not applied to my torrent?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "The automatic rule only works for torrents that contain a single file. Multi-file torrents need the checkbox enabled manually in the Add torrent dialog."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Do I have to use transmissionGUI?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. Sequential download is stored on the daemon, so any client that exposes the setting can change it. transmissionGUI simply makes it available in a native desktop window together with the rest of the torrent management."
+        }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="../">
+      <img src="../assets/transmission-icon.png" alt="">
+      transmissionGUI
+    </a>
+    <nav class="site-nav" aria-label="Main navigation">
+      <a href="../">Home</a>
+      <a href="./" aria-current="page">Sequential download</a>
+      <a href="https://github.com/don10077/transmissionGUI">GitHub</a>
+      <a class="lang" href="../ru/sequential-download/" lang="ru" hreflang="ru">Русский</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="crumbs"><a href="../">Home</a> › Sequential download</p>
+  <h1>How to enable sequential download in Transmission</h1>
+  <p class="lead">Sequential download makes Transmission fetch pieces in order instead of randomly.
+    It is useful for media files that you want to start watching while they are still downloading.
+    The option is stored on the daemon, so it works for local and remote sessions alike.</p>
+
+  <div class="note">
+    <strong>Requirement:</strong> Transmission 4.1 or newer (RPC 18). On older daemons the
+    checkbox stays disabled — this is a limitation of the daemon, not of the client.
+  </div>
+
+  <p>The steps below use <a href="../#install">transmissionGUI</a>,
+    a desktop GUI for Transmission.</p>
+
+  <h2>Enable it for a single torrent</h2>
+  <ol class="steps">
+    <li><strong>Add the torrent.</strong> Open <em>Torrent → Add torrent</em> (or drop a
+      <code>.torrent</code> file onto the window), choose the destination and files, and tick
+      <em>Sequential download</em> in the options row.</li>
+    <li><strong>Or change an existing torrent.</strong> Select it in the list and open
+      <em>Properties → General</em>. The <em>Sequential download</em> checkbox applies the change
+      to the daemon immediately when you confirm the dialog.</li>
+  </ol>
+  <p>Batch editing also works: select several torrents, open Properties, set
+    <em>Sequential download</em> to <em>Enable</em> or <em>Disable</em>, and confirm.</p>
+
+  <h2>Enable it automatically by file extension</h2>
+  <ol class="steps">
+    <li>Open <em>Application options</em> with <kbd>Ctrl</kbd>+<kbd>F9</kbd> and go to the
+      <em>Sequential download</em> tab.</li>
+    <li>Turn on <em>Enable automatically for files with these extensions</em>.</li>
+    <li>List the extensions, one per line, for example <code>mkv</code>, <code>mp4</code>,
+      <code>iso</code>.</li>
+    <li>Confirm with <em>OK</em>. New torrents that contain a single matching file are added with
+      sequential download already enabled.</li>
+  </ol>
+  <p>The automatic rule only applies to torrents that contain one file. For multi-file torrents
+    use the checkbox in the Add torrent dialog.</p>
+
+  <h2>Troubleshooting</h2>
+  <table>
+    <thead>
+    <tr><th>Symptom</th><th>Reason and fix</th></tr>
+    </thead>
+    <tbody>
+    <tr>
+      <td>The checkbox is greyed out</td>
+      <td>The daemon is older than Transmission 4.1 (RPC 18). Update the daemon and reconnect.</td>
+    </tr>
+    <tr>
+      <td>Extension rule is ignored</td>
+      <td>The torrent contains several files. Enable the checkbox manually in the Add torrent
+        dialog.</td>
+    </tr>
+    <tr>
+      <td>Files still download out of order</td>
+      <td>Pieces that were already downloaded are kept. Sequential download affects the pieces
+        that are still missing.</td>
+    </tr>
+    <tr>
+      <td>Setting disappears after reconnecting to another daemon</td>
+      <td>The option belongs to the torrent on that specific daemon. Each daemon keeps its own
+        state.</td>
+    </tr>
+    </tbody>
+  </table>
+
+  <h2>Frequently asked questions</h2>
+  <div class="faq">
+    <details>
+      <summary>Which Transmission version supports sequential download?</summary>
+      <p>Transmission 4.1 and newer (RPC 18). In older versions the checkbox is disabled and the
+        RPC field is not accepted by the daemon.</p>
+    </details>
+    <details>
+      <summary>Does sequential download apply to torrents that are already downloading?</summary>
+      <p>Yes, the setting can be changed at any time in <em>Properties → General</em>, but pieces
+        that were already downloaded keep their state. Only the remaining pieces are fetched in
+        order.</p>
+    </details>
+    <details>
+      <summary>Why is the automatic extension rule not applied to my torrent?</summary>
+      <p>The automatic rule only works for torrents that contain a single file. Multi-file
+        torrents need the checkbox enabled manually in the Add torrent dialog.</p>
+    </details>
+    <details>
+      <summary>Do I have to use transmissionGUI?</summary>
+      <p>No. Sequential download is stored on the daemon, so any client that exposes the setting
+        can change it. transmissionGUI makes it available in a native desktop window together with
+        the rest of the torrent management.</p>
+    </details>
+  </div>
+
+  <p><a class="btn primary" href="../#install">Get transmissionGUI</a>
+    <a class="btn" href="../">Back to the overview</a></p>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>© 2026 transmissionGUI · GPL-3.0 · <a href="https://github.com/don10077/transmissionGUI/blob/master/app/icons/transmission-upstream-license.md">Transmission icon</a></span>
+    <span>
+      <a href="https://github.com/don10077/transmissionGUI">GitHub</a> ·
+      <a href="https://github.com/don10077/transmissionGUI/issues">Issues</a> ·
+      <a href="../ru/sequential-download/" hreflang="ru" lang="ru">Русская версия</a>
+    </span>
+  </div>
+</footer>
+</body>
+</html>
