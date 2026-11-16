@@ -21,6 +21,7 @@ add_executable(transmissiongui WIN32
     src/movedialog.cpp
     src/optionsdialog.cpp
     src/daemonprofile.cpp
+    src/secretstore.cpp
     src/connoptionsdialog.cpp
     src/daemonoptionsdialog.cpp
     src/colsetup.cpp
@@ -58,7 +59,7 @@ if(WIN32)
         "$<$<COMPILE_LANGUAGE:RC>:${CMAKE_CURRENT_SOURCE_DIR}/icons>")
     set_property(SOURCE icons/transmissiongui.rc APPEND PROPERTY OBJECT_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/icons/transmission-upstream.ico")
-    target_link_libraries(transmissiongui PRIVATE shell32)
+    target_link_libraries(transmissiongui PRIVATE shell32 crypt32)
 endif()
 tgui_set_warnings(transmissiongui)
 

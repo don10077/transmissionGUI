@@ -49,11 +49,20 @@ TEST(PathMap, EmptyMappings)
     EXPECT_EQ(tgui::mapRemoteToLocal("/x/y", {}), "/x/y");
 }
 
-TEST(PathMap, FirstMatchingRuleWins)
+TEST(PathMap, LongestMatchingRuleWinsAndRejectsTraversal)
 {
-    const QStringList m = {"/a=1", "/a/b=2"};
-    // Правила проверяются по порядку: /a совпадает префиксно первым → "1/b".
-    EXPECT_EQ(tgui::mapRemoteToLocal("/a/b", m), "1/b");
+    const QStringList m = {"/data=X:", "/data/music=Y:", "C:/Data=Z:/shared=music"};
+    EXPECT_EQ(tgui::mapRemoteToLocal("/data/music/a", m), QStringLiteral("Y:/a"));
+    EXPECT_EQ(tgui::mapRemoteToLocal("c:/data/Album", m), QStringLiteral("Z:/shared=music/Album"));
+    EXPECT_EQ(tgui::mapRemoteToLocal("/data/music/../../Windows", m), std::nullopt);
+    EXPECT_EQ(tgui::mapRemoteToLocal("/data/.. /Windows", m), std::nullopt);
+}
+
+TEST(OpenPath, RecognizesProgramsAndShortcutsWithoutBlockingMovies)
+{
+    EXPECT_TRUE(tgui::isPotentiallyExecutable(QFileInfo("setup.exe")));
+    EXPECT_TRUE(tgui::isPotentiallyExecutable(QFileInfo("a.LNK")));
+    EXPECT_FALSE(tgui::isPotentiallyExecutable(QFileInfo("movie.mkv")));
 }
 
 namespace {

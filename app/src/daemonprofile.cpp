@@ -1,4 +1,5 @@
 #include "daemonprofile.h"
+#include "secretstore.h"
 
 #include <QHash>
 #include <QSettings>
@@ -9,6 +10,50 @@
 namespace {
 QString sec(const QString& name) { return QStringLiteral("daemons/") + name; }
 QString pref(const QString& name, const QString& key) { return sec(name) + "/preferences/" + key; }
+
+/** Читает пароль и переносит старое значение только после успешной записи шифротекста. */
+QString readPassword(QSettings& settings, const QString& legacy, const QString& protectedKey)
+{
+    const auto previous = settings.value(legacy).toString();
+    if (!secretstore::available())
+        return previous;
+    if (const auto saved = secretstore::unprotect(settings.value(protectedKey).toByteArray())) {
+        if (settings.contains(legacy))
+            settings.remove(legacy);
+        return *saved;
+    }
+    if (!previous.isEmpty()) {
+        if (const auto sealed = secretstore::protect(previous)) {
+            settings.setValue(protectedKey, *sealed);
+            settings.sync();
+            if (settings.status() == QSettings::NoError) {
+                settings.remove(legacy);
+                return previous;
+            }
+        }
+        qWarning("Could not migrate a saved connection password to protected storage.");
+    } else if (settings.contains(legacy)) {
+        settings.remove(legacy);
+    }
+    return previous;
+}
+
+using ProtectedPasswords = QPair<QByteArray, QByteArray>;
+
+/** Готовит оба секрета до изменения профиля. */
+std::optional<ProtectedPasswords> protectPasswords(const DaemonProfile& profile)
+{
+    if (!secretstore::available())
+        return ProtectedPasswords{};
+    const auto seal = [](const QString& password) -> std::optional<QByteArray> {
+        return password.isEmpty() ? std::optional{QByteArray{}} : secretstore::protect(password);
+    };
+    const auto password = seal(profile.password);
+    const auto proxyPassword = seal(profile.proxyPass);
+    if (!password || !proxyPassword)
+        return std::nullopt;
+    return ProtectedPasswords{*password, *proxyPassword};
+}
 
 QString legacyDestinations(const tgui::RpcClient::Options* options)
 {
@@ -135,7 +180,7 @@ DaemonProfile ProfileStore::profile(const QString& name) const
     p.useSsl = s.value(base + "/useSsl", false).toBool();
     p.rpcPath = s.value(base + "/rpcPath").toString();
     p.username = s.value(base + "/username").toString();
-    p.password = s.value(base + "/password").toString();
+    p.password = readPassword(s, base + "/password", base + "/protectedPassword");
     p.alwaysReconnect = s.value(base + "/alwaysReconnect", true).toBool();
     p.ignoreSslErrors = s.value(base + "/ignoreSsl", false).toBool();
     p.clientCertificatePath = s.value(base + "/clientCertificatePath").toString();
@@ -145,12 +190,14 @@ DaemonProfile ProfileStore::profile(const QString& name) const
     p.proxyHost = s.value(base + "/proxyHost").toString();
     p.proxyPort = s.value(base + "/proxyPort", 8080).toInt();
     p.proxyUser = s.value(base + "/proxyUser").toString();
-    p.proxyPass = s.value(base + "/proxyPass").toString();
+    p.proxyPass = readPassword(s, base + "/proxyPass", base + "/protectedProxyPass");
+    p.rememberPassword = !p.password.isEmpty();
+    p.rememberProxyPassword = !p.proxyPass.isEmpty();
     return p;
 }
 
 /** Записывает поля @p p в @p settings без изменения настроек путей и скоростей. */
-static void writeProfile(QSettings& settings, const DaemonProfile& p)
+static void writeProfile(QSettings& settings, const DaemonProfile& p, const ProtectedPasswords& sealed)
 {
     auto& s = settings;
     const QString base = sec(p.name);
@@ -159,7 +206,6 @@ static void writeProfile(QSettings& settings, const DaemonProfile& p)
     s.setValue(base + "/useSsl", p.useSsl);
     s.setValue(base + "/rpcPath", p.rpcPath);
     s.setValue(base + "/username", p.username);
-    s.setValue(base + "/password", p.password);
     s.setValue(base + "/alwaysReconnect", p.alwaysReconnect);
     s.setValue(base + "/ignoreSsl", p.ignoreSslErrors);
     s.setValue(base + "/clientCertificatePath", p.clientCertificatePath);
@@ -169,16 +215,37 @@ static void writeProfile(QSettings& settings, const DaemonProfile& p)
     s.setValue(base + "/proxyHost", p.proxyHost);
     s.setValue(base + "/proxyPort", p.proxyPort);
     s.setValue(base + "/proxyUser", p.proxyUser);
-    s.setValue(base + "/proxyPass", p.proxyPass);
+    const auto savePassword = [&](const QString& legacy, const QString& protectedKey,
+                                  const QString& plainText, const QByteArray& blob) {
+        s.remove(legacy);
+        s.remove(protectedKey);
+        if (!blob.isEmpty())
+            s.setValue(protectedKey, blob);
+        else if (!secretstore::available() && !plainText.isEmpty())
+            s.setValue(legacy, plainText);
+    };
+    savePassword(base + "/password", base + "/protectedPassword", p.password, sealed.first);
+    savePassword(base + "/proxyPass", base + "/protectedProxyPass", p.proxyPass, sealed.second);
 }
 
-void ProfileStore::save(const DaemonProfile& p)
+bool ProfileStore::save(const DaemonProfile& p)
 {
     if (!isValidName(p.name))
-        return;
+        return false;
+    const auto sealed = protectPasswords(p);
+    if (!sealed)
+        return false;
     QSettings s;
-    writeProfile(s, p);
+    writeProfile(s, p, *sealed);
     s.sync();
+    return s.status() == QSettings::NoError;
+}
+
+/** Переносит сохранённые пароли всех именованных профилей при запуске. */
+void ProfileStore::migratePasswords() const
+{
+    for (const auto& name : names())
+        profile(name);
 }
 
 /** Применяет @p drafts и выбирает @p current, перенося настройки переименованных профилей. */
@@ -188,6 +255,7 @@ bool ProfileStore::saveDrafts(const QList<Draft>& drafts, const QString& current
     QSet<QString> usedNames;
     const auto oldNames = names();
     QSet<QString> sourceNames;
+    QHash<QString, ProtectedPasswords> protectedPasswords;
     for (const auto& [original, profile] : drafts) {
         const auto key = profile.name.toCaseFolded();
         if (!isValidName(profile.name) || usedNames.contains(key) ||
@@ -197,6 +265,10 @@ bool ProfileStore::saveDrafts(const QList<Draft>& drafts, const QString& current
         if (!original.isEmpty())
             sourceNames.insert(original);
         nextNames.append(profile.name);
+        const auto sealed = protectPasswords(profile);
+        if (!sealed)
+            return false;
+        protectedPasswords.insert(profile.name, *sealed);
     }
     if (!current.isEmpty() && !nextNames.contains(current))
         return false;
@@ -229,7 +301,7 @@ bool ProfileStore::saveDrafts(const QList<Draft>& drafts, const QString& current
                 settings.setValue(it.key(), it.value());
             settings.endGroup();
         }
-        writeProfile(settings, profile);
+        writeProfile(settings, profile, protectedPasswords.value(profile.name));
     }
     settings.setValue("daemons/names", nextNames);
     settings.setValue("daemons/current", current);

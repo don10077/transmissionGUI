@@ -13,5 +13,5 @@ add_library(tgui_core STATIC
     include/tgui/rpcclient.h
 )
 target_include_directories(tgui_core PUBLIC include)
-target_link_libraries(tgui_core PUBLIC Qt6::Core Qt6::Network)
+target_link_libraries(tgui_core PUBLIC Qt6::Core Qt6::Network PRIVATE ZLIB::ZLIB)
 tgui_set_warnings(tgui_core)

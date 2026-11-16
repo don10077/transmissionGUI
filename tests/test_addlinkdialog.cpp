@@ -30,7 +30,23 @@ TEST(AddLinkDialog, EmptyLinkNotAccepted)
     EXPECT_TRUE(dlg.link().isEmpty());
     auto* status = dlg.findChild<QLabel*>(QStringLiteral("statusLabel"));
     ASSERT_NE(status, nullptr);
-    EXPECT_FALSE(status->text().isEmpty()); // показана ошибка «нет ссылки»
+    EXPECT_FALSE(ok->isEnabled());
+}
+
+TEST(AddLinkDialog, OnlyAcceptsTorrentLinks)
+{
+    AddLinkDialog dlg;
+    auto* edit = dlg.findChild<QLineEdit*>();
+    auto* ok = dlg.findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok);
+    ASSERT_NE(edit, nullptr);
+    ASSERT_NE(ok, nullptr);
+    for (const auto* text : {"file:///tmp/x.torrent", "some text", "magnet:?dn=missing-hash", "http:/missing-host"}) {
+        edit->setText(QString::fromLatin1(text));
+        EXPECT_FALSE(ok->isEnabled());
+        EXPECT_TRUE(dlg.link().isEmpty());
+    }
+    edit->setText("https://example.test/download");
+    EXPECT_TRUE(ok->isEnabled());
 }
 
 TEST(AddLinkDialog, ValidLinkAccepted)

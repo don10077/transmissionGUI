@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocalSocket>
 #include <QThread>
 #include <QTimer>
@@ -18,18 +19,29 @@ constexpr int maxFrameSize = 1024 * 1024;
 constexpr int timeoutMs = 2500;
 }
 
-QString externalTorrentInput(const QString& input)
+QString torrentLinkInput(const QString& input)
 {
-    if (input.startsWith("magnet:", Qt::CaseInsensitive)) {
-        const QUrl url(input, QUrl::StrictMode);
+    const QUrl url(input.trimmed(), QUrl::StrictMode);
+    if (!url.isValid())
+        return {};
+    if (url.scheme() == "magnet") {
         const auto identifiers = QUrlQuery(url).allQueryItemValues("xt");
         for (const auto& identifier : identifiers)
-            if (url.isValid() && (identifier.startsWith("urn:btih:", Qt::CaseInsensitive) ||
-                                 identifier.startsWith("urn:btmh:", Qt::CaseInsensitive)) &&
+            if ((identifier.startsWith("urn:btih:", Qt::CaseInsensitive) ||
+                 identifier.startsWith("urn:btmh:", Qt::CaseInsensitive)) &&
                 identifier.size() > 9)
                 return url.toString(QUrl::FullyEncoded);
         return {};
     }
+    if ((url.scheme() == "http" || url.scheme() == "https") && !url.host().isEmpty())
+        return url.toString(QUrl::FullyEncoded);
+    return {};
+}
+
+QString externalTorrentInput(const QString& input)
+{
+    if (input.startsWith("magnet:", Qt::CaseInsensitive))
+        return torrentLinkInput(input);
     auto path = input;
     if (input.startsWith("file:", Qt::CaseInsensitive))
         path = QUrl(input).toLocalFile();
@@ -78,7 +90,9 @@ ExternalOpen::Result ExternalOpen::listen(Handler handler)
             socket->setReadBufferSize(maxFrameSize + 1);
             QObject::connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
             QTimer::singleShot(timeoutMs, socket, [socket] { socket->abort(); socket->deleteLater(); });
-            const auto read = [socket, handler] {
+            const auto read = [this, socket, handler] {
+                if (socket->property("requestAccepted").toBool())
+                    return;
                 if (!socket->canReadLine()) {
                     if (socket->bytesAvailable() >= maxFrameSize)
                         socket->abort();
@@ -86,12 +100,20 @@ ExternalOpen::Result ExternalOpen::listen(Handler handler)
                 }
                 const auto frame = socket->readLine(maxFrameSize + 1);
                 const auto json = QJsonDocument::fromJson(frame);
-                if (frame.size() > maxFrameSize || !frame.endsWith('\n') || !json.isArray()) {
+                if (frame.size() > maxFrameSize || !frame.endsWith('\n') ||
+                    (!json.isArray() && !json.isObject())) {
+                    socket->abort();
+                    return;
+                }
+                const auto object = json.object();
+                const bool activate = json.isObject() && object.value("activate").toBool();
+                if (json.isObject() && (!activate || !object.value("inputs").isArray())) {
                     socket->abort();
                     return;
                 }
                 QStringList inputs;
-                for (const auto& item : json.array()) {
+                const auto items = json.isArray() ? json.array() : object.value("inputs").toArray();
+                for (const auto& item : items) {
                     if (!item.isString()) {
                         socket->abort();
                         return;
@@ -100,13 +122,16 @@ ExternalOpen::Result ExternalOpen::listen(Handler handler)
                     if (!input.isEmpty())
                         inputs.append(input);
                 }
-                if (inputs.isEmpty()) {
+                if (inputs.isEmpty() && (!activate || !items.isEmpty())) {
                     socket->abort();
                     return;
                 }
-                handler(inputs);
+                socket->setProperty("requestAccepted", true);
                 socket->write("OK\n");
+                socket->flush();
                 socket->disconnectFromServer();
+                QMetaObject::invokeMethod(&m_server, [handler, inputs] { handler(inputs); },
+                                          Qt::QueuedConnection);
             };
             QObject::connect(socket, &QLocalSocket::readyRead, socket, read);
             read();
@@ -117,9 +142,12 @@ ExternalOpen::Result ExternalOpen::listen(Handler handler)
 
 bool ExternalOpen::forward(const QStringList& inputs) const
 {
-    auto frame = QJsonDocument(QJsonArray::fromStringList(inputs)).toJson(QJsonDocument::Compact);
+    const auto payload = inputs.isEmpty()
+        ? QJsonDocument(QJsonObject{{"activate", true}, {"inputs", QJsonArray{}}})
+        : QJsonDocument(QJsonArray::fromStringList(inputs));
+    auto frame = payload.toJson(QJsonDocument::Compact);
     frame.append('\n');
-    if (inputs.isEmpty() || frame.size() > maxFrameSize)
+    if (frame.size() > maxFrameSize)
         return false;
 
     QLocalSocket socket;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QDeadlineTimer>
+
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -75,6 +77,8 @@ private:
         qint64 id;
         bool modern;
         quint64 generation;
+        QDeadlineTimer deadline;
+        QUrl url;
         bool sessionRetried = false;
         bool redirected = false;
     };

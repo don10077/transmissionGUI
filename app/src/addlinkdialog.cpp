@@ -1,4 +1,5 @@
 #include "addlinkdialog.h"
+#include "externalopen.h"
 
 #include "theme.h"
 
@@ -6,6 +7,7 @@
 #include <QDialogButtonBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPushButton>
 
 AddLinkDialog::AddLinkDialog(const QString& initialLink, QWidget* parent)
     : QDialog(parent)
@@ -35,6 +37,14 @@ AddLinkDialog::AddLinkDialog(const QString& initialLink, QWidget* parent)
     tgui::theme::addFullRow(form, buttons);
     connect(buttons, &QDialogButtonBox::accepted, this, &AddLinkDialog::onOk);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    const auto validate = [this, buttons] {
+        const bool valid = !link().isEmpty();
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(valid);
+        m_status->setText(!valid && !m_link->text().trimmed().isEmpty()
+            ? tr("Enter a valid magnet or HTTP(S) link.") : QString{});
+    };
+    connect(m_link, &QLineEdit::textChanged, this, validate);
+    validate();
 
     m_link->setFocus();
     tgui::theme::decorateDialog(this);
@@ -42,7 +52,7 @@ AddLinkDialog::AddLinkDialog(const QString& initialLink, QWidget* parent)
 
 QString AddLinkDialog::link() const
 {
-    return m_link->text().trimmed();
+    return torrentLinkInput(m_link->text());
 }
 
 bool AddLinkDialog::startWhenAdded() const
@@ -52,11 +62,9 @@ bool AddLinkDialog::startWhenAdded() const
 
 void AddLinkDialog::onOk()
 {
-    const QString text = m_link->text().trimmed();
-    if (text.isEmpty()) {
+    if (link().isEmpty()) {
         m_link->setFocus();
-        m_status->setText(tr("No link was specified."));
-        return; // остаёмся в диалоге
+        return;
     }
     accept();
 }

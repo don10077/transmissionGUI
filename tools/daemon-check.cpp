@@ -27,6 +27,7 @@
 #include "tgui/jsonrpc.h"
 #include "tgui/models.h"
 #include "tgui/rpcclient.h"
+#include "tgui/rpcpassword.h"
 #include "tgui/util.h"
 
 namespace {
@@ -35,6 +36,7 @@ void printUsage()
 {
     std::printf("Usage: tgui_daemon_check <url> [--user <user>] [--pass <pass>] "
                 "[--path <rpc-path>]\n");
+    std::printf("Use --pass-stdin or TGUI_RPC_PASSWORD. --pass exposes the password in the command line.\n");
     std::printf("       tgui_daemon_check <url> --test-add <file.torrent> "
                 "(e2e: add→files→wanted→remove)\n");
 }
@@ -296,6 +298,7 @@ int main(int argc, char* argv[])
     QString url;
     QString user;
     QString pass;
+    bool passStdin = false;
     QString rpcPath;
     QString testAdd;
     QString removeName;
@@ -305,6 +308,8 @@ int main(int argc, char* argv[])
             user = QString::fromLocal8Bit(argv[++i]);
         else if (arg == "--pass" && i + 1 < argc)
             pass = QString::fromLocal8Bit(argv[++i]);
+        else if (arg == "--pass-stdin")
+            passStdin = true;
         else if (arg == "--path" && i + 1 < argc)
             rpcPath = QString::fromLocal8Bit(argv[++i]);
         else if (arg == "--test-add" && i + 1 < argc)
@@ -326,6 +331,12 @@ int main(int argc, char* argv[])
         printUsage();
         return 2;
     }
+    const auto password = tgui::startupRpcPassword(pass, passStdin);
+    if (passStdin && !password) {
+        std::fprintf(stderr, "Could not read the RPC password from standard input.\n");
+        return 2;
+    }
+    pass = password.value_or(QString{});
     if (!testAdd.isEmpty())
         return runAddTest(url, rpcPath, user, pass, testAdd);
     if (!removeName.isEmpty())

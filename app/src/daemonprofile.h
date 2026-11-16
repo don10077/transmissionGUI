@@ -29,6 +29,8 @@ struct DaemonProfile {
     int proxyPort = 8080;
     QString proxyUser;
     QString proxyPass;
+    bool rememberPassword = false;
+    bool rememberProxyPassword = false;
 
     QUrl url() const;
     tgui::RpcClient::Options toOptions() const;
@@ -46,7 +48,8 @@ public:
     void setCurrent(const QString& name);
     bool exists(const QString& name) const;
     DaemonProfile profile(const QString& name) const;
-    void save(const DaemonProfile& p);
+    bool save(const DaemonProfile& p);
+    void migratePasswords() const;
     void add(const QString& name);  // создать (если нет) и сделать текущим
     void remove(const QString& name);
     void rename(const QString& oldName, const QString& newName);

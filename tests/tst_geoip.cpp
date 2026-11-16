@@ -66,4 +66,9 @@ TEST(GeoIpDb, RejectsFileTooSmall) {
   EXPECT_FALSE(db.load(std::vector<unsigned char>(5, 0))); // < one tree node (6 bytes)
 }
 
+TEST(GeoIpDb, RejectsInvalidRootPointer) {
+  GeoIpDb db;
+  EXPECT_FALSE(db.load({2, 0, 0, 0, 0, 0}));
+}
+
 } // namespace

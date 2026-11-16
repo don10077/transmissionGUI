@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -45,7 +46,12 @@ std::string encode(const Value& value);
 // Декодирование с проверкой границ. При ошибке возвращает false и (если error
 // не null) текстовую причину. Требует: уникальные ключи, отсортированные по
 // возрастанию, отсутствие лишних байт в конце.
-bool decode(const std::string& input, Value& out, std::string* error = nullptr);
+struct InfoSpan {
+  std::size_t begin = 0;
+  std::size_t end = 0;
+};
+bool decode(std::string_view input, Value& out, std::string* error = nullptr, InfoSpan* info = nullptr);
+bool findInfoSpan(std::string_view input, std::size_t& begin, std::size_t& end);
 
 // --- Ремонт повреждённых .torrent ---
 //
@@ -68,6 +74,5 @@ struct RepairResult {
 bool repair(const std::string& input, RepairResult& out, std::string* error = nullptr);
 
 // Совместимость: repair() не изменяет info, результат всегда false.
-bool repairTouchesInfo(const std::string& fixedBytes, const std::vector<RepairFix>& fixes);
 
 } // namespace tgui::bencode

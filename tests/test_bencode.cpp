@@ -6,7 +6,6 @@ using tgui::bencode::Value;
 using tgui::bencode::decode;
 using tgui::bencode::encode;
 using tgui::bencode::repair;
-using tgui::bencode::repairTouchesInfo;
 using tgui::bencode::RepairResult;
 
 TEST(Bencode, EncodePrimitives)
@@ -70,11 +69,35 @@ TEST(Bencode, DecodeErrors)
     EXPECT_FALSE(decode("5:abc", out, &error));      // 5 байт, а дано 3
     EXPECT_FALSE(decode("li1eeX", out, &error));     // хвост после значения
     EXPECT_FALSE(decode("dbaz3:spame", out, &error)); // одиночный ключ без пары
+    for (const auto* input : {"i03e", "i-0e", "i+1e", "ie", "03:abc"})
+        EXPECT_FALSE(decode(input, out, &error)) << input;
 
     // Нерассортированные ключи — ошибка (bittorrent spec).
     EXPECT_FALSE(decode("d1:b1:a2:ffee", out, &error)); // b, a, f
     // Дублирующийся ключ — ошибка.
     EXPECT_FALSE(decode("d1:a1:a2:ffee", out, &error));
+}
+
+TEST(Bencode, InfoSpanReferencesOriginalDictionary)
+{
+    const std::string input = "d8:announce3:abc4:infod6:lengthi1e4:name1:zee";
+    std::size_t begin = 0, end = 0;
+    ASSERT_TRUE(tgui::bencode::findInfoSpan(input, begin, end));
+    EXPECT_EQ(input.substr(begin, end - begin), "d6:lengthi1e4:name1:ze");
+    EXPECT_FALSE(tgui::bencode::findInfoSpan("d4:infoi1ee", begin, end));
+}
+
+TEST(Bencode, RejectsMoreThanFourMillionNodes)
+{
+    std::string input = "l";
+    input.reserve(8'000'002);
+    for (int i = 0; i < 4'000'000; ++i)
+        input += "0:";
+    input += 'e';
+    Value value;
+    std::string error;
+    EXPECT_FALSE(decode(input, value, &error));
+    EXPECT_NE(error.find("node limit exceeded"), std::string::npos);
 }
 
 // --- repair() ---
@@ -157,7 +180,6 @@ TEST(Bencode, RepairKinozalPattern)
               "https://kinozalnew.example/details.php?id=12345"); // содержимое сохранено
     // info-секция не повреждена
     EXPECT_EQ(decoded.find("info")->find("name")->toString(), "test.mkv");
-    EXPECT_FALSE(repairTouchesInfo(rep.fixedBytes, rep.fixes));
 }
 
 TEST(Bencode, RepairUnrepairable)
@@ -229,7 +251,6 @@ TEST(Bencode, RepairTrackerCascade)
     EXPECT_EQ(decoded.find("announce")->toString(), "http://a.example.com/announce");
     EXPECT_EQ(decoded.find("comment")->toString(),
               "https://kinozal.example/details.php?id=1224024"); // не тронута
-    EXPECT_FALSE(repairTouchesInfo(rep.fixedBytes, rep.fixes));
 }
 
 TEST(Bencode, RepairCommentIdConfusion)
@@ -253,7 +274,6 @@ TEST(Bencode, RepairCommentIdConfusion)
               "https://kinozal.example/details.php?id=1234567890");
     // info-секция не повреждена
     EXPECT_EQ(decoded.find("info")->find("name")->toString(), "test.mkv");
-    EXPECT_FALSE(repairTouchesInfo(rep.fixedBytes, rep.fixes));
 }
 
 TEST(Bencode, RepairTruncatedFile)

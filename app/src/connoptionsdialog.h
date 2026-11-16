@@ -49,6 +49,8 @@ private:
     QLineEdit* m_user = nullptr;
     QLineEdit* m_pass = nullptr;
     QCheckBox* m_requireAuth = nullptr;
+    QCheckBox* m_rememberPassword = nullptr;
+    QCheckBox* m_rememberProxyPassword = nullptr;
     QCheckBox* m_alwaysReconnect = nullptr;
     QCheckBox* m_ignoreSsl = nullptr;
     QLabel* m_testStatus = nullptr;

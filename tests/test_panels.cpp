@@ -988,6 +988,22 @@ TEST_F(MockDaemonWindow, ReconnectKeepsTorrentSnapshot)
     EXPECT_EQ(resets, 0);
 }
 
+TEST_F(MockDaemonWindow, StartupCredentialsStayOutOfSettings)
+{
+    const QString password = "cli-session-only";
+    settings.setValue("connection/password", "legacy-unused-password");
+    RpcClient::Options options;
+    options.url = server.url();
+    options.username = "demo";
+    options.password = password;
+    MainWindow window(nullptr, options);
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow(); }));
+    EXPECT_FALSE(settings.contains("connection/password"));
+    EXPECT_FALSE(settings.contains("connection/url"));
+    for (const auto& key : settings.allKeys())
+        EXPECT_NE(settings.value(key).toString(), password);
+}
+
 TEST_F(MockDaemonWindow, ReconnectRemovesConfirmedPausedAddBeforeResumingQueue)
 {
     MainWindow window;
@@ -1233,9 +1249,22 @@ TEST_F(AutomaticAddSources, ClipboardOptInAndNormalizesRepeatedLinks)
     settings.setValue(OptionsDialog::clipboardLinksKey, true);
     clipboard->setText("https://example.test/ordinary-page");
     clipboard->setText("  0123456789ABCDEF0123456789ABCDEF01234567  ");
+    QCoreApplication::processEvents();
+    EXPECT_TRUE(additions().isEmpty());
+    clipboard->setText("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567");
     ASSERT_TRUE(waitForSettings([&] { return additions().size() >= 1; }));
     clipboard->setText("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=repeat");
     clipboard->setText("https://example.test/file.torrent?token=example#fragment");
+    QMessageBox* confirm = nullptr;
+    ASSERT_TRUE(waitForSettings([&] {
+        for (auto* box : window.findChildren<QMessageBox*>()) {
+            if (box->isVisible() && box->standardButtons().testFlag(QMessageBox::Yes))
+                confirm = box;
+        }
+        return confirm != nullptr;
+    }));
+    EXPECT_EQ(additions().size(), 1);
+    confirm->button(QMessageBox::Yes)->click();
     ASSERT_TRUE(waitForSettings([&] { return additions().size() >= 2 && server.requestCount() >= 7; }));
     const auto result = additions();
     ASSERT_EQ(result.size(), 2);
@@ -1243,6 +1272,26 @@ TEST_F(AutomaticAddSources, ClipboardOptInAndNormalizesRepeatedLinks)
               "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567");
     EXPECT_EQ(result.at(1).value("filename").toString(),
               "https://example.test/file.torrent?token=example");
+}
+
+TEST(ExternalOpen, EmptyRequestActivatesRunningInstance)
+{
+    QTemporaryDir directory;
+    ASSERT_TRUE(directory.isValid());
+    ExternalOpen primary(directory.path());
+    bool activated = false;
+    ASSERT_EQ(primary.listen([&](const QStringList& inputs) { activated = inputs.isEmpty(); }),
+              ExternalOpen::Result::Listening);
+    ExternalOpen secondary(directory.path());
+    ASSERT_EQ(secondary.listen([](const auto&) {}), ExternalOpen::Result::AlreadyRunning);
+    bool forwarded = false;
+    const std::unique_ptr<QThread> sender(QThread::create([&] { forwarded = secondary.forward({}); }));
+    sender->start();
+    const bool finished = waitForSettings([&] { return sender->isFinished(); });
+    ASSERT_TRUE(sender->wait(4000));
+    ASSERT_TRUE(finished);
+    EXPECT_TRUE(forwarded);
+    EXPECT_TRUE(waitForSettings([&] { return activated; }));
 }
 
 TEST_F(AutomaticAddSources, WatchFolderPersistsConfirmedAddAndRetriesUnconfirmedFile)
@@ -1350,7 +1399,7 @@ TEST_F(AutomaticAddSources, ExternalOpenForwardsUnicodeFileAndMagnetBeforeConnec
     ASSERT_TRUE(sender->wait(4000));
     ASSERT_TRUE(finished);
     ASSERT_TRUE(delivered);
-    EXPECT_EQ(received, inputs);
+    ASSERT_TRUE(waitForSettings([&] { return received == inputs; }));
     EXPECT_TRUE(additions().isEmpty());
 
     ASSERT_NO_FATAL_FAILURE(connectWindow(window));

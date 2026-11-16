@@ -1,66 +1,93 @@
 #pragma once
 
+#include <QDir>
 #include <QHostAddress>
 #include <QString>
 #include <QStringList>
 #include <QUrl>
+#include <algorithm>
 
 #include <optional>
 
 namespace tgui {
 
-// Маппинг remote→local (аналог OLD MapRemoteToLocal).
-// mappings — строки вида "remote=local" (напр. "/var/music=Z:/music" или "/share=\\\\nas").
-// Возвращает local-путь при точном или префиксном совпадении; иначе исходный path.
-// Разделители нормализуются в '/', поэтому правила работают и для Windows-путей.
-inline QString mapRemoteToLocal(const QString& path, const QStringList& mappings)
+/** Нормализует разделители и отбрасывает пути с переходом в родительский каталог. */
+inline std::optional<QString> safeMappingPath(const QString& path)
 {
-    const QString fn = path.trimmed().replace('\\', '/');
-    for (const QString& mapping : mappings) {
+    auto normalized = QString(path).replace('\\', '/');
+    const auto components = normalized.split('/');
+    const bool traversal = std::ranges::any_of(components, [](const QString& part) {
+        return part.startsWith("..") && std::ranges::all_of(part, [](QChar ch) {
+            return ch == '.' || ch == ' ';
+        });
+    });
+    if (normalized.isEmpty() || traversal)
+        return std::nullopt;
+    const bool unc = normalized.startsWith("//");
+    normalized = QDir::cleanPath(normalized);
+    if (unc && !normalized.startsWith("//"))
+        normalized.prepend('/');
+    if (normalized.size() == 2 && normalized[0].isLetter() && normalized[1] == ':')
+        normalized.append('/');
+    return normalized;
+}
+
+/** Выбирает самое точное правило. Первый знак '=' отделяет путь демона от локального. */
+inline std::optional<QString> mappedPath(const QString& path, const QStringList& mappings, bool reverse)
+{
+    const auto normalized = safeMappingPath(path);
+    if (!normalized)
+        return std::nullopt;
+    qsizetype bestLength = 0;
+    std::optional<QString> result;
+    for (const auto& mapping : mappings) {
         const int eq = mapping.indexOf('=');
         if (eq <= 0)
             continue;
-        const QString remote0 = mapping.left(eq).trimmed().replace('\\', '/');
-        if (remote0.isEmpty())
+        const auto remote = safeMappingPath(mapping.left(eq).trimmed());
+        const auto local = safeMappingPath(mapping.mid(eq + 1).trimmed());
+        const auto& source = reverse ? local : remote;
+        const auto& destination = reverse ? remote : local;
+        if (!source || source->size() <= bestLength)
             continue;
-        QString remote = remote0;
-        while (remote.endsWith('/'))
-            remote.chop(1);
-        if (remote.isEmpty())
+        bool windowsSource = source->startsWith("//") ||
+            (source->size() >= 3 && source->at(0).isLetter() && source->mid(1, 2) == ":/");
+#ifdef Q_OS_WIN
+        windowsSource = windowsSource || reverse;
+#endif
+        const auto sensitivity = windowsSource ? Qt::CaseInsensitive : Qt::CaseSensitive;
+        const auto prefix = source->endsWith('/') ? *source : *source + '/';
+        const bool exact = normalized->compare(*source, sensitivity) == 0;
+        if (!exact && !normalized->startsWith(prefix, sensitivity))
             continue;
-        QString local = mapping.mid(eq + 1).trimmed();
-        while (local.endsWith('/'))
-            local.chop(1);
-        if (remote == fn)
-            return local;
-        if (fn.startsWith(remote + QLatin1Char('/')))
-            return local + QLatin1Char('/') + fn.mid(remote.length() + 1);
+        bestLength = source->size();
+        result.reset();
+        if (!destination)
+            continue;
+        if (exact) {
+            result = *destination;
+        } else {
+            const auto root = destination->endsWith('/') ? *destination : *destination + '/';
+            auto candidate = safeMappingPath(root + normalized->mid(prefix.size()));
+            if (candidate && candidate->startsWith(root))
+                result = std::move(candidate);
+        }
     }
-    return path;
+    if (bestLength)
+        return result;
+    return reverse ? std::nullopt : normalized;
+}
+
+/** Возвращает локальный путь для @p path или пустой результат для небезопасного пути. */
+inline std::optional<QString> mapRemoteToLocal(const QString& path, const QStringList& mappings)
+{
+    return mappedPath(path, mappings, false);
 }
 
 /** Возвращает путь демона для @p path по @p mappings или пустой результат. */
 inline std::optional<QString> mapLocalToRemote(const QString& path, const QStringList& mappings)
 {
-    const QString localPath = QString(path).replace('\\', '/');
-    for (const auto& mapping : mappings) {
-        const int eq = mapping.indexOf('=');
-        if (eq <= 0) continue;
-        QString local = mapping.mid(eq + 1).trimmed().replace('\\', '/');
-        QString remote = mapping.left(eq).trimmed().replace('\\', '/');
-        while (local.endsWith('/')) local.chop(1);
-        while (remote.endsWith('/') && remote.size() > 1) remote.chop(1);
-        if (local.isEmpty() || remote.isEmpty()) continue;
-#ifdef Q_OS_WIN
-        const auto sensitivity = Qt::CaseInsensitive;
-#else
-        const auto sensitivity = Qt::CaseSensitive;
-#endif
-        if (localPath.compare(local, sensitivity) == 0) return remote;
-        if (localPath.startsWith(local + '/', sensitivity))
-            return remote + (remote.endsWith('/') ? QString() : QStringLiteral("/")) + localPath.mid(local.size() + 1);
-    }
-    return std::nullopt;
+    return mappedPath(path, mappings, true);
 }
 
 /** Проверяет, указан ли в @p url адрес локального демона. */

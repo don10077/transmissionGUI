@@ -1,5 +1,7 @@
 #include "connectdialog.h"
 
+#include "daemonprofile.h"
+#include "secretstore.h"
 #include "theme.h"
 
 #include <QCheckBox>
@@ -7,7 +9,6 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
-#include <QSettings>
 #include <QVBoxLayout>
 
 ConnectDialog::ConnectDialog(const tgui::RpcClient::Options& initial, QWidget* parent,
@@ -39,10 +40,21 @@ ConnectDialog::ConnectDialog(const tgui::RpcClient::Options& initial, QWidget* p
     m_pass = new QLineEdit(this);
     m_pass->setEchoMode(QLineEdit::Password);
     m_remember = new QCheckBox(tr("Remember password"), this);
-    m_remember->setChecked(QSettings().value("connection/rememberPassword", false).toBool());
+    m_remember->setEnabled(!profile.isEmpty());
+    m_remember->setChecked(!profile.isEmpty() && !ProfileStore().profile(profile).password.isEmpty());
 
     auto* form = tgui::theme::formGrid(this);
     tgui::theme::addFullRow(form, note);
+    if (initial.url.scheme() == QStringLiteral("http")) {
+        auto* warning = new QLabel(tr("HTTP sends your password without encryption."), this);
+        warning->setWordWrap(true);
+        tgui::theme::addFullRow(form, warning);
+    }
+    if (!profile.isEmpty() && !secretstore::available()) {
+        auto* warning = new QLabel(tr("Saved passwords are stored without encryption on this system."), this);
+        warning->setWordWrap(true);
+        tgui::theme::addFullRow(form, warning);
+    }
     tgui::theme::addFormRow(form, tr("User:"), m_user);
     tgui::theme::addFormRow(form, tr("Password:"), m_pass);
     tgui::theme::addFormRow(form, QString(), m_remember);

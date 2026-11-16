@@ -232,8 +232,8 @@ private:
     {
         m_progress->setLabelText(tr("Adding the replacement torrent…"));
         tgui::RpcClient::AddTorrent request;
-        request.source = tgui::RpcClient::AddTorrent::Source::Base64;
-        request.metainfoBase64 = QString::fromLatin1(m_bytes.toBase64());
+        request.source = tgui::RpcClient::AddTorrent::Source::Metainfo;
+        request.metainfo = m_bytes;
         request.downloadDir = m_directory;
         m_rpc->addTorrent(request, [this](const JsonRpcResult& result, const QByteArray&) {
             const auto added = result.arguments.value("torrent-added").toObject();

@@ -1,4 +1,5 @@
 #include "connoptionsdialog.h"
+#include "secretstore.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -148,6 +149,14 @@ ConnOptionsDialog::ConnOptionsDialog(QWidget* parent)
     m_pass = new QLineEdit(connection);
     m_pass->setEchoMode(QLineEdit::Password);
     tgui::theme::addFormRow(form, tr("Password:"), m_pass);
+    m_rememberPassword = new QCheckBox(tr("Remember password"), connection);
+    tgui::theme::addFullRow(form, m_rememberPassword);
+    auto* httpWarning = noteLabel(tr("HTTP sends your password without encryption."), connection);
+    tgui::theme::addFullRow(form, httpWarning);
+    if (!secretstore::available()) {
+        tgui::theme::addFullRow(form, noteLabel(
+            tr("Saved passwords are stored without encryption on this system."), connection));
+    }
     m_ignoreSsl = new QCheckBox(tr("Ignore SSL certificate errors"), connection);
     tgui::theme::addFormRow(form, QString(), m_ignoreSsl);
     m_alwaysReconnect = new QCheckBox(tr("Always reconnect automatically"), connection);
@@ -225,6 +234,12 @@ ConnOptionsDialog::ConnOptionsDialog(QWidget* parent)
     m_proxyPass = new QLineEdit(proxyPage);
     m_proxyPass->setEchoMode(QLineEdit::Password);
     tgui::theme::addFormRow(pform, tr("Password:"), m_proxyPass);
+    m_rememberProxyPassword = new QCheckBox(tr("Remember password"), proxyPage);
+    tgui::theme::addFullRow(pform, m_rememberProxyPassword);
+    if (!secretstore::available()) {
+        tgui::theme::addFullRow(pform, noteLabel(
+            tr("Saved passwords are stored without encryption on this system."), proxyPage));
+    }
     pform->setRowStretch(pform->rowCount(), 1);
     tabs->addTab(proxyPage, tr("Proxy"));
 
@@ -245,6 +260,7 @@ ConnOptionsDialog::ConnOptionsDialog(QWidget* parent)
     connect(m_requireAuth, &QCheckBox::toggled, this, [this](bool on) {
         m_user->setEnabled(on);
         m_pass->setEnabled(on);
+        m_rememberPassword->setEnabled(on);
     });
     connect(m_useProxy, &QCheckBox::toggled, this, [this](bool on) {
         m_useSocks->setEnabled(on);
@@ -254,10 +270,12 @@ ConnOptionsDialog::ConnOptionsDialog(QWidget* parent)
         const bool auth = on && m_proxyAuth->isChecked();
         m_proxyUser->setEnabled(auth);
         m_proxyPass->setEnabled(auth);
+        m_rememberProxyPassword->setEnabled(auth);
     });
     connect(m_proxyAuth, &QCheckBox::toggled, this, [this](bool on) {
         m_proxyUser->setEnabled(on && m_useProxy->isChecked());
         m_proxyPass->setEnabled(on && m_useProxy->isChecked());
+        m_rememberProxyPassword->setEnabled(on && m_useProxy->isChecked());
     });
     connect(m_certToggle, &QToolButton::toggled, this, [this](bool on) {
         m_certToggle->setArrowType(on ? Qt::DownArrow : Qt::RightArrow);
@@ -269,6 +287,12 @@ ConnOptionsDialog::ConnOptionsDialog(QWidget* parent)
     connect(m_protocol, &QComboBox::currentIndexChanged, this, [this] {
         m_ignoreSsl->setEnabled(m_protocol->currentData().toString() == "https");
     });
+    const auto updateHttpWarning = [this, httpWarning] {
+        httpWarning->setVisible(m_requireAuth->isChecked() && m_protocol->currentData().toString() == "http");
+    };
+    connect(m_requireAuth, &QCheckBox::toggled, this, updateHttpWarning);
+    connect(m_protocol, &QComboBox::currentIndexChanged, this, updateHttpWarning);
+    updateHttpWarning();
 
     const QString cur = m_store.currentName();
     const auto names = m_store.names();
@@ -315,10 +339,13 @@ void ConnOptionsDialog::setProfile(const DaemonProfile& p)
     const int pi = m_protocol->findData(p.useSsl ? QStringLiteral("https") : QStringLiteral("http"));
     if (pi >= 0)
         m_protocol->setCurrentIndex(pi);
-    m_rpcPath->setText(p.rpcPath);
+    m_rpcPath->setText(p.rpcPath.trimmed().isEmpty() ? QString::fromLatin1(tgui::kDefaultRpcPath)
+                                                  : p.rpcPath);
     m_requireAuth->setChecked(!p.username.isEmpty() || !p.password.isEmpty());
     m_user->setText(p.username);
     m_pass->setText(p.password);
+    m_rememberPassword->setChecked(p.rememberPassword);
+    m_rememberPassword->setEnabled(m_requireAuth->isChecked());
     m_user->setEnabled(m_requireAuth->isChecked());
     m_pass->setEnabled(m_requireAuth->isChecked());
     m_ignoreSsl->setChecked(p.ignoreSslErrors);
@@ -333,6 +360,8 @@ void ConnOptionsDialog::setProfile(const DaemonProfile& p)
     m_proxyAuth->setChecked(!p.proxyUser.isEmpty() || !p.proxyPass.isEmpty());
     m_proxyUser->setText(p.proxyUser);
     m_proxyPass->setText(p.proxyPass);
+    m_rememberProxyPassword->setChecked(p.rememberProxyPassword);
+    m_rememberProxyPassword->setEnabled(p.useProxy && m_proxyAuth->isChecked());
     for (QWidget* widget : QList<QWidget*>{m_useSocks, m_proxyHost, m_proxyPort, m_proxyAuth})
         widget->setEnabled(p.useProxy);
     m_proxyUser->setEnabled(p.useProxy && m_proxyAuth->isChecked());
@@ -361,6 +390,8 @@ DaemonProfile ConnOptionsDialog::current() const
     p.proxyPort = m_proxyPort->value();
     p.proxyUser = m_useProxy->isChecked() && m_proxyAuth->isChecked() ? m_proxyUser->text() : QString();
     p.proxyPass = m_useProxy->isChecked() && m_proxyAuth->isChecked() ? m_proxyPass->text() : QString();
+    p.rememberPassword = m_rememberPassword->isEnabled() && m_rememberPassword->isChecked();
+    p.rememberProxyPassword = m_rememberProxyPassword->isEnabled() && m_rememberProxyPassword->isChecked();
     return p;
 }
 
@@ -379,7 +410,15 @@ void ConnOptionsDialog::saveDraft()
 void ConnOptionsDialog::accept()
 {
     saveDraft();
-    if (!m_store.saveDrafts(m_drafts, m_editingName)) {
+    auto saved = m_drafts;
+    for (auto& entry : saved) {
+        auto& profile = entry.second;
+        if (!profile.rememberPassword)
+            profile.password.clear();
+        if (!profile.rememberProxyPassword)
+            profile.proxyPass.clear();
+    }
+    if (!m_store.saveDrafts(saved, m_editingName)) {
         QMessageBox::warning(this, windowTitle(), tr("Could not save the connection profiles."));
         return;
     }

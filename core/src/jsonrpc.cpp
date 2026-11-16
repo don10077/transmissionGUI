@@ -66,7 +66,8 @@ void JsonRpcClient::setTimeout(std::chrono::milliseconds timeout)
 
 void JsonRpcClient::call(const QString& method, const QJsonObject& arguments, Callback cb)
 {
-    doRequest({method, arguments, ++m_nextId, m_modern, m_connectGeneration}, std::move(cb));
+    doRequest({method, arguments, ++m_nextId, m_modern, m_connectGeneration, QDeadlineTimer(m_timeout),
+               m_requestUrl}, std::move(cb));
 }
 
 /** Сбрасывает параметры сессии и отбрасывает ответы предыдущего подключения. */
@@ -142,9 +143,26 @@ void parseModern(JsonRpcResult& result, const QString& method, qint64 id)
 
 } // namespace
 
+/** Сверяет схему, хост и эффективный порт перед повторной отправкой RPC. */
+static bool sameRpcOrigin(const QUrl& first, const QUrl& second)
+{
+    const int defaultPort = first.scheme() == "https" ? 443 : 80;
+    return second.isValid() && second.userInfo().isEmpty() &&
+        first.scheme() == second.scheme() && first.host() == second.host() &&
+        first.port(defaultPort) == second.port(defaultPort);
+}
+
 void JsonRpcClient::doRequest(Request rpc, Callback cb)
 {
-    QNetworkRequest request(m_requestUrl);
+    const auto remaining = rpc.deadline.remainingTime();
+    if (remaining <= 0) {
+        JsonRpcResult result;
+        result.error = QStringLiteral("Timeout");
+        result.networkError = QNetworkReply::TimeoutError;
+        cb(result);
+        return;
+    }
+    QNetworkRequest request(rpc.url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("Accept", "application/json");
     // Редиректы обрабатываем сами (301 → новый RPC-путь, Transmission 4.x).
@@ -158,8 +176,6 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
         request.setRawHeader("Authorization",
                              "Basic " + credentials.toBase64());
     }
-    if (m_timeout.count() > 0)
-        request.setTransferTimeout(static_cast<int>(m_timeout.count()));
     if (request.url().scheme() == QLatin1String("https") && (m_ignoreSslErrors || !m_clientChain.isEmpty())) {
         QSslConfiguration ssl = QSslConfiguration::defaultConfiguration();
         if (!m_clientChain.isEmpty()) {
@@ -187,6 +203,20 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
 
     QNetworkReply* reply =
         m_nam->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    constexpr qint64 maxReplyBytes = 256LL * 1024 * 1024;
+    reply->setReadBufferSize(maxReplyBytes + 1);
+    QObject::connect(reply, &QNetworkReply::readyRead, reply, [reply] {
+        if (reply->bytesAvailable() > maxReplyBytes) {
+            reply->setProperty("rpcResponseTooLarge", true);
+            reply->abort();
+        }
+    });
+    QTimer::singleShot(std::chrono::milliseconds(remaining), reply, [reply] {
+        if (reply->isRunning()) {
+            reply->setProperty("rpcTimedOut", true);
+            reply->abort();
+        }
+    });
     QObject::connect(reply, &QNetworkReply::finished, reply,
             [this, reply, rpc = std::move(rpc), cb = std::move(cb)]() mutable {
                 if (rpc.generation != m_connectGeneration) {
@@ -197,6 +227,20 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
                 res.httpCode =
                     reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
                 res.networkError = reply->error();
+                if (reply->property("rpcResponseTooLarge").toBool() || reply->bytesAvailable() > maxReplyBytes) {
+                    res.error = QStringLiteral("RPC response exceeds the size limit.");
+                    res.networkError = QNetworkReply::ContentOperationNotPermittedError;
+                    reply->deleteLater();
+                    cb(res);
+                    return;
+                }
+                if (reply->property("rpcTimedOut").toBool() || rpc.deadline.hasExpired()) {
+                    res.error = QStringLiteral("Timeout");
+                    res.networkError = QNetworkReply::TimeoutError;
+                    reply->deleteLater();
+                    cb(res);
+                    return;
+                }
 
                 // 409: нет/протух session id — взять новый из заголовка ответа
                 // и повторить 1 раз; повторный 409 — "Session ID error.";
@@ -222,25 +266,36 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
                     // Без заголовка — обработаем ниже как HTTP-ошибку (тело/статус).
                 }
 
-                // 301: демон перенёс RPC (Location «/web/» → «/web/rpc»).
-                if (res.httpCode == 301 && !rpc.redirected) {
-                    const QString location = QString::fromUtf8(reply->rawHeader("Location")).trimmed();
-                    if (location.startsWith('/') && !location.startsWith("//")) {
-                        QString path;
-                        if (location.endsWith("/web/"))
-                            path = location.left(location.size() - 4) + "rpc";
-                        else if (location.endsWith("/web"))
-                            path = location.left(location.size() - 3) + "rpc";
-                        if (!path.isEmpty()) {
-                            m_rpcPath = path;
-                            m_requestUrl.setPath(path, QUrl::TolerantMode);
-                            m_requestUrl.setQuery(QString{});
-                            rpc.redirected = true;
-                            reply->deleteLater();
-                            doRequest(std::move(rpc), std::move(cb));
-                            return;
-                        }
+                if (res.httpCode == 301 || res.httpCode == 302 ||
+                    res.httpCode == 307 || res.httpCode == 308) {
+                    const auto location = QUrl::fromEncoded(reply->rawHeader("Location").trimmed(), QUrl::StrictMode);
+                    auto target = rpc.url.resolved(location);
+                    target.setFragment({});
+                    if (rpc.redirected || location.isEmpty() || !location.isValid() ||
+                        !sameRpcOrigin(rpc.url, target)) {
+                        res.error = QStringLiteral("RPC redirect refused.");
+                        reply->deleteLater();
+                        cb(res);
+                        return;
                     }
+                    auto path = target.path(QUrl::FullyEncoded);
+                    // Transmission может перенаправить старый RPC-адрес на Web UI.
+                    if (res.httpCode == 301 && (path.endsWith("/web/") || path.endsWith("/web"))) {
+                        if (path.endsWith('/'))
+                            path.chop(1);
+                        path.chop(3);
+                        path.append("rpc");
+                        target.setPath(path, QUrl::StrictMode);
+                    }
+                    if (res.httpCode == 301 || res.httpCode == 308) {
+                        m_rpcPath = path;
+                        m_requestUrl = target;
+                    }
+                    rpc.url = target;
+                    rpc.redirected = true;
+                    reply->deleteLater();
+                    doRequest(std::move(rpc), std::move(cb));
+                    return;
                 }
 
                 // Остальные HTTP-статусы/ошибки: сначала пробуем разобрать

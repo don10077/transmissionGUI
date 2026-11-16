@@ -1,6 +1,10 @@
 #include "mainwindow.h"
+#include "connectdialog.h"
+#include "daemonprofile.h"
 #include "externalopen.h"
 #include "theme.h"
+#include "settingsbackup.h"
+#include "tgui/rpcpassword.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
@@ -27,6 +31,8 @@ public:
     {
         if (m_handler)
             m_handler(inputs);
+        else if (inputs.isEmpty())
+            m_activatePending = true;
         else
             m_pending.append(inputs);
     }
@@ -36,6 +42,9 @@ public:
         m_handler = std::move(handler);
         if (!m_pending.isEmpty())
             open(std::exchange(m_pending, {}));
+        else if (m_activatePending)
+            open({});
+        m_activatePending = false;
     }
 
 protected:
@@ -50,6 +59,7 @@ protected:
 
 private:
     QStringList m_pending;
+    bool m_activatePending = false;
     ExternalOpen::Handler m_handler;
 };
 }
@@ -65,7 +75,8 @@ int main(int argc, char* argv[])
     parser.addVersionOption();
     parser.addOption({"url", "Transmission server URL.", "url"});
     parser.addOption({"user", "RPC user.", "user"});
-    parser.addOption({"pass", "RPC password.", "password"});
+    parser.addOption({"pass", "RPC password (unsafe: visible in the command line).", "password"});
+    parser.addOption({"pass-stdin", "Read the RPC password from standard input."});
     parser.addOption({"path", "RPC path.", "path"});
     parser.addOption({"smoke-test", "Check startup with isolated settings."});
     parser.addPositionalArgument("torrent", "Local .torrent files or magnet links.", "[torrent...]");
@@ -80,6 +91,43 @@ int main(int argc, char* argv[])
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, smokeSettings->path());
         QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, smokeSettings->path());
         QSettings().setValue("ui/trayIcon", false);
+    }
+
+    QStringList inputs;
+    for (const auto& argument : parser.positionalArguments()) {
+        const auto input = externalTorrentInput(argument);
+        if (!input.isEmpty() && !inputs.contains(input))
+            inputs.append(input);
+    }
+
+    ExternalOpen external(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation));
+    if (!smokeTest) {
+        const auto state = external.listen([&app](const auto& items) { app.open(items); });
+        if (state == ExternalOpen::Result::AlreadyRunning) {
+            if (parser.isSet("url"))
+                qWarning("An instance is already running. The requested server was not changed.");
+            if (external.forward(parser.isSet("url") ? QStringList{} : inputs))
+                return 0;
+            qWarning("Could not reach the running window.");
+            return 1;
+        }
+        if (state == ExternalOpen::Result::Unavailable) {
+            qWarning("Could not obtain the application instance lock.");
+            return 1;
+        }
+    }
+
+    bool recoveredSettings = false;
+    const auto recovery = smokeTest ? QString{} : settingsbackup::recoveryPath();
+    if (!recovery.isEmpty() && QFileInfo::exists(recovery)) {
+        QSettings settings;
+        settings.setFallbacksEnabled(false);
+        if (!settingsbackup::restoreInterrupted(settings, recovery)) {
+            QMessageBox::warning(nullptr, app.applicationName(),
+                QCoreApplication::translate("SettingsBackup", "Could not recover settings after an interrupted import."));
+            return 1;
+        }
+        recoveredSettings = true;
     }
 
     tgui::theme::apply(app);
@@ -112,34 +160,57 @@ int main(int argc, char* argv[])
     }
 
     tgui::RpcClient::Options autoOpts;
-    autoOpts.url = QUrl(parser.value("url"));
-    autoOpts.username = parser.value("user");
-    autoOpts.password = parser.value("pass");
-    autoOpts.rpcPath = parser.value("path");
-    QStringList inputs;
-    for (const auto& argument : parser.positionalArguments()) {
-        const auto input = externalTorrentInput(argument);
-        if (!input.isEmpty() && !inputs.contains(input))
-            inputs.append(input);
-    }
-
-    ExternalOpen external(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation));
-    if (!smokeTest && external.listen([&app](const auto& items) { app.open(items); }) ==
-            ExternalOpen::Result::AlreadyRunning && !inputs.isEmpty() && autoOpts.url.isEmpty()) {
-        if (external.forward(inputs))
-            return 0;
-        QMessageBox::warning(nullptr, app.applicationName(),
-            QCoreApplication::translate("ExternalOpen", "Could not send torrents to the running window."));
-        return 1;
+    if (!smokeTest && (parser.isSet("url") || parser.isSet("user"))) {
+        if (parser.isSet("url"))
+            autoOpts.url = QUrl(parser.value("url"));
+        else
+            autoOpts = ProfileStore().currentProfile().toOptions();
+        if (autoOpts.url.host().isEmpty()) {
+            qWarning("Specify --url or configure a daemon profile before using --user.");
+            return 1;
+        }
+        if (parser.isSet("path"))
+            autoOpts.rpcPath = parser.value("path");
+        if (parser.isSet("user"))
+            autoOpts.username = parser.value("user");
+        const auto password = tgui::startupRpcPassword(
+            parser.isSet("pass") ? parser.value("pass") : QString{}, parser.isSet("pass-stdin"));
+        if (!password && parser.isSet("pass-stdin")) {
+            qWarning("Could not read the RPC password from standard input.");
+            return 1;
+        }
+        if (password) {
+            autoOpts.password = *password;
+        } else if (parser.isSet("user")) {
+            ConnectDialog credentials(autoOpts);
+            if (credentials.exec() != QDialog::Accepted)
+                return 0;
+            autoOpts = credentials.options();
+        }
     }
     MainWindow window(nullptr, smokeTest ? tgui::RpcClient::Options{} : autoOpts);
     window.show();
+    if (recoveredSettings) {
+        QMessageBox::information(&window, app.applicationName(),
+            QCoreApplication::translate("SettingsBackup", "Settings restored after an interrupted import."));
+    }
     if (!smokeTest) {
         app.setOpenHandler([window = QPointer(&window)](const auto& items) {
-            if (window)
+            if (!window)
+                return;
+            if (items.isEmpty()) {
+                if (window->isMinimized())
+                    window->showNormal();
+                else
+                    window->show();
+                window->raise();
+                window->activateWindow();
+            } else {
                 window->openExternalTorrents(items);
+            }
         });
-        app.open(inputs);
+        if (!inputs.isEmpty())
+            app.open(inputs);
     }
     if (smokeTest)
         QTimer::singleShot(250, &app, &QCoreApplication::quit);

@@ -1,4 +1,5 @@
 #include "tgui/bencode.h"
+#include <charconv>
 
 #include <algorithm>
 #include <limits>
@@ -90,6 +91,8 @@ struct Parser {
     std::string error;
 
     size_t depth = 0;
+    size_t nodes = 0;
+    InfoSpan info{};
 
     bool fail(const std::string& message)
     {
@@ -104,6 +107,8 @@ struct Parser {
             return fail("unexpected end of input");
         if (depth >= 128)
             return fail("nesting limit exceeded");
+        if (++nodes > 4'000'000)
+            return fail("node limit exceeded");
         struct DepthGuard {
             size_t& depth;
             explicit DepthGuard(size_t& value) : depth(value) { ++depth; }
@@ -140,11 +145,14 @@ struct Parser {
             return fail("invalid integer");
         if (pos >= size || data[pos] != 'e')
             return fail("integer is not terminated by 'e'");
-        try {
-            out = Value::integer(std::stoll(std::string(data + start, pos - start)));
-        } catch (const std::exception&) {
+        const bool negative = data[start] == '-';
+        const size_t firstDigit = start + (negative ? 1 : 0);
+        if (data[firstDigit] == '0' && (negative || pos - firstDigit > 1))
+            return fail("noncanonical integer");
+        int64_t value = 0;
+        if (std::from_chars(data + start, data + pos, value).ec != std::errc{})
             return fail("integer out of range");
-        }
+        out = Value::integer(value);
         ++pos; // 'e'
         return true;
     }
@@ -158,12 +166,11 @@ struct Parser {
             return fail("invalid string length");
         if (pos >= size || data[pos] != ':')
             return fail("string length is not terminated by ':'");
-        size_t length;
-        try {
-            length = std::stoull(std::string(data + start, pos - start));
-        } catch (const std::exception&) {
+        if (data[start] == '0' && pos - start > 1)
+            return fail("noncanonical string length");
+        size_t length = 0;
+        if (std::from_chars(data + start, data + pos, length).ec != std::errc{})
             return fail("string length out of range");
-        }
         if (length > size - pos - 1)
             return fail("string exceeds input size");
         out.assign(data + pos + 1, length);
@@ -209,8 +216,11 @@ struct Parser {
             if (!items.empty() && !(lastKey < key))
                 return fail("dictionary keys must be unique and sorted");
             Value value;
+            const auto begin = pos;
             if (!parse(value))
                 return false;
+            if (depth == 1 && key == "info" && value.type() == Value::Type::Dictionary)
+                info = {begin, pos};
             lastKey = std::move(key);
             items.emplace_back(lastKey, std::move(value));
         }
@@ -219,15 +229,29 @@ struct Parser {
 
 } // namespace
 
-bool decode(const std::string& input, Value& out, std::string* error)
+bool decode(std::string_view input, Value& out, std::string* error, InfoSpan* info)
 {
-    Parser p{input.data(), input.size(), 0, ""};
+    Parser p{input.data(), input.size(), 0, "", 0, 0, {}};
     bool ok = p.parse(out) && p.pos == p.size;
     if (!ok && p.pos != p.size && p.error.empty())
         p.fail("trailing data after bencode value");
     if (error != nullptr)
         *error = ok ? "" : p.error;
+    if (info != nullptr)
+        *info = ok ? p.info : InfoSpan{};
     return ok;
+}
+
+/** Находит диапазон словаря info в исходном @p input. */
+bool findInfoSpan(std::string_view input, std::size_t& begin, std::size_t& end)
+{
+    Value value;
+    InfoSpan span;
+    if (!decode(input, value, nullptr, &span) || span.end == 0)
+        return false;
+    begin = span.begin;
+    end = span.end;
+    return true;
 }
 
 namespace {
@@ -423,12 +447,6 @@ bool repair(const std::string& input, RepairResult& out, std::string* error)
     }
     out = std::move(parser.result);
     return true;
-}
-
-bool repairTouchesInfo(const std::string&, const std::vector<RepairFix>&)
-{
-    // repair() никогда не меняет info; позиции исправлений относятся к оригиналу.
-    return false;
 }
 
 } // namespace tgui::bencode

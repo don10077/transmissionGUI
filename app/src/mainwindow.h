@@ -185,7 +185,8 @@ private:
     void handleConnectionError(const QString& error, bool retry);
     void maybeAutoConnect();
     void confirmPendingExternalTorrents();
-    void switchToProfile(const QString& name);
+    void switchToProfile(const QString& name,
+                         std::optional<tgui::RpcClient::Options> sessionOptions = std::nullopt);
     // Двойной клик (референс: lvFilesDblClick / gTorrentsDblClick): файл → запустить,
     // папка → открыть; по строке списка торрентов → открыть его файл/папку.
     void onFilesDoubleClicked(int row);
@@ -251,8 +252,6 @@ private:
     void runTorrentAction(const QString& method, const QVector<int>& ids,
                           const QJsonObject& params = {});
     void showProperties(int id, int page);
-    static void loadSettings(tgui::RpcClient::Options& opts);
-    static void saveSettings(const tgui::RpcClient::Options& opts);
 
     std::unique_ptr<tgui::RpcClient> m_rpc;
     QString m_connectionProfile;
@@ -275,7 +274,7 @@ private:
     int m_unconfiguredTorrentId = -1;
     QString m_unconfiguredTorrentHash;
     int m_addSelectionId = -1;
-    QSet<QString> m_clipboardLinksSeen;
+    QStringList m_clipboardLinksSeen;
     QString m_watchFolder;
     QHash<QString, QString> m_watchCandidates;
     struct WatchRetry {
@@ -295,6 +294,7 @@ private:
     QSplitter* m_mainSplitter = nullptr;
     bool m_settingsImported = false;
     bool m_loadingFlags = false;
+    bool m_geoIpDownloading = false;
     bool m_reportFlagFailure = false;
     bool m_checkingUpdate = false;
     bool m_manualUpdateCheck = false;

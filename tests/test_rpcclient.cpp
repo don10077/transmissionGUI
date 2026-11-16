@@ -243,6 +243,7 @@ TEST_F(RpcClientTest, ClientIdentityWithDisabledServerVerificationFailsBeforeReq
     options.url.setScheme("https");
     options.ignoreSslErrors = true;
     options.clientCertificatePath = "client.p12";
+    options.clientKeyPassphrase = QByteArray("temporary-test");
     RpcClient tlsClient(options);
     QString error;
     QObject::connect(&tlsClient, &RpcClient::connectionFailed, &tlsClient,
@@ -251,6 +252,7 @@ TEST_F(RpcClientTest, ClientIdentityWithDisabledServerVerificationFailsBeforeReq
     EXPECT_TRUE(error.contains("server certificate verification"));
     EXPECT_EQ(server.requestCount(), 0);
     EXPECT_FALSE(tlsClient.isConnected());
+    EXPECT_FALSE(tlsClient.options().clientKeyPassphrase.has_value());
 }
 
 TEST_F(RpcClientTest, DelayedListCannotOverwriteNewerSnapshot)
@@ -418,6 +420,27 @@ TEST_F(RpcClientTest, AddTorrentSequentialGate)
     EXPECT_TRUE(req.arguments.value("paused").toBool());
     EXPECT_EQ(req.arguments.value("peer-limit").toInt(), 50);
     EXPECT_TRUE(req.arguments.value("sequential_download").toBool());
+}
+
+TEST_F(RpcClientTest, RejectsOversizedTorrentFileBeforeSending)
+{
+    QTemporaryFile file;
+    ASSERT_TRUE(file.open());
+    ASSERT_TRUE(file.resize(kMaxTorrentFileBytes + 1));
+    file.close();
+    RpcClient::AddTorrent request;
+    request.file = file.fileName();
+    QEventLoop loop;
+    QString error;
+    client->addTorrent(request, [&](const JsonRpcResult& result, const QByteArray&) {
+        error = result.error;
+        EXPECT_FALSE(result.ok);
+        loop.quit();
+    });
+    QTimer::singleShot(1000, &loop, &QEventLoop::quit);
+    loop.exec();
+    EXPECT_TRUE(error.contains("32 MiB"));
+    EXPECT_EQ(server.requestCount(), 0);
 }
 
 TEST_F(RpcClientTest, AddTorrentRpc17NoSequential)

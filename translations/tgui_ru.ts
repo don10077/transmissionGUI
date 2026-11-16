@@ -51,6 +51,10 @@
   <context>
     <name>AddLinkDialog</name>
     <message>
+      <source>Enter a valid magnet or HTTP(S) link.</source>
+      <translation>Введите корректную ссылку magnet или HTTP(S).</translation>
+    </message>
+    <message>
       <location filename="../app/src/addlinkdialog.cpp" line="12" />
       <source>Add from link</source>
       <translation>Добавить по ссылке</translation>
@@ -107,6 +111,18 @@
   </context>
   <context>
     <name>ConnOptionsDialog</name>
+    <message>
+      <source>Remember password</source>
+      <translation>Запомнить пароль</translation>
+    </message>
+    <message>
+      <source>HTTP sends your password without encryption.</source>
+      <translation>При подключении по HTTP пароль передаётся без шифрования.</translation>
+    </message>
+    <message>
+      <source>Saved passwords are stored without encryption on this system.</source>
+      <translation>В этой системе сохранённые пароли хранятся без шифрования.</translation>
+    </message>
     <message>
       <source>Could not save the connection profiles.</source>
       <translation>Не удалось сохранить профили подключения.</translation>
@@ -397,6 +413,18 @@
   </context>
   <context>
     <name>ConnectDialog</name>
+    <message>
+      <source>Remember password</source>
+      <translation>Запомнить пароль</translation>
+    </message>
+    <message>
+      <source>HTTP sends your password without encryption.</source>
+      <translation>При подключении по HTTP пароль передаётся без шифрования.</translation>
+    </message>
+    <message>
+      <source>Saved passwords are stored without encryption on this system.</source>
+      <translation>В этой системе сохранённые пароли хранятся без шифрования.</translation>
+    </message>
     <message>
       <location filename="../app/src/connectdialog.cpp" line="11" />
       <source>Connect to daemon</source>
@@ -1101,6 +1129,30 @@
   </context>
   <context>
     <name>MainWindow</name>
+    <message>
+      <source>Torrent metadata exceeds the 32 MiB limit.</source>
+      <translation>Метаданные торрента превышают лимит в 32 МиБ.</translation>
+    </message>
+    <message>
+      <source>Run</source>
+      <translation>Запустить</translation>
+    </message>
+    <message>
+      <source>This file may run a program: %1</source>
+      <translation>Этот файл может запустить программу: %1</translation>
+    </message>
+    <message>
+      <source>Open downloaded file</source>
+      <translation>Открыть скачанный файл</translation>
+    </message>
+    <message>
+      <source>Add the torrent link copied from %1?</source>
+      <translation>Добавить ссылку на торрент, скопированную с %1?</translation>
+    </message>
+    <message>
+      <source>Could not save the connection profiles.</source>
+      <translation>Не удалось сохранить профили подключения.</translation>
+    </message>
     <message>
       <source>Torrent replaced</source>
       <translation>Раздача заменена</translation>
@@ -3968,6 +4020,18 @@ Used when opening files/folders with double-click.</source>
   <context>
     <name>tgui::RpcClient</name>
     <message>
+      <source>Invalid torrent metadata encoding.</source>
+      <translation>Некорректная кодировка метаданных торрента.</translation>
+    </message>
+    <message>
+      <source>Could not read the local torrent file.</source>
+      <translation>Не удалось прочитать локальный торрент-файл.</translation>
+    </message>
+    <message>
+      <source>Torrent metadata exceeds the 32 MiB limit.</source>
+      <translation>Метаданные торрента превышают лимит в 32 МиБ.</translation>
+    </message>
+    <message>
       <source>This daemon does not support updating trackers.</source>
       <translation>Эта версия демона не поддерживает обновление трекеров.</translation>
     </message>
@@ -4159,6 +4223,17 @@ Replace the old entry and keep its files?</source>
     <message>
       <source>Could not resume the old torrent: %1</source>
       <translation>Не удалось возобновить старую раздачу: %1</translation>
+    </message>
+  </context>
+  <context>
+    <name>SettingsBackup</name>
+    <message>
+      <source>Could not recover settings after an interrupted import.</source>
+      <translation>Не удалось восстановить настройки после прерванного импорта.</translation>
+    </message>
+    <message>
+      <source>Settings restored after an interrupted import.</source>
+      <translation>Настройки восстановлены после прерванного импорта.</translation>
     </message>
   </context>
 </TS>

@@ -47,6 +47,7 @@ add_executable(tgui_tests
     ${CMAKE_SOURCE_DIR}/app/src/movedialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/optionsdialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/daemonprofile.cpp
+    ${CMAKE_SOURCE_DIR}/app/src/secretstore.cpp
     ${CMAKE_SOURCE_DIR}/app/src/connoptionsdialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/daemonoptionsdialog.cpp
     ${CMAKE_SOURCE_DIR}/app/src/colsetup.cpp
@@ -73,7 +74,7 @@ target_include_directories(tgui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAK
 target_link_libraries(tgui_tests PRIVATE tgui_core Qt6::Widgets Qt6::Network Qt6::Svg
     Qt6::Concurrent GTest::gtest ZLIB::ZLIB LibArchive::LibArchive)
 if(WIN32)
-    target_link_libraries(tgui_tests PRIVATE shell32)
+    target_link_libraries(tgui_tests PRIVATE shell32 crypt32)
 endif()
 tgui_set_warnings(tgui_tests)
 

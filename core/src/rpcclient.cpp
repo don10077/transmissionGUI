@@ -5,6 +5,8 @@
 
 #include <QCryptographicHash>
 #include <QFile>
+#include <QFileInfo>
+#include <QScopeGuard>
 #include <QUrlQuery>
 
 namespace tgui {
@@ -75,6 +77,11 @@ void RpcClient::disconnectFromDaemon()
 /** Загружает клиентские учётные данные перед отправкой первого HTTPS-запроса. */
 bool RpcClient::configureClientTls()
 {
+    auto secret = std::exchange(m_options.clientKeyPassphrase, std::nullopt);
+    const auto wipe = qScopeGuard([&] {
+        if (secret)
+            secret->fill('\0');
+    });
     const auto& certPath = m_options.clientCertificatePath;
     const auto& keyPath = m_options.clientKeyPath;
     if (certPath.isEmpty() && keyPath.isEmpty())
@@ -97,12 +104,13 @@ bool RpcClient::configureClientTls()
 
     QList<QSslCertificate> chain;
     QSslKey key;
-    const auto passphrase = m_options.clientKeyPassphrase.value_or(QByteArray());
+    const QByteArray emptyPassphrase;
+    const auto& passphrase = secret ? *secret : emptyPassphrase;
     if (pkcs12) {
         QSslCertificate leaf;
         if (!QSslCertificate::importPkcs12(&certFile, &key, &leaf, &chain, passphrase) ||
             leaf.isNull() || key.isNull()) {
-            if (!m_options.clientKeyPassphrase) {
+            if (!secret) {
                 emit clientTlsPassphraseRequired();
                 return false;
             }
@@ -121,7 +129,7 @@ bool RpcClient::configureClientTls()
         if (!keyFile.open(QIODevice::ReadOnly))
             return fail(tr("Could not read the client private key file: %1").arg(keyPath));
         const auto keyData = keyFile.readAll();
-        if (!m_options.clientKeyPassphrase &&
+        if (!secret &&
             (keyData.contains("BEGIN ENCRYPTED PRIVATE KEY") || keyData.contains("Proc-Type: 4,ENCRYPTED"))) {
             emit clientTlsPassphraseRequired();
             return false;
@@ -843,43 +851,65 @@ void RpcClient::replaceTracker(int id, int trackerId, const QString& newUrl, Req
 
 void RpcClient::addTorrent(const AddTorrent& params, AddCallback callback)
 {
-    // paused + peer-limit + sequential_download (>= 18).
+    const auto fail = [this, &callback](const QString& error) {
+        RequestCallback report;
+        if (callback) {
+            report = [cb = std::move(callback)](const JsonRpcResult& result) { cb(result, {}); };
+        }
+        finishLocally("torrent-add", std::move(report), error);
+    };
+    const auto tooLarge = [this] { return tr("Torrent metadata exceeds the 32 MiB limit."); };
     QJsonObject args;
+    QByteArray raw;
+    bool hasMetadata = true;
     switch (params.source) {
         case AddTorrent::Source::File: {
-            // Файл доступен локально → читаем метаданные и шлём base64:
-            // удалённому демону путь клиента недоступен («unrecognized info»).
+            const QFileInfo info(params.file);
             QFile f(params.file);
-            if (f.open(QIODevice::ReadOnly)) {
-                args.insert("metainfo", QString::fromLatin1(f.readAll().toBase64()));
-            } else {
-                // Файла локально нет — пусть демон попробует свой путь.
+            if (!info.exists()) {
+                hasMetadata = false;
                 args.insert("filename", params.file);
+                break;
             }
+            if (!info.isFile() || !f.open(QIODevice::ReadOnly))
+                return fail(tr("Could not read the local torrent file."));
+            if (f.size() > kMaxTorrentFileBytes)
+                return fail(tooLarge());
+            raw = f.read(kMaxTorrentFileBytes + 1);
+            if (f.error() != QFileDevice::NoError)
+                return fail(tr("Could not read the local torrent file."));
             break;
         }
-        case AddTorrent::Source::Base64:
-            args.insert("metainfo", params.metainfoBase64);
+        case AddTorrent::Source::Base64: {
+            if (params.metainfoBase64.size() > ((kMaxTorrentFileBytes + 2) / 3) * 4)
+                return fail(tooLarge());
+            auto decoded = QByteArray::fromBase64Encoding(params.metainfoBase64.toLatin1(),
+                QByteArray::AbortOnBase64DecodingErrors);
+            if (!decoded)
+                return fail(tr("Invalid torrent metadata encoding."));
+            raw = std::move(decoded.decoded);
+            break;
+        }
+        case AddTorrent::Source::Metainfo:
+            raw = params.metainfo;
             break;
         case AddTorrent::Source::Url:
-            // magnet/URL добавляются полем "filename".
+            hasMetadata = false;
             args.insert("filename", params.url);
             break;
     }
-    // Общий путь для файлов и Base64: исправленная копия существует только в памяти.
-    QByteArray raw;
-    if (args.contains("metainfo")) {
-        raw = QByteArray::fromBase64(args.value("metainfo").toString().toLatin1());
-        const std::string bytes(raw.constData(), static_cast<size_t>(raw.size()));
+    if (hasMetadata) {
+        if (raw.size() > kMaxTorrentFileBytes)
+            return fail(tooLarge());
+        const std::string_view bytes(raw.constData(), static_cast<size_t>(raw.size()));
         bencode::Value value;
         if (!bencode::decode(bytes, value)) {
             bencode::RepairResult repaired;
-            if (bencode::repair(bytes, repaired)) {
+            if (bencode::repair(std::string(bytes), repaired) &&
+                repaired.fixedBytes.size() <= static_cast<size_t>(kMaxTorrentFileBytes))
                 raw = QByteArray::fromStdString(repaired.fixedBytes);
-                args.insert("metainfo", QString::fromLatin1(raw.toBase64()));
-            }
-            // Неизвестную порчу оценивает демон: его ошибка возвращается обычным путём.
         }
+        args.insert("metainfo", QString::fromLatin1(raw.toBase64()));
     }
     if (!params.downloadDir.isEmpty())
         args.insert("download-dir", params.downloadDir);
@@ -966,14 +996,21 @@ void RpcClient::updateDuplicateTrackers(int id, const QString& magnet, const QBy
         if (id < 0)
             hash = magnetInfoHash(query);
     } else {
+        if (metainfo.size() > kMaxTorrentFileBytes) {
+            finish(tr("Torrent metadata exceeds the 32 MiB limit."));
+            return;
+        }
         bencode::Value root;
-        const auto bytes = metainfo.toStdString();
-        if (!bencode::decode(bytes, root)) {
-            bencode::RepairResult repaired;
-            if (!bencode::repair(bytes, repaired) || !bencode::decode(repaired.fixedBytes, root)) {
+        bencode::InfoSpan info;
+        bencode::RepairResult repaired;
+        std::string_view bytes(metainfo.constData(), static_cast<size_t>(metainfo.size()));
+        if (!bencode::decode(bytes, root, nullptr, &info)) {
+            if (!bencode::repair(std::string(bytes), repaired) ||
+                !bencode::decode(repaired.fixedBytes, root, nullptr, &info)) {
                 finish(tr("Unable to read trackers from the torrent file."));
                 return;
             }
+            bytes = repaired.fixedBytes;
         }
         const auto append = [&trackers](const bencode::Value& entry) {
             if (entry.type() == bencode::Value::Type::String)
@@ -989,8 +1026,8 @@ void RpcClient::updateDuplicateTrackers(int id, const QString& magnet, const QBy
                 append(*announce);
         }
         if (id < 0 || !expectedHash.isEmpty()) {
-            if (const auto* info = root.find("info")) {
-                const auto encoded = QByteArray::fromStdString(bencode::encode(*info));
+            if (info.end > info.begin) {
+                const auto encoded = QByteArray::fromRawData(bytes.data() + info.begin, info.end - info.begin);
                 hash = QString::fromLatin1(QCryptographicHash::hash(encoded, QCryptographicHash::Sha1).toHex());
                 if (!expectedHash.isEmpty()) {
                     const auto v2 = QString::fromLatin1(

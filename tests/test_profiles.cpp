@@ -8,6 +8,7 @@
 #include <QLineEdit>
 
 #include "daemonprofile.h"
+#include "connoptionsdialog.h"
 #include "optionsdialog.h"
 
 namespace {
@@ -195,6 +196,66 @@ TEST(ProfileStore, AddDuplicateIgnored)
     EXPECT_TRUE(names.contains("home"));
     EXPECT_TRUE(names.contains("work"));
 }
+
+TEST(ProfileStore, ConnectionDialogOnlyPersistsOptedInPasswords)
+{
+    isolate();
+    clearStore();
+    ProfileStore store;
+    store.add("password-choice");
+    auto profile = store.currentProfile();
+    profile.username = "test-user";
+    profile.password = "session-rpc";
+    profile.useProxy = true;
+    profile.proxyUser = "proxy-user";
+    profile.proxyPass = "saved-proxy";
+    profile.rememberProxyPassword = true;
+
+    ConnOptionsDialog dialog;
+    dialog.setProfile(profile);
+    dialog.accept();
+    ASSERT_EQ(dialog.result(), QDialog::Accepted);
+    EXPECT_EQ(dialog.current().password, profile.password);
+    const auto saved = store.profile(profile.name);
+    EXPECT_TRUE(saved.password.isEmpty());
+    EXPECT_EQ(saved.proxyPass, profile.proxyPass);
+    clearStore();
+}
+
+#ifdef Q_OS_WIN
+TEST(ProfileStore, ProtectsNewAndMigratedPasswords)
+{
+    isolate();
+    clearStore();
+    ProfileStore store;
+    store.add("protected-test");
+    QSettings settings;
+    const QString base = "daemons/protected-test/";
+    const QString daemonSecret = QStringLiteral("старый пароль");
+    const QString proxySecret = QStringLiteral("новый пароль прокси");
+    settings.setValue(base + "password", daemonSecret);
+    settings.sync();
+
+    auto profile = store.profile("protected-test");
+    EXPECT_EQ(profile.password, daemonSecret);
+    EXPECT_FALSE(settings.contains(base + "password"));
+    EXPECT_TRUE(settings.contains(base + "protectedPassword"));
+
+    profile.proxyPass = proxySecret;
+    ASSERT_TRUE(store.save(profile));
+    const auto loaded = store.profile("protected-test");
+    EXPECT_EQ(loaded.password, daemonSecret);
+    EXPECT_EQ(loaded.proxyPass, proxySecret);
+    for (const auto& key : settings.allKeys()) {
+        EXPECT_NE(settings.value(key).toString(), daemonSecret);
+        EXPECT_NE(settings.value(key).toString(), proxySecret);
+    }
+    store.rename("protected-test", "protected-renamed");
+    EXPECT_EQ(store.profile("protected-renamed").proxyPass, proxySecret);
+    EXPECT_FALSE(settings.contains(base + "protectedProxyPass"));
+    clearStore();
+}
+#endif
 
 TEST(ProfileStore, RefusesNamesThatOverlapSettings)
 {

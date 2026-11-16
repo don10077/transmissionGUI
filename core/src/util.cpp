@@ -1,9 +1,37 @@
 #include "tgui/util.h"
+#include <QScopeGuard>
+#include <limits>
+#include <zlib.h>
 
 #include <climits>
 #include <cstdio>
 
 namespace tgui {
+
+std::optional<QByteArray> gunzipData(const QByteArray& input, qsizetype maxOutput)
+{
+    if (input.isEmpty() || input.size() > std::numeric_limits<uInt>::max() || maxOutput < 0)
+        return std::nullopt;
+    z_stream stream{};
+    if (inflateInit2(&stream, 31) != Z_OK)
+        return std::nullopt;
+    const auto cleanup = qScopeGuard([&] { inflateEnd(&stream); });
+    stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(input.constData()));
+    stream.avail_in = static_cast<uInt>(input.size());
+    QByteArray output;
+    char buffer[16384];
+    int status;
+    do {
+        stream.next_out = reinterpret_cast<Bytef*>(buffer);
+        stream.avail_out = sizeof(buffer);
+        status = inflate(&stream, Z_NO_FLUSH);
+        const auto produced = static_cast<qsizetype>(sizeof(buffer) - stream.avail_out);
+        if ((status != Z_OK && status != Z_STREAM_END) || produced > maxOutput - output.size())
+            return std::nullopt;
+        output.append(buffer, produced);
+    } while (status != Z_STREAM_END);
+    return stream.avail_in == 0 ? std::optional{std::move(output)} : std::nullopt;
+}
 namespace {
 
 std::string formatFixed(double value, int decimals, const char* unit)

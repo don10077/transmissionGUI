@@ -304,6 +304,36 @@ TEST_F(JsonRpcTest, ConnectionRefused)
     EXPECT_FALSE(r.error.isEmpty());
 }
 
+TEST_F(JsonRpcTest, PermanentRedirectRequiresSameOrigin)
+{
+    server.enqueue({308, {}, {{"Location", server.url().toEncoded() + "/new/rpc"}}});
+    tgui::JsonRpcClient client(server.url());
+    client.setUsernamePassword("test", "example");
+    ASSERT_TRUE(client.callSync("session-get", {}).ok);
+    ASSERT_EQ(server.requestCount(), 2);
+    EXPECT_EQ(server.requests().last().path, "/new/rpc");
+
+    MockRpcServer other;
+    ASSERT_NE(other.start(), 0);
+    server.enqueue({308, {}, {{"Location", other.url().toEncoded() + "/new/rpc"}}});
+    const auto result = client.callSync("session-get", {});
+    EXPECT_FALSE(result.ok);
+    EXPECT_EQ(result.error, QStringLiteral("RPC redirect refused."));
+    EXPECT_EQ(other.requestCount(), 0);
+}
+
+TEST_F(JsonRpcTest, RedirectUsesOriginalDeadline)
+{
+    server.enqueue({307, {}, {{"Location", "/new/rpc"}}, 130});
+    server.enqueue({200, R"({"result":"success","arguments":{}})", {}, 130});
+    tgui::JsonRpcClient client(server.url());
+    client.setTimeout(std::chrono::milliseconds(220));
+    const auto result = client.callSync("session-get", {});
+    EXPECT_EQ(server.requestCount(), 2);
+    EXPECT_FALSE(result.ok);
+    EXPECT_EQ(result.networkError, QNetworkReply::TimeoutError);
+}
+
 TEST_F(JsonRpcTest, Timeout)
 {
     // Сервер принимает соединение, но не отвечает.

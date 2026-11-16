@@ -529,7 +529,7 @@ void FileSelectDialog::accept()
 void FileSelectDialog::browseDestination()
 {
     const auto mappings = m_preferences.mappings();
-    QString local = tgui::mapRemoteToLocal(options().downloadDir, mappings);
+    QString local = tgui::mapRemoteToLocal(options().downloadDir, mappings).value_or(QString{});
     if (!QFileInfo(local).isDir()) {
         for (const auto& mapping : mappings) {
             const int separator = mapping.indexOf('=');

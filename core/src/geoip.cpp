@@ -79,6 +79,13 @@ bool GeoIpDb::load(std::vector<unsigned char> data) {
   // code indices, NOT a minimum file size. The tree starts at offset 0 and
   // pointer values >= kCountryBegin encode country codes.
   if (data.size() < kRecordSize) return false; // must contain at least one node
+  for (std::size_t side = 0; side < 2; ++side) {
+    std::size_t pointer = 0;
+    for (std::size_t byte = 0; byte < kRecordLength; ++byte)
+      pointer |= static_cast<std::size_t>(data[side * kRecordLength + byte]) << (byte * 8);
+    if (pointer < kCountryBegin && pointer >= data.size() / kRecordSize)
+      return false;
+  }
   m_data = std::move(data);
   m_loaded = true;
   return true;

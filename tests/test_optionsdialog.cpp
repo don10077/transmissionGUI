@@ -261,22 +261,29 @@ TEST(SettingsBackup, SkipsPasswordsAndPreservesThemOnlyForMatchingConnections)
         {"connection/url", "https://user:url-secret@example.test"}, {"connection/password", "rpc-secret"},
         {"daemons/names", QStringList{"server"}}, {"daemons/server/host", "example.test"},
         {"daemons/server/password", "profile-secret"}, {"daemons/server/proxyHost", "proxy.test"},
-        {"daemons/server/proxyPass", "proxy-secret"}};
+        {"daemons/server/proxyPass", "proxy-secret"},
+        {"daemons/server/protectedPassword", QByteArray("protected-rpc")},
+        {"daemons/server/protectedProxyPass", QByteArray("protected-proxy")}};
     ASSERT_TRUE(settingsbackup::write(path, exported));
     const auto loaded = settingsbackup::read(path);
     ASSERT_TRUE(loaded.has_value());
-    EXPECT_EQ(loaded->value("connection/url").toString(), "https://user@example.test");
+    EXPECT_FALSE(loaded->contains("connection/url"));
     EXPECT_FALSE(loaded->contains("connection/password"));
     EXPECT_FALSE(loaded->contains("daemons/server/password"));
     EXPECT_FALSE(loaded->contains("daemons/server/proxyPass"));
+    EXPECT_FALSE(loaded->contains("daemons/server/protectedPassword"));
+    EXPECT_FALSE(loaded->contains("daemons/server/protectedProxyPass"));
 
     QSettings destination(directory.filePath("destination.ini"), QSettings::IniFormat);
     ASSERT_TRUE(settingsbackup::replace(destination, exported));
+    EXPECT_FALSE(destination.contains("connection/password"));
+    EXPECT_FALSE(destination.contains("daemons/server/password"));
+    EXPECT_FALSE(destination.contains("daemons/server/protectedPassword"));
+    destination.setValue("daemons/server/protectedPassword", QByteArray("local-rpc"));
+    destination.setValue("daemons/server/protectedProxyPass", QByteArray("local-proxy"));
     ASSERT_TRUE(settingsbackup::replace(destination, *loaded));
-    EXPECT_EQ(destination.value("connection/url"), exported.value("connection/url"));
-    EXPECT_EQ(destination.value("connection/password"), exported.value("connection/password"));
-    EXPECT_EQ(destination.value("daemons/server/password"), exported.value("daemons/server/password"));
-    EXPECT_EQ(destination.value("daemons/server/proxyPass"), exported.value("daemons/server/proxyPass"));
+    EXPECT_EQ(destination.value("daemons/server/protectedPassword").toByteArray(), QByteArray("local-rpc"));
+    EXPECT_EQ(destination.value("daemons/server/protectedProxyPass").toByteArray(), QByteArray("local-proxy"));
 
     auto differentConnection = *loaded;
     differentConnection.insert("connection/url", "https://user@other.test");
@@ -286,6 +293,30 @@ TEST(SettingsBackup, SkipsPasswordsAndPreservesThemOnlyForMatchingConnections)
     EXPECT_FALSE(destination.contains("connection/password"));
     EXPECT_FALSE(destination.contains("daemons/server/password"));
     EXPECT_FALSE(destination.contains("daemons/server/proxyPass"));
+    EXPECT_FALSE(destination.contains("daemons/server/protectedPassword"));
+    EXPECT_FALSE(destination.contains("daemons/server/protectedProxyPass"));
+}
+
+TEST(SettingsBackup, RestoresInterruptedImportAndIgnoresUnsupportedTypes)
+{
+    QTemporaryDir directory;
+    ASSERT_TRUE(directory.isValid());
+    const auto journal = directory.filePath("recovery.dat");
+    const auto backup = directory.filePath("backup.ini");
+    const QVariantMap before{{"ui/refreshInterval", 3}};
+    QSettings settings(directory.filePath("local.ini"), QSettings::IniFormat);
+    ASSERT_TRUE(settingsbackup::writeRecovery(journal, before));
+    settings.setValue("ui/refreshInterval", 20);
+    ASSERT_TRUE(settingsbackup::restoreInterrupted(settings, journal));
+    EXPECT_EQ(settings.value("ui/refreshInterval").toInt(), 3);
+    EXPECT_FALSE(QFileInfo::exists(journal));
+    ASSERT_TRUE(settingsbackup::write(backup, {{"ui/refreshInterval", 4}, {"ui/size", QSize(1, 2)}}));
+    const auto loaded = settingsbackup::read(backup);
+    ASSERT_TRUE(loaded);
+    EXPECT_FALSE(loaded->contains("ui/size"));
+    ASSERT_TRUE(settingsbackup::replace(settings, *loaded, journal));
+    EXPECT_EQ(settings.value("ui/refreshInterval").toInt(), 4);
+    EXPECT_FALSE(QFileInfo::exists(journal));
 }
 
 TEST(OptionsDialog, TrayDefaultsPersist)

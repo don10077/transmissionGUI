@@ -1,8 +1,10 @@
 #include <climits>
 
 #include <gtest/gtest.h>
+#include <QScopeGuard>
 
 #include "tgui/util.h"
+#include "tgui/rpcpassword.h"
 
 using tgui::formatEta;
 using tgui::formatRatio;
@@ -10,6 +12,30 @@ using tgui::formatRate;
 using tgui::formatSeconds;
 using tgui::formatSize;
 using tgui::percentComplete;
+
+TEST(Gunzip, ValidatesGzipAndEnforcesOutputLimit)
+{
+    const auto packed = QByteArray::fromHex("1f8b08000000000002034b4c4a0600c241243503000000");
+    EXPECT_EQ(tgui::gunzipData(packed, 3).value_or(QByteArray{}), QByteArray("abc"));
+    EXPECT_EQ(tgui::gunzipData(packed, 2), std::nullopt);
+    EXPECT_EQ(tgui::gunzipData(packed.chopped(1), 3), std::nullopt);
+    EXPECT_EQ(tgui::gunzipData({}, 3), std::nullopt);
+    EXPECT_EQ(tgui::gunzipData("not gzip", 3), std::nullopt);
+}
+
+TEST(RpcStartupPassword, ExplicitValueOverridesEnvironment)
+{
+    constexpr auto key = "TGUI_RPC_PASSWORD";
+    const bool hadValue = qEnvironmentVariableIsSet(key);
+    const auto old = qgetenv(key);
+    const auto restore = qScopeGuard([&] { if (hadValue) qputenv(key, old); else qunsetenv(key); });
+    qunsetenv(key);
+    EXPECT_EQ(tgui::startupRpcPassword({}, false), std::nullopt);
+    qputenv(key, "from-env");
+    EXPECT_EQ(tgui::startupRpcPassword({}, false).value_or(QString{}), QStringLiteral("from-env"));
+    EXPECT_EQ(tgui::startupRpcPassword("explicit", false).value_or(QString{}), QStringLiteral("explicit"));
+    EXPECT_TRUE(tgui::startupRpcPassword(QStringLiteral(""), false)->isEmpty());
+}
 
 TEST(UtilFormatSize, Behavior)
 {

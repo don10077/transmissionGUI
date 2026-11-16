@@ -53,7 +53,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QtConcurrentRun>
-#include <zlib.h>
+#include <QSaveFile>
 #include <QPixmap>
 #include <QPushButton>
 #include <QScrollBar>
@@ -145,28 +145,30 @@ private:
 constexpr int kRefreshIntervalMs = 2000;
 constexpr int kUpdateCheckWakeMs = 24 * 60 * 60 * 1000;
 
-// Распаковка gzip через zlib (windowBits=31 = gzip).
-bool gunzipData(const QByteArray& input, QByteArray& output)
+/** Прерывает загрузку по общему дедлайну или при превышении лимита. */
+void boundDownload(QNetworkReply* reply, qint64 maxBytes, int timeoutMs)
 {
-    z_stream strm{};
-    if (inflateInit2(&strm, 31) != Z_OK)
-        return false;
-    strm.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(input.constData()));
-    strm.avail_in = uInt(input.size());
-    char buf[16384];
-    int ret;
-    do {
-        strm.next_out = reinterpret_cast<Bytef*>(buf);
-        strm.avail_out = sizeof(buf);
-        ret = inflate(&strm, Z_NO_FLUSH);
-        if (ret == Z_STREAM_ERROR || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR) {
-            inflateEnd(&strm);
-            return false;
-        }
-        output.append(buf, sizeof(buf) - strm.avail_out);
-    } while (strm.avail_out == 0 && ret != Z_STREAM_END);
-    inflateEnd(&strm);
-    return ret == Z_STREAM_END;
+    reply->setReadBufferSize(maxBytes + 1);
+    QObject::connect(reply, &QNetworkReply::readyRead, reply, [reply, maxBytes] {
+        if (reply->bytesAvailable() > maxBytes)
+            reply->abort();
+    });
+    QTimer::singleShot(timeoutMs, reply, [reply] {
+        if (reply->isRunning())
+            reply->abort();
+    });
+}
+
+/** Читает локальный .torrent, ограничивая размер даже при изменении файла. */
+QByteArray readLocalTorrent(const QString& path)
+{
+    QFile file(path);
+    if (!QFileInfo(path).isFile() || !file.open(QIODevice::ReadOnly) ||
+        file.size() > tgui::kMaxTorrentFileBytes)
+        return {};
+    auto bytes = file.read(tgui::kMaxTorrentFileBytes + 1);
+    return bytes.size() <= tgui::kMaxTorrentFileBytes && file.error() == QFileDevice::NoError
+        ? bytes : QByteArray{};
 }
 } // namespace
 
@@ -179,6 +181,8 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
     setWindowIcon(tgui::theme::icon(tgui::theme::Icon::App));
     resize(1200, 780);
     setAcceptDrops(true);
+    QSettings().remove(QStringLiteral("connection"));
+    ProfileStore().migratePasswords();
 
     m_proxy.setSourceModel(&m_model);
 
@@ -1103,7 +1107,6 @@ void MainWindow::setAutoConnect(const tgui::RpcClient::Options& opts)
     // Вызывается после конструктора — подключаемся сразу.
     if (!m_rpc && !m_connected) {
         m_connectionProfile.clear();
-        saveSettings(opts);
         startConnect(opts);
     }
 }
@@ -1189,7 +1192,6 @@ void MainWindow::maybeAutoConnect()
     }
     if (opts.url.isEmpty())
         return;
-    saveSettings(opts);
     startConnect(opts);
 }
 
@@ -1331,31 +1333,27 @@ void MainWindow::onAuthenticationFailed(const QString& error)
                 return;
             }
             const auto opts = dialog->options();
-            // «Запомнить пароль» (макет, DLG.pass): иначе не храним пароль ни в
-            // общих настройках, ни в профиле — следующий запуск спросит снова.
-            if (dialog->rememberPassword()) {
-                saveSettings(opts);
-                QSettings().setValue(QStringLiteral("connection/rememberPassword"), true);
-                ProfileStore store;
-                if (!m_connectionProfile.isEmpty()) {
-                    auto profile = store.profile(m_connectionProfile);
-                    profile.username = opts.username;
-                    profile.password = opts.password;
-                    store.save(profile);
-                }
-            } else {
-                QSettings s;
-                s.remove(QStringLiteral("connection/password"));
-                s.setValue(QStringLiteral("connection/rememberPassword"), false);
-                ProfileStore store;
-                if (!m_connectionProfile.isEmpty()) {
-                    auto profile = store.profile(m_connectionProfile);
-                    profile.password.clear();
-                    store.save(profile);
-                }
-            }
+            const bool remember = dialog->rememberPassword();
+            const auto profileName = m_connectionProfile;
             const auto& previous = rpc->options();
             startConnect(opts, m_reconnecting && opts.url == previous.url && opts.rpcPath == previous.rpcPath);
+            if (!profileName.isEmpty() && m_rpc) {
+                connect(m_rpc.get(), &tgui::RpcClient::connected, this,
+                        [this, profileName, remember] {
+                    ProfileStore store;
+                    if (!m_rpc || profileName != m_connectionProfile || !store.exists(profileName))
+                        return;
+                    auto profile = store.profile(profileName);
+                    const auto& active = m_rpc->options();
+                    const auto saved = profile.toOptions();
+                    if (saved.url != active.url || saved.rpcPath != active.rpcPath)
+                        return;
+                    profile.username = active.username;
+                    profile.password = remember ? active.password : QString{};
+                    if (!store.save(profile))
+                        onReadError(tr("Connect to Transmission"), tr("Could not save the connection profiles."));
+                }, Qt::SingleShotConnection);
+            }
         });
         dialog->open();
     });
@@ -2240,14 +2238,10 @@ void MainWindow::onClipboardChanged()
     if (!m_rpc || !m_connected || !QSettings().value(OptionsDialog::clipboardLinksKey, false).toBool())
         return;
 
-    auto text = QApplication::clipboard()->text().trimmed();
-    static const QRegularExpression bareHash(QStringLiteral("^[A-Fa-f0-9]{40}$"));
-    if (bareHash.match(text).hasMatch())
-        text = QStringLiteral("magnet:?xt=urn:btih:") + text.toLower();
-
-    QUrl url(text, QUrl::StrictMode);
-    if (!url.isValid())
+    const auto input = torrentLinkInput(QApplication::clipboard()->text());
+    if (input.isEmpty())
         return;
+    QUrl url(input, QUrl::StrictMode);
     url.setFragment(QString());
     const auto magnet = magnetIdentifier(url);
     if (magnet.isEmpty() && ((url.scheme() != "http" && url.scheme() != "https") ||
@@ -2255,22 +2249,41 @@ void MainWindow::onClipboardChanged()
         return;
     const auto link = url.toString(QUrl::FullyEncoded);
     const auto key = magnet.isEmpty() ? link : magnet;
-    if (m_clipboardLinksSeen.contains(key))
+    if (m_clipboardLinksSeen.removeOne(key)) {
+        m_clipboardLinksSeen.append(key);
         return;
+    }
     if (!magnet.isEmpty() && std::any_of(m_model.torrents().cbegin(), m_model.torrents().cend(),
             [&magnet](const auto& torrent) {
                 return magnet == QStringLiteral("urn:btih:") + torrent.hashString.value_or(QString()).toLower() ||
                     magnet == magnetIdentifier(QUrl(torrent.magnetLink.value_or(QString())));
             }))
         return;
-    m_clipboardLinksSeen.insert(key);
+    m_clipboardLinksSeen.append(key);
+    if (m_clipboardLinksSeen.size() > 256)
+        m_clipboardLinksSeen.removeFirst();
 
     tgui::RpcClient::AddTorrent params;
     params.source = tgui::RpcClient::AddTorrent::Source::Url;
     params.url = link;
     params.downloadDir = m_rpc->sessionInfo().downloadDir;
     params.start = m_rpc->sessionInfo().startAddedTorrents;
-    startAdd(params);
+    if (!magnet.isEmpty()) {
+        startAdd(params);
+        return;
+    }
+    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
+    auto* confirm = new QMessageBox(QMessageBox::Question, tr("Add torrent link"),
+        tr("Add the torrent link copied from %1?").arg(url.host()), QMessageBox::Yes | QMessageBox::No, this);
+    confirm->setTextFormat(Qt::PlainText);
+    confirm->setDefaultButton(QMessageBox::No);
+    confirm->setAttribute(Qt::WA_DeleteOnClose);
+    connect(rpc.data(), &QObject::destroyed, confirm, &QDialog::reject);
+    connect(confirm, &QDialog::finished, this, [this, rpc, params](int result) {
+        if (result == QMessageBox::Yes && rpc && rpc == m_rpc.get() && m_connected)
+            startAdd(params);
+    });
+    confirm->open();
 }
 
 /** Применяет настройку наблюдения при подключении или сохранении параметров. */
@@ -2372,17 +2385,14 @@ void MainWindow::addNextTorrent()
         return;
     }
 
-    QFile file(params.file);
-    if (!file.open(QIODevice::ReadOnly)) {
-        submitTorrent(std::move(pending));
+    auto original = readLocalTorrent(params.file);
+    if (original.isEmpty()) {
+        onReadError(tr("Add torrent"), QFileInfo(params.file).size() > tgui::kMaxTorrentFileBytes
+            ? tr("Torrent metadata exceeds the 32 MiB limit.")
+            : tr("Could not read the local torrent file: %1").arg(params.file));
+        finishAdd(rpc);
         return;
     }
-    auto original = file.readAll();
-    if (file.error() != QFileDevice::NoError) {
-        submitTorrent(std::move(pending));
-        return;
-    }
-    file.close();
     auto metainfo = original;
     auto details = previewTorrentMetainfo(metainfo);
     if (!details) {
@@ -2433,8 +2443,7 @@ void MainWindow::submitTorrent(PendingAdd pending, QByteArray sourceBytes, std::
 {
     auto [params, origin, profile] = std::move(pending);
     const bool fromWatchFolder = origin == AddOrigin::WatchFolder;
-    const bool requireLocalFile = origin != AddOrigin::Interactive &&
-        params.source == tgui::RpcClient::AddTorrent::Source::File;
+    const bool requireLocalFile = params.source == tgui::RpcClient::AddTorrent::Source::File;
     const bool start = params.start;
     params.start = false;
 
@@ -2468,26 +2477,21 @@ void MainWindow::submitTorrent(PendingAdd pending, QByteArray sourceBytes, std::
             m_watchRetries.insert(watchName, {watchVersion, invalid ? QDeadlineTimer(QDeadlineTimer::Forever)
                                                                   : QDeadlineTimer(30000)});
     };
-    if (requireLocalFile || deleteSource || !sourceBytes.isEmpty()) {
+    if (requireLocalFile) {
         params.file = QFileInfo(params.file).absoluteFilePath();
         request.file = params.file;
-        QFile file(params.file);
-        if (sourceBytes.isEmpty() && file.open(QIODevice::ReadOnly)) {
-            sourceBytes = file.readAll();
-            if (file.error() != QFileDevice::NoError)
-                sourceBytes.clear();
-        }
-        if (!sourceBytes.isEmpty()) {
-            // Отправляем те же байты, по которым показывали файлы и проверим исходник перед удалением.
-            request.source = tgui::RpcClient::AddTorrent::Source::Base64;
-            request.metainfoBase64 = QString::fromLatin1(sourceBytes.toBase64());
-        }
-        if (requireLocalFile && sourceBytes.isEmpty()) {
-            finishWatch(false);
-            onReadError(tr("Add torrent"), tr("Could not read the local torrent file: %1").arg(params.file));
+        if (sourceBytes.isEmpty())
+            sourceBytes = readLocalTorrent(params.file);
+        if (sourceBytes.isEmpty()) {
+            const bool oversized = QFileInfo(params.file).size() > tgui::kMaxTorrentFileBytes;
+            finishWatch(false, oversized);
+            onReadError(tr("Add torrent"), oversized ? tr("Torrent metadata exceeds the 32 MiB limit.")
+                : tr("Could not read the local torrent file: %1").arg(params.file));
             finishAdd(rpc);
             return;
         }
+        request.source = tgui::RpcClient::AddTorrent::Source::Metainfo;
+        request.metainfo = sourceBytes;
         if (!deleteSource)
             sourceBytes.clear();
     }
@@ -2548,7 +2552,8 @@ void MainWindow::submitTorrent(PendingAdd pending, QByteArray sourceBytes, std::
                 } else if (!sourceBytes.isEmpty()) {
                     QFile original(path);
                     const bool unchanged = original.open(QIODevice::ReadOnly) &&
-                        original.readAll() == sourceBytes && original.error() == QFileDevice::NoError;
+                        original.read(sourceBytes.size() + 1) == sourceBytes &&
+                        original.error() == QFileDevice::NoError;
                     original.close();
                     if (!unchanged || !original.remove())
                         onReadError(tr("Torrent added"), tr("Could not remove the original file: %1").arg(path));
@@ -2643,14 +2648,17 @@ void MainWindow::offerDuplicateUpdate(const tgui::RpcClient::AddTorrent& source,
         if (source.source == tgui::RpcClient::AddTorrent::Source::Url &&
             (url.scheme() == "http" || url.scheme() == "https")) {
             QNetworkRequest request(url);
-            request.setTransferTimeout(rpc->options().timeoutMs);
+            const int timeout = std::max(rpc->options().timeoutMs, 1);
+            request.setTransferTimeout(timeout);
+            request.setMaximumRedirectsAllowed(5);
             auto* reply = m_nam.get(request);
+            boundDownload(reply, tgui::kMaxTorrentFileBytes, timeout);
             const auto expectedHash = duplicate.value("hashString").toString();
             connect(reply, &QNetworkReply::finished, this, [this, rpc, reply, merge, expectedHash] {
                 reply->deleteLater();
-                if (!rpc || rpc != m_rpc.get())
+                if (!rpc || rpc != m_rpc.get() || !m_connected)
                     return;
-                if (reply->error() == QNetworkReply::NoError) {
+                if (reply->error() == QNetworkReply::NoError && reply->bytesAvailable() <= tgui::kMaxTorrentFileBytes) {
                     merge({}, reply->readAll(), expectedHash);
                 } else {
                     onReadError(tr("Update torrent"), reply->errorString());
@@ -3058,10 +3066,12 @@ void MainWindow::onImportSettings()
         return;
     QSettings cur;
     cur.setFallbacksEnabled(false);
-    if (!settingsbackup::replace(cur, *backup)) {
+    const auto journal = settingsbackup::recoveryPath();
+    if (journal.isEmpty() || !settingsbackup::replace(cur, *backup, journal)) {
         QMessageBox::warning(this, tr("Import settings"), tr("Could not apply the settings backup."));
         return;
     }
+    ProfileStore().migratePasswords();
     m_settingsImported = true;
     m_updateCheckTimer.stop();
     onDisconnect();
@@ -3298,7 +3308,7 @@ const tgui::Torrent* MainWindow::torrentById(int id) const
 
 QString MainWindow::mappedLocalPath(const QString& remotePath) const
 {
-    return tgui::mapRemoteToLocal(remotePath, ProfilePreferences(m_connectionProfile).mappings());
+    return tgui::mapRemoteToLocal(remotePath, ProfilePreferences(m_connectionProfile).mappings()).value_or(QString{});
 }
 
 /** Сверяет downloadDir выбранных торрентов с целью переноса после ответа демона. */
@@ -3357,8 +3367,24 @@ void MainWindow::openLocalPath(const QString& path, bool selectFile)
     // Маппинг remote→local: путь демона (на сервере) → локальный.
     // Правила задаются в Application options → Paths (строки "remote=local").
     const QString local = mappedLocalPath(path);
+    if (local.isEmpty())
+        return;
 
     const QFileInfo fi(local);
+    if (fi.exists() && !selectFile && tgui::isPotentiallyExecutable(fi)) {
+        QMessageBox confirm(QMessageBox::Warning, tr("Open downloaded file"),
+            tr("This file may run a program: %1").arg(fi.fileName()), QMessageBox::Cancel, this);
+        confirm.setTextFormat(Qt::PlainText);
+        auto* folder = confirm.addButton(tr("Open folder"), QMessageBox::ActionRole);
+        auto* run = confirm.addButton(tr("Run"), QMessageBox::AcceptRole);
+        confirm.setDefaultButton(folder);
+        confirm.exec();
+        if (confirm.clickedButton() == run)
+            QDesktopServices::openUrl(QUrl::fromLocalFile(fi.filePath()));
+        else if (confirm.clickedButton() == folder)
+            QDesktopServices::openUrl(QUrl::fromLocalFile(fi.absolutePath()));
+        return;
+    }
     if (fi.exists() && (fi.isDir() || !selectFile)) {
         QDesktopServices::openUrl(QUrl::fromLocalFile(fi.filePath()));
         return;
@@ -3575,106 +3601,89 @@ void MainWindow::finishFlagImages(const QString& directory)
 
 void MainWindow::onUpdateGeoIp()
 {
-    static const char *kGeoIpUrl = "https://dl.miyuru.lk/geoip/maxmind/country/maxmind4.dat.gz";
-
-    QMessageBox box(QMessageBox::Question, tr("Update GeoIP database"),
-        tr("GeoIP database is needed to resolve country by IP address.\n"
-           "Download this database now?"),
-        QMessageBox::Yes | QMessageBox::No, this);
-    box.setDefaultButton(QMessageBox::No);
-    box.setIconPixmap(tgui::theme::icon(tgui::theme::Icon::Question).pixmap(QSize(32, 32), devicePixelRatioF()));
-    if (box.exec() != QMessageBox::Yes)
+    if (m_geoIpDownloading)
         return;
+    m_geoIpDownloading = true;
+    const auto answer = QMessageBox::question(this, tr("Update GeoIP database"),
+        tr("GeoIP database is needed to resolve country by IP address.\n"
+           "Download this database now?"), QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (answer != QMessageBox::Yes) {
+        m_geoIpDownloading = false;
+        return;
+    }
 
-    // Прогресс-бар (как в оригинале).
-    auto* progress = new QProgressDialog(tr("Downloading GeoIP database…"), tr("Cancel"),
-                                         0, 100, this);
+    constexpr qint64 limit = 64LL * 1024 * 1024;
+    constexpr int timeout = 30000;
+    QNetworkRequest request{QUrl{"https://dl.miyuru.lk/geoip/maxmind/country/maxmind4.dat.gz"}};
+    request.setTransferTimeout(timeout);
+    request.setMaximumRedirectsAllowed(5);
+    auto* reply = m_nam.get(request);
+    boundDownload(reply, limit, timeout);
+    auto* progress = new QProgressDialog(tr("Downloading GeoIP database…"), tr("Cancel"), 0, 100, this);
     progress->setWindowModality(Qt::WindowModal);
     progress->setMinimumDuration(0);
     progress->setValue(0);
-
-    const QUrl url{kGeoIpUrl};
-    auto* reply = m_nam.get(QNetworkRequest{url});
-
-    // Обновляем прогресс.
-    QObject::connect(reply, &QNetworkReply::downloadProgress, this,
-        [progress](qint64 received, qint64 total) {
-            if (total > 0)
-                progress->setValue(static_cast<int>(received * 100 / total));
-        });
-
-    // Отмена.
-    QObject::connect(progress, &QProgressDialog::canceled, this, [reply]() {
+    connect(reply, &QNetworkReply::downloadProgress, progress, [progress](qint64 received, qint64 total) {
+        if (total > 0)
+            progress->setValue(static_cast<int>(received * 100 / total));
+    });
+    connect(progress, &QProgressDialog::canceled, reply, [reply] {
+        reply->setProperty("userCancelled", true);
         reply->abort();
     });
 
-    QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, progress]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, progress, limit] {
         reply->deleteLater();
-        progress->setValue(100);
-
-        if (reply->error() != QNetworkReply::NoError) {
-            progress->close();
-            progress->deleteLater();
-            QMessageBox::warning(this, tr("Update GeoIP database"),
-                tr("Download failed: %1").arg(reply->errorString()));
+        progress->hide();
+        progress->deleteLater();
+        if (reply->error() != QNetworkReply::NoError || reply->bytesAvailable() > limit) {
+            m_geoIpDownloading = false;
+            if (!reply->property("userCancelled").toBool()) {
+                QMessageBox::warning(this, tr("Update GeoIP database"),
+                    tr("Download failed: %1").arg(reply->errorString()));
+            }
             return;
         }
-        const QByteArray raw = reply->readAll();
-
-        // Определяем, gzip или raw .dat
-        const bool isGzip = raw.size() > 2 &&
-                            static_cast<quint8>(raw[0]) == 0x1f &&
-                            static_cast<quint8>(raw[1]) == 0x8b;
-
-        const QString appDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-        QDir().mkpath(appDir);
-        const QString datPath = appDir + QStringLiteral("/GeoIP.dat");
-
-        if (isGzip) {
-            QByteArray dat;
-            if (!gunzipData(raw, dat)) {
-                progress->close();
-                progress->deleteLater();
-                QMessageBox::warning(this, tr("Update GeoIP database"),
-                    tr("Decompression failed."));
+        const auto appDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        enum class Failure { None, Decompression, InvalidDatabase, Save };
+        using Result = std::pair<Failure, tgui::GeoIpDb>;
+        auto* watcher = new QFutureWatcher<Result>(this);
+        connect(watcher, &QFutureWatcher<Result>::finished, this, [this, watcher] {
+            auto [error, database] = watcher->future().takeResult();
+            watcher->deleteLater();
+            m_geoIpDownloading = false;
+            if (error != Failure::None) {
+                const auto message = error == Failure::Decompression ? tr("Decompression failed.") :
+                    error == Failure::InvalidDatabase ? tr("Database is invalid.") : tr("Save failed.");
+                QMessageBox::warning(this, tr("Update GeoIP database"), message);
                 return;
             }
-            QFile f(datPath);
-            if (f.open(QIODevice::WriteOnly))
-                f.write(dat);
-        } else {
-            QFile f(datPath);
-            if (f.open(QIODevice::WriteOnly))
-                f.write(raw);
-        }
-
-        if (!QFileInfo::exists(datPath)) {
-            progress->close();
-            progress->deleteLater();
-            QMessageBox::warning(this, tr("Update GeoIP database"),
-                tr("Save failed."));
-            return;
-        }
-
-        if (!m_geoip.load(datPath.toStdString())) {
-            progress->close();
-            progress->deleteLater();
-            QMessageBox::warning(this, tr("Update GeoIP database"),
-                tr("Database is invalid."));
-            return;
-        }
-
-        progress->close();
-        progress->deleteLater();
-
-        if (QSettings().value("peers/showFlag", false).toBool())
-            loadFlagImages(true);
-
-        // Обновить модель пиров.
-        const auto& currentPeers = m_peerModel.peers();
-        if (!currentPeers.isEmpty())
-            m_peerModel.setPeers(currentPeers);
-        statusBar()->showMessage(tr("GeoIP database loaded."), 5000);
+            m_geoip = std::move(database);
+            if (QSettings().value("peers/showFlag", false).toBool())
+                loadFlagImages(true);
+            const auto currentPeers = m_peerModel.peers();
+            if (!currentPeers.isEmpty())
+                m_peerModel.setPeers(currentPeers);
+            statusBar()->showMessage(tr("GeoIP database loaded."), 5000);
+        });
+        watcher->setFuture(QtConcurrent::run([raw = reply->readAll(), appDir, limit]() mutable -> Result {
+            if (raw.startsWith("\x1f\x8b")) {
+                auto decoded = tgui::gunzipData(raw, limit);
+                if (!decoded)
+                    return {Failure::Decompression, {}};
+                raw = std::move(*decoded);
+            }
+            tgui::GeoIpDb database;
+            std::vector<unsigned char> bytes(raw.cbegin(), raw.cend());
+            if (!database.load(std::move(bytes)))
+                return {Failure::InvalidDatabase, {}};
+            if (appDir.isEmpty() || !QDir().mkpath(appDir))
+                return {Failure::Save, {}};
+            QSaveFile file(QDir(appDir).filePath("GeoIP.dat"));
+            if (!file.open(QIODevice::WriteOnly) || file.write(raw) != raw.size() || !file.commit())
+                return {Failure::Save, {}};
+            return {Failure::None, std::move(database)};
+        }));
     });
 }
 
@@ -3895,16 +3904,15 @@ void MainWindow::onConnectionOptions()
     ConnOptionsDialog dlg(this);
     if (dlg.exec() != QDialog::Accepted)
         return;
-    // Профиль, над которым работали, сделан текущим (saveCurrent) — переключаемся
-    // на него (работает и при активном соединении; аналог OLD ConnectionSettingsChanged).
     ProfileStore store;
     if (store.hasCurrent())
-        switchToProfile(store.currentName());
+        switchToProfile(store.currentName(), dlg.current().toOptions());
 }
 
 // Переключение на другой сервер (аналог OLD DoConnectToHost): отключиться,
 // сделать профиль активным, подключиться к нему.
-void MainWindow::switchToProfile(const QString& name)
+void MainWindow::switchToProfile(const QString& name,
+                                 std::optional<tgui::RpcClient::Options> sessionOptions)
 {
     if (name.isEmpty())
         return;
@@ -3913,7 +3921,7 @@ void MainWindow::switchToProfile(const QString& name)
         return;
     // Уже подключены к этому серверу — не переключаем (OLD: DoConnectToHost
     // выходит, если FCurConn == выбранное имя).
-    const auto opts = store.profile(name).toOptions();
+    const auto opts = sessionOptions ? std::move(*sessionOptions) : store.profile(name).toOptions();
     if (m_connected && m_rpc) {
         const auto& active = m_rpc->options();
         if (active == opts) {
@@ -3930,7 +3938,6 @@ void MainWindow::switchToProfile(const QString& name)
         return;
     }
     m_connectionProfile = name;
-    saveSettings(opts);
     startConnect(opts);
 }
 
@@ -4748,26 +4755,4 @@ void MainWindow::changeEvent(QEvent* event)
         }
     }
     QMainWindow::changeEvent(event);
-}
-
-void MainWindow::loadSettings(tgui::RpcClient::Options& opts)
-{
-    QSettings s;
-    const QString url = s.value("connection/url").toString();
-    if (!url.isEmpty())
-        opts.url = QUrl(url);
-    opts.rpcPath = s.value("connection/rpcPath").toString();
-    opts.username = s.value("connection/user").toString();
-    opts.password = s.value("connection/password").toString();
-    opts.ignoreSslErrors = s.value("connection/ignoreSsl", false).toBool();
-}
-
-void MainWindow::saveSettings(const tgui::RpcClient::Options& opts)
-{
-    QSettings s;
-    s.setValue("connection/url", opts.url.toString());
-    s.setValue("connection/rpcPath", opts.rpcPath);
-    s.setValue("connection/user", opts.username);
-    s.setValue("connection/password", opts.password);
-    s.setValue("connection/ignoreSsl", opts.ignoreSslErrors);
 }

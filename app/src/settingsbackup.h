@@ -2,19 +2,40 @@
 
 #include "daemonprofile.h"
 
+#include <QDataStream>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QStringList>
 #include <QTemporaryDir>
-#include <QUrl>
 #include <QVariantMap>
 #include <algorithm>
 #include <optional>
 
 namespace settingsbackup {
 inline constexpr qint64 maxBytes = 8 * 1024 * 1024;
+inline constexpr quint32 recoveryMagic = 0x54475549;
+inline constexpr qint64 maxRecoveryBytes = 64LL * 1024 * 1024;
+
+/** Возвращает файл восстановления в каталоге настроек текущего пользователя. */
+inline QString recoveryPath()
+{
+    const auto directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    return directory.isEmpty() ? QString{} : QDir(directory).filePath("settings-recovery.dat");
+}
+
+/** Определяет устаревшие параметры соединения и непереносимые секреты профиля. */
+inline bool isLocalCredential(const QString& key)
+{
+    const auto normalized = key.toLower();
+    return normalized.startsWith("connection/") ||
+        (normalized.startsWith("daemons/") &&
+         (normalized.endsWith("/password") || normalized.endsWith("/proxypass") ||
+          normalized.endsWith("/protectedpassword") || normalized.endsWith("/protectedproxypass")));
+}
 
 /** Записывает файл целиком с атомарной заменой. */
 inline bool writeFile(const QString& path, const QByteArray& bytes)
@@ -45,15 +66,8 @@ inline bool write(const QString& path, const QVariantMap& values)
     out.setValue("backup/version", 1);
     for (auto it = values.cbegin(); it != values.cend(); ++it) {
         const auto key = it.key();
-        const auto normalized = key.toLower();
-        if (normalized == "connection/password" ||
-            (normalized.startsWith("daemons/") && (normalized.endsWith("/password") || normalized.endsWith("/proxypass"))))
-            continue;
-        if (normalized == "connection/url") {
-            out.setValue(key, QUrl(it.value().toString()).toString(QUrl::RemovePassword));
-            continue;
-        }
-        out.setValue(key, it.value());
+        if (!isLocalCredential(key))
+            out.setValue(key, it.value());
     }
     out.sync();
     QFile generated(out.fileName());
@@ -84,6 +98,23 @@ inline std::optional<QVariantMap> read(const QString& path)
             std::none_of(groups.cbegin(), groups.cend(), [&](const auto& group) { return it.key().startsWith(group); })))
             return std::nullopt;
     }
+    for (auto it = values.begin(); it != values.end();) {
+        switch (it.value().typeId()) {
+            case QMetaType::QString:
+            case QMetaType::QStringList:
+            case QMetaType::Bool:
+            case QMetaType::Int:
+            case QMetaType::LongLong:
+            case QMetaType::Double:
+            case QMetaType::QByteArray:
+                ++it;
+                break;
+            default:
+                it = values.erase(it);
+        }
+    }
+    if (values.isEmpty())
+        return std::nullopt;
     const QStringList legacySignatures{"ui/refreshInterval", "ui/language", "ui/trayIcon", "ui/autoRefresh",
                                        "connection/url", "daemons/names", "paths/mappings", "columns/order"};
     if (!marked && std::none_of(legacySignatures.cbegin(), legacySignatures.cend(),
@@ -103,11 +134,63 @@ inline std::optional<QVariantMap> read(const QString& path)
     return values;
 }
 
-/** Заменяет настройки после проверки и восстанавливает снимок при ошибке записи. */
-inline bool replace(QSettings& settings, const QVariantMap& values)
+/** Записывает все ключи и дожидается сохранения настроек. */
+inline bool storeSnapshot(QSettings& settings, const QVariantMap& data)
+{
+    settings.clear();
+    for (auto it = data.cbegin(); it != data.cend(); ++it)
+        settings.setValue(it.key(), it.value());
+    settings.sync();
+    return settings.status() == QSettings::NoError;
+}
+
+/** Атомарно записывает локальный снимок перед заменой настроек. */
+inline bool writeRecovery(const QString& path, const QVariantMap& data)
+{
+    if (QFile::exists(path) || !QDir().mkpath(QFileInfo(path).absolutePath()))
+        return false;
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || !file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner))
+        return false;
+    QDataStream stream(&file);
+    stream.setVersion(QDataStream::Qt_6_0);
+    stream << recoveryMagic << data;
+    return stream.status() == QDataStream::Ok && file.size() <= maxRecoveryBytes && file.commit();
+}
+
+/** Восстанавливает настройки после прерванного импорта. */
+inline bool restoreInterrupted(QSettings& settings, const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly) || file.size() > maxRecoveryBytes)
+        return false;
+    QDataStream stream(&file);
+    stream.setVersion(QDataStream::Qt_6_0);
+    quint32 magic = 0;
+    stream >> magic;
+    if (magic != recoveryMagic)
+        return false;
+    QVariantMap before;
+    stream >> before;
+    if (stream.status() != QDataStream::Ok || !stream.atEnd())
+        return false;
+    file.close();
+    return storeSnapshot(settings, before) && QFile::remove(path);
+}
+
+/** Заменяет настройки и сохраняет возможность восстановления после сбоя. */
+inline bool replace(QSettings& settings, const QVariantMap& values, const QString& journal = {})
 {
     const auto before = snapshot(settings);
     auto restored = values;
+    for (auto it = restored.begin(); it != restored.end();) {
+        if (isLocalCredential(it.key()))
+            it = restored.erase(it);
+        else
+            ++it;
+    }
+    if (restored.isEmpty())
+        return false;
     const auto matches = [&](const QString& base, const QStringList& identity) {
         return std::all_of(identity.cbegin(), identity.cend(), [&](const auto& field) {
             return before.value(base + field).toString() == restored.value(base + field).toString();
@@ -118,30 +201,22 @@ inline bool replace(QSettings& settings, const QVariantMap& values)
         if (!restored.contains(key) && before.contains(key) && matches(base, identity))
             restored.insert(key, before.value(key));
     };
-    const QUrl oldUrl(before.value("connection/url").toString());
-    const QUrl newUrl(restored.value("connection/url").toString());
-    if (!newUrl.isEmpty() && oldUrl.matches(newUrl, QUrl::RemovePassword) &&
-        matches("connection/", {"rpcPath", "ignoreSsl"})) {
-        preserve("connection/", "password", {"user"});
-        if (newUrl.password().isEmpty() && !oldUrl.password().isEmpty())
-            restored.insert("connection/url", oldUrl.toString());
-    }
     for (const auto& name : restored.value("daemons/names").toStringList()) {
         const auto base = QStringLiteral("daemons/") + name + '/';
-        preserve(base, "password", {"host", "port", "useSsl", "rpcPath", "username", "ignoreSsl",
-                                    "useProxy", "useSocks", "proxyHost", "proxyPort", "proxyUser"});
-        preserve(base, "proxyPass", {"useProxy", "useSocks", "proxyHost", "proxyPort", "proxyUser"});
+        const QStringList connection{"host", "port", "useSsl", "rpcPath", "username", "ignoreSsl",
+                                     "useProxy", "useSocks", "proxyHost", "proxyPort", "proxyUser"};
+        const QStringList proxy{"useProxy", "useSocks", "proxyHost", "proxyPort", "proxyUser"};
+        preserve(base, "password", connection);
+        preserve(base, "protectedPassword", connection);
+        preserve(base, "proxyPass", proxy);
+        preserve(base, "protectedProxyPass", proxy);
     }
-    const auto store = [&settings](const QVariantMap& data) {
-        settings.clear();
-        for (auto it = data.cbegin(); it != data.cend(); ++it)
-            settings.setValue(it.key(), it.value());
-        settings.sync();
-    };
-    store(restored);
-    if (settings.status() == QSettings::NoError)
+    if (!journal.isEmpty() && !writeRecovery(journal, before))
+        return false;
+    if (storeSnapshot(settings, restored) && (journal.isEmpty() || QFile::remove(journal)))
         return true;
-    store(before);
+    if (storeSnapshot(settings, before) && !journal.isEmpty())
+        QFile::remove(journal);
     return false;
 }
 }

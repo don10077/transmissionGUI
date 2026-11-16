@@ -77,7 +77,7 @@ bool MoveDialog::moveData() const
 
 void MoveDialog::onBrowse()
 {
-    const QString local = QDir::fromNativeSeparators(tgui::mapRemoteToLocal(targetDir(), m_mappings));
+    const QString local = tgui::mapRemoteToLocal(targetDir(), m_mappings).value_or(QString{});
     if (!QFileInfo(local).isDir()) {
         QMessageBox::warning(this, tr("Move"),
             tr("Folder is not accessible locally: %1. Check path mappings or enter the daemon path manually.").arg(local));

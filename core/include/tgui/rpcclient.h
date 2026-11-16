@@ -12,6 +12,8 @@
 
 namespace tgui {
 
+inline constexpr qint64 kMaxTorrentFileBytes = 32LL * 1024 * 1024;
+
 // Высокоуровневый асинхронный RPC-клиент Transmission (QObject, сигналы в
 // потоке-владельце).
 class RpcClient : public QObject {
@@ -33,10 +35,11 @@ public:
 
     // Параметры torrent-add.
     struct AddTorrent {
-        enum class Source { File, Base64, Url };
+        enum class Source { File, Base64, Url, Metainfo };
         Source source = Source::File;
         QString file;         // Source::File — путь к .torrent
         QString metainfoBase64; // Source::Base64 — base64 метаданных
+        QByteArray metainfo;   // Source::Metainfo — исходные байты метаданных
         QString url;          // Source::Url — magnet/URL (идёт в "filename")
         QString downloadDir;
         int peerLimit = 0;    // 0 — не устанавливать

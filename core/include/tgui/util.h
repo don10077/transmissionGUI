@@ -1,5 +1,8 @@
 #pragma once
 
+#include <QByteArray>
+#include <optional>
+
 #include <cstdint>
 #include <string>
 
@@ -22,6 +25,8 @@ std::string formatSeconds(int64_t seconds);
 // EtaToString: "∞" (отрицательное или INT32_MAX) → "";
 // > 2 ч — округление до часа, > 30 мин — до 5 мин, > 2 мин — до минуты.
 std::string formatEta(int64_t seconds);
+/** Распаковывает один gzip-поток размером до @p maxOutput байт. */
+std::optional<QByteArray> gunzipData(const QByteArray& input, qsizetype maxOutput);
 
 // RatioToString: -1 → ""; -2 или INT32_MAX → "∞"; иначе "1.500".
 std::string formatRatio(double ratio);

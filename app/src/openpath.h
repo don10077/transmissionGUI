@@ -1,11 +1,29 @@
 #pragma once
 
+#include <QFileInfo>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 #include "tgui/models.h"
 
 namespace tgui {
+
+/** Проверяет, может ли открытие @p file запустить программу, скрипт или ярлык. */
+inline bool isPotentiallyExecutable(const QFileInfo& file)
+{
+    const auto suffix = file.suffix().toLower();
+    static const QStringList extensions{"exe", "com", "bat", "cmd", "lnk", "scr", "hta", "msi",
+                                        "ps1", "vbs", "js", "jse", "wsf", "cpl", "reg", "url"};
+    if (!file.isDir() && extensions.contains(suffix))
+        return true;
+#ifdef Q_OS_WIN
+    return !file.isDir() && !suffix.isEmpty() &&
+        qEnvironmentVariable("PATHEXT").split(';').contains(QStringLiteral(".") + suffix, Qt::CaseInsensitive);
+#else
+    return suffix == "app" || (!file.isDir() && (file.isExecutable() || suffix == "sh" || suffix == "desktop"));
+#endif
+}
 
 // Родительский каталог для пути с завершающим '/'.
 // "a/b/" → "a/", "a/" → "", "/" → "".
