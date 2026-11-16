@@ -321,35 +321,41 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
     // «Обновить» у списка блокировок).
     const QPointer<tgui::RpcClient> client(rpc);
     if (client) {
-        connect(btnPortTest, &QPushButton::clicked, this, [client, portStatus, btnPortTest] {
-            if (!client)
+        connect(btnPortTest, &QPushButton::clicked, this,
+                [client, status = QPointer<QLabel>(portStatus), button = QPointer<QPushButton>(btnPortTest)] {
+            if (!client || !status || !button)
                 return;
-            portStatus->setText(tr("Checking…"));
-            btnPortTest->setEnabled(false);
-            client->portTest([portStatus, btnPortTest](const tgui::JsonRpcResult& result) {
-                btnPortTest->setEnabled(true);
+            status->setText(tr("Checking…"));
+            button->setEnabled(false);
+            client->portTest([status, button](const tgui::JsonRpcResult& result) {
+                if (!status || !button)
+                    return;
+                button->setEnabled(true);
                 if (!result.ok) {
-                    portStatus->setText(result.error);
+                    status->setText(result.error);
                     return;
                 }
-                portStatus->setPalette(QPalette(result.arguments.value("port-is-open").toBool()
-                                                     ? tgui::theme::color::green
-                                                     : tgui::theme::color::red));
-                portStatus->setText(result.arguments.value("port-is-open").toBool()
-                                        ? tr("The port is open.")
-                                        : tr("The port is closed."));
+                status->setPalette(QPalette(result.arguments.value("port-is-open").toBool()
+                                                 ? tgui::theme::color::green
+                                                 : tgui::theme::color::red));
+                status->setText(result.arguments.value("port-is-open").toBool()
+                                    ? tr("The port is open.")
+                                    : tr("The port is closed."));
             });
         });
-        connect(btnBlocklistUpdate, &QPushButton::clicked, this, [this, client, btnBlocklistUpdate] {
-            if (!client)
+        connect(btnBlocklistUpdate, &QPushButton::clicked, this,
+                [dlg = QPointer<DaemonOptionsDialog>(this), client, button = QPointer<QPushButton>(btnBlocklistUpdate)] {
+            if (!client || !button)
                 return;
-            btnBlocklistUpdate->setEnabled(false);
-            client->updateBlocklist([this, btnBlocklistUpdate](const tgui::JsonRpcResult& result) {
-                btnBlocklistUpdate->setEnabled(true);
+            button->setEnabled(false);
+            client->updateBlocklist([dlg, button](const tgui::JsonRpcResult& result) {
+                if (!dlg || !button)
+                    return;
+                button->setEnabled(true);
                 if (!result.ok)
-                    QMessageBox::warning(this, windowTitle(), result.error);
+                    QMessageBox::warning(dlg, dlg->windowTitle(), result.error);
                 else
-                    QMessageBox::information(this, windowTitle(), tr("The blocklist has been updated."));
+                    QMessageBox::information(dlg, dlg->windowTitle(), tr("The blocklist has been updated."));
             });
         });
     } else {
