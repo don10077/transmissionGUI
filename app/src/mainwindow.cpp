@@ -177,7 +177,7 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
     , m_autoConnectOpts(startupOptions)
     , m_labels(torrentlabels::configured())
 {
-    setWindowTitle(QStringLiteral("transmissionGUI"));
+    setWindowTitle(QStringLiteral(TGUI_DISPLAY_NAME));
     setWindowIcon(tgui::theme::icon(tgui::theme::Icon::App));
     resize(1200, 780);
     setAcceptDrops(true);
@@ -3052,7 +3052,7 @@ void MainWindow::onImportSettings()
         return;
     const auto backup = settingsbackup::read(path);
     if (!backup) {
-        QMessageBox::warning(this, tr("Import settings"), tr("The file is not a supported transmissionGUI settings backup."));
+        QMessageBox::warning(this, tr("Import settings"), tr("The file is not a supported TransmissionGUI settings backup."));
         return;
     }
     if (QMessageBox::question(this, tr("Import settings"),
@@ -4748,7 +4748,7 @@ void MainWindow::createTray()
         return;
     m_tray = new QSystemTrayIcon(this);
     m_tray->setIcon(tgui::theme::icon(tgui::theme::Icon::App));
-    m_tray->setToolTip(QStringLiteral("transmissionGUI"));
+    m_tray->setToolTip(QStringLiteral(TGUI_DISPLAY_NAME));
     connect(this, &MainWindow::downloadNotification, m_tray, [this](const QString& message) {
         if (m_tray->isVisible())
             m_tray->showMessage(tr("Download completed"), message, QSystemTrayIcon::Information);

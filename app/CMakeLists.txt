@@ -51,7 +51,9 @@ add_library(tgui_app_lib STATIC
     src/aboutdialog.h
 )
 target_include_directories(tgui_app_lib PUBLIC src)
-target_compile_definitions(tgui_app_lib PUBLIC TGUI_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(tgui_app_lib PUBLIC
+    TGUI_VERSION="${PROJECT_VERSION}"
+    TGUI_DISPLAY_NAME="TransmissionGUI")
 target_link_libraries(tgui_app_lib PUBLIC tgui_core Qt6::Widgets Qt6::Network Qt6::Svg
     Qt6::Concurrent ZLIB::ZLIB LibArchive::LibArchive)
 if(WIN32)
@@ -67,6 +69,7 @@ add_executable(transmissiongui WIN32
 target_link_libraries(transmissiongui PRIVATE tgui_app_lib)
 if(WIN32)
     enable_language(RC)
+    set_target_properties(transmissiongui PROPERTIES OUTPUT_NAME "TransmissionGUI")
     configure_file(icons/transmissiongui.rc.in
         "${CMAKE_CURRENT_BINARY_DIR}/transmissiongui.rc" @ONLY)
     target_sources(transmissiongui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/transmissiongui.rc")
@@ -133,7 +136,7 @@ if(APPLE)
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
         MACOSX_BUNDLE_ICON_FILE "transmissiongui.icns"
         MACOSX_BUNDLE_GUI_IDENTIFIER "org.transmissiongui.client"
-        MACOSX_BUNDLE_BUNDLE_NAME "transmissionGUI"
+        MACOSX_BUNDLE_BUNDLE_NAME "TransmissionGUI"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
 endif()

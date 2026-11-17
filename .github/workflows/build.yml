@@ -86,11 +86,14 @@ jobs:
         shell: pwsh
         run: |
           Expand-Archive transmissiongui-windows-x64.zip portable
+          if ((Get-ChildItem -LiteralPath portable -File).Name -cnotcontains 'TransmissionGUI.exe') {
+            throw 'Portable ZIP must contain TransmissionGUI.exe with the exact file name'
+          }
           $env:Path = "$env:SystemRoot/System32;$env:SystemRoot"
           $env:QT_PLUGIN_PATH = ''
           $env:QT_QPA_PLATFORM_PLUGIN_PATH = ''
           $env:QT_QPA_PLATFORM = 'windows'
-          $app = Start-Process -FilePath (Resolve-Path portable/transmissiongui.exe) -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
+          $app = Start-Process -FilePath (Resolve-Path portable/TransmissionGUI.exe) -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
           if (!$app.WaitForExit(15000)) { $app.Kill(); throw 'Portable app did not exit' }
           if ($app.ExitCode -ne 0) { throw "Portable app failed: $($app.ExitCode)" }
       - name: Install, launch and uninstall on a separate runner
@@ -100,8 +103,8 @@ jobs:
           $installed = Join-Path $env:RUNNER_TEMP 'transmissionGUI installer test'
           $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\transmissionGUI'
           $programs = [Environment]::GetFolderPath('Programs')
-          $shortcut = Join-Path $programs 'transmissionGUI.lnk'
-          $appFile = Join-Path $installed 'transmissiongui.exe'
+          $shortcut = Join-Path $programs 'TransmissionGUI.lnk'
+          $appFile = Join-Path $installed 'TransmissionGUI.exe'
           $shellApp = 'HKCU:\Software\Classes\Applications\transmissiongui.exe'
           $openCommand = "$shellApp\shell\open\command"
           $previousHandlers = 'HKCU:\Software\Classes\transmissionGUI.Torrent\shell\open\command',
@@ -118,7 +121,11 @@ jobs:
           if ($registered.InstallLocation -ne $installed -or !(Test-Path -LiteralPath $shortcut)) {
             throw 'Installation did not register the app and its Start menu shortcut'
           }
-          if ((Get-FileHash -LiteralPath $appFile).Hash -ne (Get-FileHash portable/transmissiongui.exe).Hash) {
+          if ((Get-ChildItem -LiteralPath $installed -File).Name -cnotcontains 'TransmissionGUI.exe' -or
+              $registered.DisplayName -cne 'TransmissionGUI') {
+            throw 'Installation did not preserve the exact executable and display names'
+          }
+          if ((Get-FileHash -LiteralPath $appFile).Hash -ne (Get-FileHash portable/TransmissionGUI.exe).Hash) {
             throw 'Installed executable differs from the portable build'
           }
           if ((Get-Item -LiteralPath $appFile).VersionInfo.FileVersion -ne '1.0.0.0') {

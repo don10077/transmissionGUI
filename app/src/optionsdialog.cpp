@@ -58,7 +58,7 @@ QString handlerCommand()
         QSettings::NativeFormat);
     const auto location = setup.value("InstallLocation").toString();
     const QDir installed(location);
-    const auto installedExe = installed.filePath(QStringLiteral("transmissiongui.exe"));
+    const auto installedExe = installed.filePath(QStringLiteral("TransmissionGUI.exe"));
     const bool useInstalled = !location.isEmpty() && QFileInfo(installedExe).isFile();
     const auto executable = useInstalled ? installedExe : QCoreApplication::applicationFilePath();
     return QStringLiteral("\"%1\" -- \"%2\"")
@@ -106,7 +106,7 @@ bool applyTorrentHandlers(bool torrent, bool magnet)
         return false;
 
     QSettings software("HKEY_CURRENT_USER\\Software", QSettings::NativeFormat);
-    software.setValue("transmissionGUI/Capabilities/ApplicationName", "transmissionGUI");
+    software.setValue("transmissionGUI/Capabilities/ApplicationName", QStringLiteral(TGUI_DISPLAY_NAME));
     software.setValue("transmissionGUI/Capabilities/ApplicationDescription",
                       "Manage torrents on a Transmission server");
     if (torrent)

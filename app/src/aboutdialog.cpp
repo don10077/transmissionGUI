@@ -128,7 +128,7 @@ AboutDialog::AboutDialog(QWidget* parent) : QDialog(parent)
     auto* titles = new QVBoxLayout;
     titles->setSpacing(tgui::theme::dp(2));
 
-    auto* title = new QLabel(QStringLiteral("Transmission Remote GUI"), this);
+    auto* title = new QLabel(QStringLiteral(TGUI_DISPLAY_NAME), this);
     title->setObjectName(QStringLiteral("aboutTitle"));
     QFont titleFont = title->font();
     titleFont.setPointSizeF(titleFont.pointSizeF() + 3.0);

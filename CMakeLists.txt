@@ -68,7 +68,7 @@ if(TGUI_BUILD_TOOLS)
 endif()
 
 set(CPACK_PACKAGE_NAME "transmissiongui")
-set(CPACK_PACKAGE_VENDOR "transmissionGUI")
+set(CPACK_PACKAGE_VENDOR "TransmissionGUI")
 set(CPACK_PACKAGE_CONTACT "don100779@gmail.com")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/don10077/transmissionGUI")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Qt client for Transmission")

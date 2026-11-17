@@ -34,7 +34,7 @@ TEST(AboutDialog, Construct)
 
     auto* title = dlg.findChild<QLabel*>(QStringLiteral("aboutTitle"));
     ASSERT_NE(title, nullptr);
-    EXPECT_EQ(title->text(), QStringLiteral("Transmission Remote GUI"));
+    EXPECT_EQ(title->text(), QStringLiteral("TransmissionGUI"));
 
     auto* version = dlg.findChild<QLabel*>(QStringLiteral("aboutVersion"));
     ASSERT_NE(version, nullptr);

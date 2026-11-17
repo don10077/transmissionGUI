@@ -27,7 +27,10 @@ $stage = (New-Item -ItemType Directory -Path (Join-Path $output "installer-stage
 try {
     $payload = Join-Path $stage 'payload'
     Expand-Archive -LiteralPath $source -DestinationPath $payload
-    foreach ($required in 'transmissiongui.exe', 'LICENSE', 'platforms/qwindows.dll') {
+    if ((Get-ChildItem -LiteralPath $payload -File).Name -cnotcontains 'TransmissionGUI.exe') {
+        throw 'Portable archive must contain TransmissionGUI.exe with the exact file name'
+    }
+    foreach ($required in 'LICENSE', 'platforms/qwindows.dll') {
         if (!(Test-Path -LiteralPath "$payload/$required" -PathType Leaf)) {
             throw "Portable archive is missing $required"
         }
@@ -39,7 +42,7 @@ try {
         if ($relative -notmatch '^[a-zA-Z0-9_.+\\-]+$' -or $relative -ieq 'uninstall.exe') {
             throw "Unsupported file name in portable archive: $relative"
         }
-        if ($relative -ine 'transmissiongui.exe') {
+        if ($relative -cne 'TransmissionGUI.exe') {
             'Delete "$INSTDIR\{0}"' -f $relative
         }
     }

@@ -69,12 +69,12 @@ if "%BUILD_TESTS%"=="1" (
 )
 set "BUILD_RESULT=0"
 echo.
-echo Build succeeded: "%~dp0build\%BUILD_DIR%\app\transmissiongui.exe"
+echo Build succeeded: "%~dp0build\%BUILD_DIR%\app\TransmissionGUI.exe"
 goto leave
 :failed
 echo.
 echo ERROR: Build (or tests) failed. See the messages above.
-echo If transmissiongui.exe is running, close it before rebuilding.
+echo If TransmissionGUI.exe is running, close it before rebuilding.
 :leave
 popd
 :finish

@@ -1185,8 +1185,8 @@
     </message>
     <message>
         <location filename="../app/src/mainwindow.cpp" line="3055"/>
-        <source>The file is not a supported transmissionGUI settings backup.</source>
-        <translation>Формат резервной копии настроек transmissionGUI не распознан.</translation>
+        <source>The file is not a supported TransmissionGUI settings backup.</source>
+        <translation>Формат резервной копии настроек TransmissionGUI не распознан.</translation>
     </message>
     <message>
         <location filename="../app/src/mainwindow.cpp" line="3067"/>
@@ -3621,12 +3621,12 @@ Used when opening files/folders with double-click.</source>
 <context>
     <name>SettingsBackup</name>
     <message>
-        <location filename="../app/src/main.cpp" line="167"/>
+        <location filename="../app/src/main.cpp" line="168"/>
         <source>Could not recover settings after an interrupted import.</source>
         <translation>Не удалось восстановить настройки после прерванного импорта.</translation>
     </message>
     <message>
-        <location filename="../app/src/main.cpp" line="225"/>
+        <location filename="../app/src/main.cpp" line="226"/>
         <source>Settings restored after an interrupted import.</source>
         <translation>Настройки восстановлены после прерванного импорта.</translation>
     </message>

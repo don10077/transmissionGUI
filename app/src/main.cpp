@@ -72,6 +72,7 @@ int main(int argc, char* argv[])
     TorrentApplication app(argc, argv);
     app.setOrganizationName("transmissionGUI");
     app.setApplicationName("transmissionGUI");
+    app.setApplicationDisplayName(QStringLiteral(TGUI_DISPLAY_NAME));
     app.setApplicationVersion(QStringLiteral(TGUI_VERSION));
     // Изолированные настройки для --smoke-test нужны раньше, чем читаются QSettings
     // (язык интерфейса), поэтому аргументы проверяем до разбора командной строки.
@@ -163,7 +164,7 @@ int main(int argc, char* argv[])
         QSettings settings;
         settings.setFallbacksEnabled(false);
         if (!settingsbackup::restoreInterrupted(settings, recovery)) {
-            QMessageBox::warning(nullptr, app.applicationName(),
+            QMessageBox::warning(nullptr, app.applicationDisplayName(),
                 QCoreApplication::translate("SettingsBackup", "Could not recover settings after an interrupted import."));
             return 1;
         }
@@ -221,7 +222,7 @@ int main(int argc, char* argv[])
     MainWindow window(nullptr, smokeTest ? tgui::RpcClient::Options{} : autoOpts);
     window.show();
     if (recoveredSettings) {
-        QMessageBox::information(&window, app.applicationName(),
+        QMessageBox::information(&window, app.applicationDisplayName(),
             QCoreApplication::translate("SettingsBackup", "Settings restored after an interrupted import."));
     }
     if (!smokeTest) {

@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $qtTools = (Resolve-Path -LiteralPath $QtBin).Path
-$app = (Resolve-Path -LiteralPath "$BuildDir/app/transmissiongui.exe").Path
+$app = (Resolve-Path -LiteralPath "$BuildDir/app/TransmissionGUI.exe").Path
 $output = (New-Item -ItemType Directory -Force -Path $OutputDir).FullName
 $stage = (New-Item -ItemType Directory -Path (Join-Path $output "stage-$([guid]::NewGuid())")).FullName
 $archive = Join-Path $output 'transmissiongui-windows-x64.zip'
@@ -14,9 +14,9 @@ $oldPath = $env:Path
 
 try {
     $env:Path = "$qtTools;$oldPath"
-    Copy-Item -LiteralPath $app -Destination $stage
+    Copy-Item -LiteralPath $app -Destination "$stage/TransmissionGUI.exe"
     Copy-Item -LiteralPath "$PSScriptRoot/../LICENSE" -Destination $stage
-    & "$qtTools/windeployqt.exe" --release --no-translations --no-compiler-runtime --force-openssl --include-plugins qwindows,qoffscreen "$stage/transmissiongui.exe"
+    & "$qtTools/windeployqt.exe" --release --no-translations --no-compiler-runtime --force-openssl --include-plugins qwindows,qoffscreen "$stage/TransmissionGUI.exe"
     if ($LASTEXITCODE -ne 0) { throw "windeployqt exited with code $LASTEXITCODE" }
 
     # windeployqt объединяет каталоги в qt_ru.qm, а приложение загружает qtbase_ru.qm.

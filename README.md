@@ -151,7 +151,7 @@ QT_QPA_PLATFORM=offscreen ctest --preset release
 
 | Path | Contents |
 |---|---|
-| `build/<preset>/app/transmissiongui` (`transmissiongui.exe`) | application |
+| `build/<preset>/app/transmissiongui` (`TransmissionGUI.exe`) | application |
 | `build/<preset>/tests/tgui_tests` (`tgui_tests.exe`) | unit and GUI tests |
 | `build/<preset>/tools/tgui_daemon_check` (`tgui_daemon_check.exe`) | daemon connectivity check |
 
