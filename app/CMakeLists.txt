@@ -77,14 +77,27 @@ if(WIN32)
 endif()
 tgui_set_warnings(transmissiongui)
 
-# i18n (I18N-01): штатный механизм Qt — lupdate по исходникам tgui_app_lib,
-# lrelease и встраивание .qm в ресурс :/translations/tgui_ru.qm.
-# Цель update_translations обновляет translations/tgui_ru.ts из кода.
-qt_add_translations(transmissiongui
-    TS_FILES "${PROJECT_SOURCE_DIR}/translations/tgui_ru.ts"
-    SOURCE_TARGETS tgui_app_lib transmissiongui
-    RESOURCE_PREFIX "/translations"
-    LUPDATE_OPTIONS -no-obsolete)
+# Передаём lupdate только исходники: Qt 6.4 ещё не умеет искать строки
+# в нескольких целях через qt_add_translations, а у exe есть настройки для RC.
+set(TGUI_I18N_TS "${PROJECT_SOURCE_DIR}/translations/tgui_ru.ts")
+set(TGUI_I18N_QM "${CMAKE_CURRENT_BINARY_DIR}/translations/tgui_ru.qm")
+get_target_property(tgui_translation_sources tgui_app_lib SOURCES)
+add_custom_target(update_translations
+    COMMAND Qt6::lupdate -no-obsolete ${tgui_translation_sources} src/main.cpp -ts "${TGUI_I18N_TS}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    VERBATIM)
+add_custom_command(
+    OUTPUT "${TGUI_I18N_QM}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/translations"
+    COMMAND Qt6::lrelease "${TGUI_I18N_TS}" -qm "${TGUI_I18N_QM}"
+    DEPENDS "${TGUI_I18N_TS}"
+    VERBATIM)
+add_custom_target(release_translations DEPENDS "${TGUI_I18N_QM}")
+add_dependencies(transmissiongui release_translations)
+qt_add_resources(transmissiongui translations
+    PREFIX "/"
+    BASE "${CMAKE_CURRENT_BINARY_DIR}"
+    FILES "${TGUI_I18N_QM}")
 
 if(APPLE)
     # .icns генерируется из PNG на этапе сборки: бинарный файл не хранится в репозитории.

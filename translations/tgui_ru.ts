@@ -3619,6 +3619,19 @@ Used when opening files/folders with double-click.</source>
     </message>
 </context>
 <context>
+    <name>SettingsBackup</name>
+    <message>
+        <location filename="../app/src/main.cpp" line="167"/>
+        <source>Could not recover settings after an interrupted import.</source>
+        <translation>Не удалось восстановить настройки после прерванного импорта.</translation>
+    </message>
+    <message>
+        <location filename="../app/src/main.cpp" line="225"/>
+        <source>Settings restored after an interrupted import.</source>
+        <translation>Настройки восстановлены после прерванного импорта.</translation>
+    </message>
+</context>
+<context>
     <name>StatsForm</name>
     <message>
         <location filename="../app/src/statsform.cpp" line="80"/>

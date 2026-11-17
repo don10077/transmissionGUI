@@ -36,7 +36,7 @@ tgui_set_warnings(tgui_tests)
 # W06: путь к скомпилированному .qm (проверка конвейера переводов без «железного» русского).
 # I18N-01: путь к исходному .ts — тест проверяет полноту и согласованность перевода.
 target_compile_definitions(tgui_tests PRIVATE
-    TGUI_QM_PATH="${PROJECT_BINARY_DIR}/app/tgui_ru.qm"
+    TGUI_QM_PATH="${PROJECT_BINARY_DIR}/app/translations/tgui_ru.qm"
     TGUI_TS_PATH="${PROJECT_SOURCE_DIR}/translations/tgui_ru.ts")
 
 add_dependencies(tgui_tests release_translations)

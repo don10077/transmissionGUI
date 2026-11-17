@@ -46,7 +46,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CompilerWarnings)
 
 # --- Зависимости --------------------------------------------------------------
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Network Widgets Svg Concurrent LinguistTools)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Network Widgets Svg Concurrent LinguistTools)
 find_package(ZLIB REQUIRED)
 find_package(LibArchive REQUIRED)
 include(GNUInstallDirs)
