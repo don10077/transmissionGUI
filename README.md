@@ -232,6 +232,17 @@ for the current user.
 cpack --config build/release/CPackConfig.cmake -B build/packages
 ```
 
+## CI and releases
+
+GitHub Actions runs four groups in parallel: Windows (installer and portable), Linux (DEB),
+ASan/UBSan tests, and macOS (DMG). Inside the Windows workflow, a separate clean runner
+checks portable startup, installation, upgrade, and uninstallation after packaging.
+
+The `Release` job waits for every group to succeed. It publishes the packages,
+`SHA256SUMS.txt`, and generated release notes only when pushing a `v<version>` tag
+matching `project(VERSION ...)` in `CMakeLists.txt`. Publication is skipped for ordinary
+pushes and pull requests; packages remain available as workflow artifacts.
+
 ## Project layout
 
 ```

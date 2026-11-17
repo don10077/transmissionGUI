@@ -1,6 +1,11 @@
-name: Build and test
+name: CI
 
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -10,181 +15,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Both Windows jobs remain separate runners inside this reusable workflow.
   windows:
-    runs-on: windows-2025
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Check theme color tokens
-        shell: bash
-        run: |
-          if git grep -nE '#([[:xdigit:]]{3}|[[:xdigit:]]{6}|[[:xdigit:]]{8})\b' -- app/src/theme.cpp; then
-            exit 1
-          fi
-      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
-        id: msys2
-        with:
-          msystem: UCRT64
-          update: false
-          cache: true
-          install: >-
-            mingw-w64-ucrt-x86_64-toolchain
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-ninja
-            mingw-w64-ucrt-x86_64-qt6-base
-            mingw-w64-ucrt-x86_64-qt6-svg
-            mingw-w64-ucrt-x86_64-qt6-tools
-            mingw-w64-ucrt-x86_64-qt6-declarative
-            mingw-w64-ucrt-x86_64-qt6-translations
-            mingw-w64-ucrt-x86_64-openssl
-            mingw-w64-ucrt-x86_64-zlib
-            mingw-w64-ucrt-x86_64-libarchive
-            mingw-w64-ucrt-x86_64-gtest
-            mingw-w64-ucrt-x86_64-nsis
-      - name: Configure and update translations
-        shell: msys2 {0}
-        run: |
-          cmake --preset ci
-          cmake --build build/ci --target update_translations
-      - name: Check translations are up to date
-        shell: pwsh
-        run: git diff --exit-code -- translations/
-      - name: Build and run tests
-        shell: msys2 {0}
-        run: |
-          cmake --build --preset ci --parallel
-          ctest --preset ci
-      - name: Package portable ZIP
-        shell: pwsh
-        env:
-          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
-        run: ./tools/package-windows.ps1 -BuildDir build/ci -QtBin "$env:MSYS2_LOCATION/ucrt64/bin"
-      - name: Package Windows installer
-        shell: pwsh
-        env:
-          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
-        run: ./tools/package-installer.ps1 -MakeNsis "$env:MSYS2_LOCATION/ucrt64/bin/makensis.exe" -VersionFile build/ci/version.txt
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: transmissiongui-windows-x64
-          path: |
-            build/packages/*.zip
-            build/packages/*-setup.exe
-          if-no-files-found: error
-
-  windows-portable:
-    runs-on: windows-2025
-    timeout-minutes: 60
-    needs: windows
-    steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: transmissiongui-windows-x64
-      - name: Smoke-test portable ZIP on a separate runner
-        shell: pwsh
-        run: |
-          Expand-Archive transmissiongui-windows-x64.zip portable
-          if ((Get-ChildItem -LiteralPath portable -File).Name -cnotcontains 'TransmissionGUI.exe') {
-            throw 'Portable ZIP must contain TransmissionGUI.exe with the exact file name'
-          }
-          $env:Path = "$env:SystemRoot/System32;$env:SystemRoot"
-          $env:QT_PLUGIN_PATH = ''
-          $env:QT_QPA_PLATFORM_PLUGIN_PATH = ''
-          $env:QT_QPA_PLATFORM = 'windows'
-          $app = Start-Process -FilePath (Resolve-Path portable/TransmissionGUI.exe) -ArgumentList '--smoke-test' -PassThru -WindowStyle Hidden
-          if (!$app.WaitForExit(15000)) { $app.Kill(); throw 'Portable app did not exit' }
-          if ($app.ExitCode -ne 0) { throw "Portable app failed: $($app.ExitCode)" }
-      - name: Install, launch and uninstall on a separate runner
-        shell: pwsh
-        run: |
-          $setup = (Get-Item *-windows-x64-setup.exe).FullName
-          $installed = Join-Path $env:RUNNER_TEMP 'transmissionGUI installer test'
-          $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\transmissionGUI'
-          $programs = [Environment]::GetFolderPath('Programs')
-          $shortcut = Join-Path $programs 'TransmissionGUI.lnk'
-          $appFile = Join-Path $installed 'TransmissionGUI.exe'
-          $shellApp = 'HKCU:\Software\Classes\Applications\transmissiongui.exe'
-          $openCommand = "$shellApp\shell\open\command"
-          $previousHandlers = 'HKCU:\Software\Classes\transmissionGUI.Torrent\shell\open\command',
-                              'HKCU:\Software\Classes\transmissionGUI.Magnet\shell\open\command'
-          $uninstaller = Join-Path $installed 'uninstall.exe'
-          $userFile = Join-Path $installed 'user-file.txt'
-
-          foreach ($handler in $previousHandlers) {
-            (New-Item -Path $handler -Force).SetValue('', '"C:\source\build\app\transmissiongui.exe" -- "%1"')
-          }
-          $installation = Start-Process -FilePath $setup -ArgumentList '/S', "/D=$installed" -Wait -PassThru -WindowStyle Hidden
-          if ($installation.ExitCode -ne 0) { throw "Installer failed: $($installation.ExitCode)" }
-          $registered = Get-ItemProperty -LiteralPath $uninstallKey
-          if ($registered.InstallLocation -ne $installed -or !(Test-Path -LiteralPath $shortcut)) {
-            throw 'Installation did not register the app and its Start menu shortcut'
-          }
-          if ((Get-ChildItem -LiteralPath $installed -File).Name -cnotcontains 'TransmissionGUI.exe' -or
-              $registered.DisplayName -cne 'TransmissionGUI') {
-            throw 'Installation did not preserve the exact executable and display names'
-          }
-          if ((Get-FileHash -LiteralPath $appFile).Hash -ne (Get-FileHash portable/TransmissionGUI.exe).Hash) {
-            throw 'Installed executable differs from the portable build'
-          }
-          $expectedVersion = (Get-Item portable/TransmissionGUI.exe).VersionInfo.FileVersion
-          if (!$expectedVersion -or (Get-Item -LiteralPath $appFile).VersionInfo.FileVersion -ne $expectedVersion) {
-            throw 'Installed executable has no VERSIONINFO resource'
-          }
-          $command = (Get-Item -LiteralPath $openCommand).GetValue('')
-          if ($command -cne ('"{0}" "%1"' -f $appFile) -or
-              (Get-Item -LiteralPath "$shellApp\SupportedTypes").GetValueNames() -notcontains '.torrent') {
-            throw 'Open with does not point to the installed torrent handler'
-          }
-          foreach ($handler in $previousHandlers) {
-            if ((Get-Item -LiteralPath $handler).GetValue('') -cne ('"{0}" -- "%1"' -f $appFile)) {
-              throw "Installation did not update $handler"
-            }
-          }
-          Set-Content -LiteralPath $userFile -Value 'Keep this file'
-
-          $env:Path = "$env:SystemRoot/System32;$env:SystemRoot"
-          $env:QT_PLUGIN_PATH = ''
-          $env:QT_QPA_PLATFORM_PLUGIN_PATH = ''
-          $env:QT_QPA_PLATFORM = 'windows'
-          $torrent = Join-Path $env:RUNNER_TEMP 'torrent with spaces.torrent'
-          New-Item -ItemType File -Path $torrent | Out-Null
-          $app = Start-Process -FilePath $appFile -ArgumentList '--smoke-test', ('"{0}"' -f $torrent) -PassThru -WindowStyle Hidden
-          if (!$app.WaitForExit(15000)) { $app.Kill(); throw 'Installed app did not exit' }
-          if ($app.ExitCode -ne 0) { throw "Installed app failed: $($app.ExitCode)" }
-
-          $upgrade = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru -WindowStyle Hidden
-          if ($upgrade.ExitCode -ne 0 -or !(Test-Path -LiteralPath $appFile) -or !(Test-Path -LiteralPath $userFile)) {
-            throw 'Reinstall did not preserve the user file and restore the app'
-          }
-
-          $removal = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru -WindowStyle Hidden
-          if ($removal.ExitCode -ne 0 -or (Test-Path -LiteralPath $uninstallKey) -or
-              (Test-Path -LiteralPath $shortcut) -or (Test-Path -LiteralPath $shellApp)) {
-            throw 'Uninstaller did not remove the app registration and shortcut'
-          }
-          $remaining = @(Get-ChildItem -LiteralPath $installed -Recurse -File)
-          if ($remaining.Count -ne 1 -or $remaining[0].FullName -ne $userFile) {
-            throw 'Uninstaller must leave only the user file'
-          }
-          foreach ($key in 'HKCU:\Software\Classes\transmissionGUI.Torrent',
-                         'HKCU:\Software\Classes\transmissionGUI.Magnet',
-                         'HKCU:\Software\transmissionGUI\Capabilities') {
-            if (Test-Path -LiteralPath $key) { throw "Uninstaller left $key" }
-          }
-          $registered = Get-ItemProperty -LiteralPath 'HKCU:\Software\RegisteredApplications' -ErrorAction SilentlyContinue
-          if ($null -ne $registered -and $null -ne $registered.transmissionGUI) {
-            throw 'Uninstaller left the RegisteredApplications entry'
-          }
-          if (Test-Path -LiteralPath 'HKCU:\Software\Classes\.torrent\OpenWithProgids') {
-            $progIds = (Get-Item -LiteralPath 'HKCU:\Software\Classes\.torrent\OpenWithProgids').GetValueNames()
-            if ($progIds -contains 'transmissionGUI.Torrent') {
-              throw 'Uninstaller left the .torrent OpenWithProgids entry'
-            }
-          }
+    name: Windows (installer + portable)
+    uses: ./.github/workflows/windows.yml
 
   linux:
+    name: Linux (DEB)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -214,6 +51,7 @@ jobs:
           if-no-files-found: error
 
   asan:
+    name: Tests (ASan + UBSan)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -231,6 +69,7 @@ jobs:
           ctest --preset asan
 
   macos:
+    name: macOS (DMG)
     runs-on: macos-15
     timeout-minutes: 60
     steps:
@@ -256,3 +95,37 @@ jobs:
           name: transmissiongui-macos
           path: build/packages/*.dmg
           if-no-files-found: error
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux, asan, macos]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check release version
+        shell: bash
+        run: |
+          version="$(sed -n 's/^[[:space:]]*VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
+          test "$GITHUB_REF_NAME" = "v$version" || {
+            echo "Tag $GITHUB_REF_NAME does not match project version v$version"
+            exit 1
+          }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: transmissiongui-*
+          path: packages
+          merge-multiple: true
+      - name: Package checksums
+        working-directory: packages
+        run: sha256sum * > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          files: packages/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

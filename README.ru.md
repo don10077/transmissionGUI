@@ -236,6 +236,17 @@ powershell -File tools/package-windows.ps1
 cpack --config build/release/CPackConfig.cmake -B build/packages
 ```
 
+## CI и релизы
+
+GitHub Actions запускает параллельно четыре группы: Windows (установщик и portable),
+Linux (DEB), тесты с ASan/UBSan и macOS (DMG). Внутри Windows после сборки пакеты
+проверяются на отдельном чистом раннере: запуск portable, установка, обновление и удаление.
+
+Задача `Release` ждёт успешного завершения всех групп. Она публикует пакеты,
+`SHA256SUMS.txt` и автоматически сформированные примечания к выпуску только при push
+тега `v<версия>`, совпадающего с `project(VERSION ...)` в `CMakeLists.txt`.
+При обычном push или pull request публикация пропускается; пакеты доступны в артефактах запуска.
+
 ## Структура проекта
 
 ```
