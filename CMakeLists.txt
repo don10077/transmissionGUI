@@ -13,6 +13,9 @@ project(transmissiongui
     LANGUAGES C CXX
 )
 
+# Единый источник версии для скриптов упаковки (читают build/<preset>/version.txt).
+file(WRITE "${PROJECT_BINARY_DIR}/version.txt" "${PROJECT_VERSION}\n")
+
 # --- Стандарт языка ----------------------------------------------------------
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,6 +32,13 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+# Явные ошибки на сужающие преобразования в connect() и запрет API,
+# устаревших вплоть до Qt 6.5: обновление Qt не должно ломать сборку молча.
+add_compile_definitions(
+    QT_NO_NARROWING_CONVERSIONS_IN_CONNECT
+    QT_DISABLE_DEPRECATED_UP_TO=0x060500
+)
+
 # --- Опции -------------------------------------------------------------------
 option(TGUI_WARNINGS_AS_ERRORS "Считать предупреждения ошибками" OFF)
 
@@ -36,7 +46,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CompilerWarnings)
 
 # --- Зависимости --------------------------------------------------------------
-find_package(Qt6 REQUIRED COMPONENTS Core Network Widgets Svg Concurrent LinguistTools)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Network Widgets Svg Concurrent LinguistTools)
 find_package(ZLIB REQUIRED)
 find_package(LibArchive REQUIRED)
 include(GNUInstallDirs)
@@ -69,6 +79,8 @@ elseif(UNIX)
     set(CPACK_GENERATOR DEB)
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
     set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-qpa-plugins")
+    # qtbase_<lang>.qm: стандартные строки Qt (кнопки диалогов, контекстные меню полей).
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "qt6-translations-l10n")
     set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 endif()
 include(CPack)

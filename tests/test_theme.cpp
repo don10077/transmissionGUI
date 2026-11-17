@@ -3,7 +3,9 @@
 
 #include <QApplication>
 #include <QEventLoop>
+#include <QFont>
 #include <QImage>
+#include <QPalette>
 #include <QScopeGuard>
 #include <QSettings>
 #include <QTimer>
@@ -19,17 +21,6 @@
 #include "tgui/models.h"
 
 namespace {
-
-bool g_themeApplied = false;
-
-// Тема применяется один раз ко всему прогону тестов (глобальный стиль/QSS).
-void ensureTheme()
-{
-    if (g_themeApplied)
-        return;
-    g_themeApplied = true;
-    tgui::theme::apply(*qApp);
-}
 
 void spinEvents(int ms = 300)
 {
@@ -50,7 +41,33 @@ QImage grabWidget(QWidget& w)
 
 } // namespace
 
-TEST(ThemeRendering, IconRasterUsesRequestedSizeAndDisabledOpacity)
+// Тема меняет глобальные стиль/палитру/шрифт приложения, поэтому каждая
+// проверка отрисовки применяет её в SetUp и возвращает исходное состояние
+// в TearDown — тесты не зависят от порядка запуска.
+class ThemeRendering : public ::testing::Test {
+protected:
+    void SetUp() override
+    {
+        m_styleSheet = qApp->styleSheet();
+        m_palette = qApp->palette();
+        m_font = qApp->font();
+        tgui::theme::apply(*qApp);
+    }
+
+    void TearDown() override
+    {
+        qApp->setStyleSheet(m_styleSheet);
+        qApp->setPalette(m_palette);
+        qApp->setFont(m_font);
+    }
+
+private:
+    QString m_styleSheet;
+    QPalette m_palette;
+    QFont m_font;
+};
+
+TEST_F(ThemeRendering, IconRasterUsesRequestedSizeAndDisabledOpacity)
 {
     const auto icon = tgui::theme::icon(tgui::theme::Icon::Folder);
     const QSize size(19, 19);
@@ -74,9 +91,8 @@ TEST(ThemeRendering, IconRasterUsesRequestedSizeAndDisabledOpacity)
     EXPECT_LT(maxAlpha(disabled), maxAlpha(normal));
 }
 
-TEST(ThemeRendering, MainWindow)
+TEST_F(ThemeRendering, MainWindow)
 {
-    ensureTheme();
     // Предыдущие тесты могут оставить выбранный профиль с уже остановленным мок-сервером.
     // Снимок интерфейса делаем в отключённом состоянии.
     QSettings settings;
@@ -103,9 +119,8 @@ TEST(ThemeRendering, MainWindow)
     EXPECT_FALSE(grabWidget(w).isNull());
 }
 
-TEST(ThemeRendering, PropsForm)
+TEST_F(ThemeRendering, PropsForm)
 {
-    ensureTheme();
     PropsForm form;
     tgui::Torrent t;
     t.id = 42;
@@ -122,17 +137,15 @@ TEST(ThemeRendering, PropsForm)
     EXPECT_FALSE(grabWidget(form).isNull());
 }
 
-TEST(ThemeRendering, OptionsDialog)
+TEST_F(ThemeRendering, OptionsDialog)
 {
-    ensureTheme();
     OptionsDialog dialog;
     dialog.resize(900, 650);
     EXPECT_FALSE(grabWidget(dialog).isNull());
 }
 
-TEST(ThemeRendering, ConnectDialog)
+TEST_F(ThemeRendering, ConnectDialog)
 {
-    ensureTheme();
     tgui::RpcClient::Options o;
     o.url = QUrl(QStringLiteral("http://localhost:9091"));
     ConnectDialog dialog(o);
@@ -140,9 +153,8 @@ TEST(ThemeRendering, ConnectDialog)
     EXPECT_FALSE(grabWidget(dialog).isNull());
 }
 
-TEST(ThemeRendering, AboutDialog)
+TEST_F(ThemeRendering, AboutDialog)
 {
-    ensureTheme();
     AboutDialog dialog;
     dialog.resize(560, 420);
     EXPECT_FALSE(grabWidget(dialog).isNull());

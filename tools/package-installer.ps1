@@ -1,15 +1,24 @@
 param(
     [string]$PortableZip = "$PSScriptRoot/../build/packages/transmissiongui-windows-x64.zip",
     [string]$MakeNsis = 'makensis.exe',
-    [string]$OutputDir = "$PSScriptRoot/../build/packages"
+    [string]$OutputDir = "$PSScriptRoot/../build/packages",
+    [string]$VersionFile = "$PSScriptRoot/../build/release/version.txt"
 )
 
 $ErrorActionPreference = 'Stop'
-$project = Get-Content -LiteralPath "$PSScriptRoot/../CMakeLists.txt" -Raw
-if ($project -notmatch '(?m)^\s*VERSION\s+(\d+\.\d+\.\d+)\s*$') {
-    throw 'Could not read the project version'
+if (Test-Path -LiteralPath $VersionFile -PathType Leaf) {
+    $version = (Get-Content -LiteralPath $VersionFile -Raw).Trim()
+    if ($version -notmatch '^\d+\.\d+\.\d+$') {
+        throw "Invalid version in $VersionFile`: $version"
+    }
+} else {
+    # Запасной путь для сборок без пресета release.
+    $project = Get-Content -LiteralPath "$PSScriptRoot/../CMakeLists.txt" -Raw
+    if ($project -notmatch '(?m)^\s*VERSION\s+(\d+\.\d+\.\d+)\s*$') {
+        throw 'Could not read the project version'
+    }
+    $version = $Matches[1]
 }
-$version = $Matches[1]
 $source = (Resolve-Path -LiteralPath $PortableZip).Path
 $output = (New-Item -ItemType Directory -Force -Path $OutputDir).FullName
 $setup = Join-Path $output "transmissiongui-$version-windows-x64-setup.exe"

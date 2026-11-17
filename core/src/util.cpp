@@ -5,6 +5,9 @@
 
 #include <climits>
 #include <cstdio>
+#include <iomanip>
+#include <locale>
+#include <sstream>
 
 namespace tgui {
 
@@ -36,11 +39,10 @@ namespace {
 
 std::string formatFixed(double value, int decimals, const char* unit)
 {
-    char fmt[32];
-    std::snprintf(fmt, sizeof(fmt), "%%.%df %s", decimals, unit);
-    char buf[96];
-    std::snprintf(buf, sizeof(buf), fmt, value);
-    return buf;
+    std::ostringstream stream;
+    stream.imbue(std::locale::classic());
+    stream << std::fixed << std::setprecision(decimals) << value << ' ' << unit;
+    return stream.str();
 }
 
 } // namespace

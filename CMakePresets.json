@@ -29,22 +29,66 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "ci",
+      "displayName": "CI (Release + warnings as errors)",
+      "description": "Пресет CI: релизная сборка, предупреждения компилятора — ошибки",
+      "inherits": "release",
+      "cacheVariables": {
+        "TGUI_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "asan",
+      "displayName": "ASan + UBSan (Debug)",
+      "description": "Отладочная сборка с AddressSanitizer и UndefinedBehaviorSanitizer (Linux/macOS)",
+      "inherits": "debug",
+      "cacheVariables": {
+        "CMAKE_C_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+      }
     }
   ],
   "buildPresets": [
     { "name": "debug", "configurePreset": "debug" },
-    { "name": "release", "configurePreset": "release" }
+    { "name": "release", "configurePreset": "release" },
+    { "name": "ci", "configurePreset": "ci" },
+    { "name": "asan", "configurePreset": "asan" }
   ],
   "testPresets": [
     {
       "name": "debug",
       "configurePreset": "debug",
-      "output": { "outputOnFailure": true }
+      "environment": { "QT_QPA_PLATFORM": "offscreen" },
+      "output": { "outputOnFailure": true },
+      "execution": { "jobs": 4 }
     },
     {
       "name": "release",
       "configurePreset": "release",
-      "output": { "outputOnFailure": true }
+      "environment": { "QT_QPA_PLATFORM": "offscreen" },
+      "output": { "outputOnFailure": true },
+      "execution": { "jobs": 4 }
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci",
+      "environment": { "QT_QPA_PLATFORM": "offscreen" },
+      "output": { "outputOnFailure": true },
+      "execution": { "jobs": 4 }
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "environment": {
+        "QT_QPA_PLATFORM": "offscreen",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
+      },
+      "output": { "outputOnFailure": true },
+      "execution": { "jobs": 2 }
     }
   ]
 }

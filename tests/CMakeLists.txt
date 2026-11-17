@@ -1,5 +1,5 @@
 # tests: unit-тесты core (GoogleTest + мок HTTP-сервер на QTcpServer).
-find_package(GTest REQUIRED)
+find_package(GTest 1.12 REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Test)
 
 add_executable(tgui_tests
@@ -34,13 +34,21 @@ target_link_libraries(tgui_tests PRIVATE tgui_app_lib Qt6::Test GTest::gtest)
 tgui_set_warnings(tgui_tests)
 
 # W06: путь к скомпилированному .qm (проверка конвейера переводов без «железного» русского).
+# I18N-01: путь к исходному .ts — тест проверяет полноту и согласованность перевода.
 target_compile_definitions(tgui_tests PRIVATE
-    TGUI_QM_PATH="${PROJECT_BINARY_DIR}/app/translations/tgui_ru.qm")
+    TGUI_QM_PATH="${PROJECT_BINARY_DIR}/app/tgui_ru.qm"
+    TGUI_TS_PATH="${PROJECT_SOURCE_DIR}/translations/tgui_ru.ts")
 
-add_dependencies(tgui_tests tgui_translations)
+add_dependencies(tgui_tests release_translations)
 
-add_test(NAME tgui_tests COMMAND tgui_tests)
-set_tests_properties(tgui_tests PROPERTIES TIMEOUT 180)
+# Каждый тест GoogleTest — отдельный процесс CTest: падение или зависание одного
+# теста не убивает весь прогон, а глобальное состояние не перетекает между тестами.
+include(GoogleTest)
+gtest_discover_tests(tgui_tests
+    DISCOVERY_MODE PRE_TEST
+    DISCOVERY_TIMEOUT 60
+    PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+
 add_test(NAME tgui_app_smoke COMMAND transmissiongui --smoke-test)
-set_tests_properties(tgui_app_smoke PROPERTIES TIMEOUT 15)
+set_tests_properties(tgui_app_smoke PROPERTIES TIMEOUT 15 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 

@@ -61,7 +61,7 @@ bool makeSampleTorrent(const QString& path)
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly))
         return false;
-    return f.write(enc.data(), static_cast<qint64>(enc.size())) == enc.size();
+    return f.write(enc.data(), static_cast<qint64>(enc.size())) == static_cast<qint64>(enc.size());
 }
 
 /** Дожидается подтверждённого подключения или возвращает причину ошибки. */

@@ -342,7 +342,6 @@ TEST(FileTree, ShowsCheckProgressWhileVerifying)
 
     FileTreeModel model;
     model.setFiles(files);
-    const auto folder = model.index(0, 0);
     EXPECT_EQ(model.index(0, FileTreeModel::Name).data().toString(), QStringLiteral("dir"));
     // Взвешенный по размеру прогресс проверки: (1000*1 + 2048*0.5) / 3048.
     EXPECT_NEAR(model.index(0, FileTreeModel::Progress).data().toDouble(),

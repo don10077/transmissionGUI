@@ -22,6 +22,8 @@ function(tgui_set_warnings target)
             -Wnon-virtual-dtor
             -Wold-style-cast
             -Woverloaded-virtual
+            -Wformat=2
+            -Wcast-qual
             "$<$<CONFIG:Debug>:-Wnull-dereference>"
             -Wimplicit-fallthrough
         )

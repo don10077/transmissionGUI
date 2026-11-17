@@ -679,8 +679,15 @@ TEST(Properties, BatchChangesOnlyExplicitSettings)
 TEST(Properties, TrackerTierEditingUsesTrackerListOnSupportedDaemon)
 {
     tgui::Torrent torrent;
-    torrent.trackerStats = {{.id = 1, .announce = "https://one.test/announce", .tier = 0},
-                            {.id = 2, .announce = "https://two.test/announce", .tier = 1}};
+    tgui::TrackerStat first;
+    first.id = 1;
+    first.announce = "https://one.test/announce";
+    first.tier = 0;
+    tgui::TrackerStat second;
+    second.id = 2;
+    second.announce = "https://two.test/announce";
+    second.tier = 1;
+    torrent.trackerStats = {first, second};
     PropsDialog dialog(torrent, nullptr, 17, 1);
     auto* edit = dialog.findChild<QPlainTextEdit*>();
     ASSERT_NE(edit, nullptr);
@@ -1118,13 +1125,24 @@ TEST(ConnectionProfiles, SwitchingKeepsDraftAndCancelDiscardsNewProfile)
     }
     {
         ConnOptionsDialog dialog;
-        QTimer::singleShot(0, &dialog, [&] {
+        // Модальный QInputDialog может появиться не сразу после первого шага
+        // цикла событий, поэтому опрашиваем activeModalWidget до появления окна.
+        int attempts = 0;
+        QTimer poll;
+        poll.setInterval(10);
+        QObject::connect(&poll, &QTimer::timeout, &dialog, [&] {
             auto* input = qobject_cast<QInputDialog*>(QApplication::activeModalWidget());
+            if (!input && ++attempts < 500)
+                return;
+            poll.stop();
             if (input) {
                 input->setTextValue(third);
                 input->accept();
+            } else if (auto* modal = QApplication::activeModalWidget()) {
+                modal->close(); // страховка: не оставляем тест в модальном цикле
             }
         });
+        poll.start();
         ASSERT_TRUE(QMetaObject::invokeMethod(&dialog, "onNew", Qt::DirectConnection));
         EXPECT_EQ(dialog.current().name, third);
         dialog.reject();

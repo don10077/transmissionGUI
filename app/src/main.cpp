@@ -11,7 +11,10 @@
 #include <QFileOpenEvent>
 #include <QFont>
 #include <QIcon>
+#include <QLibraryInfo>
+#include <QLocale>
 #include <QMessageBox>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -70,18 +73,9 @@ int main(int argc, char* argv[])
     app.setOrganizationName("transmissionGUI");
     app.setApplicationName("transmissionGUI");
     app.setApplicationVersion(QStringLiteral(TGUI_VERSION));
-    QCommandLineParser parser;
-    parser.addHelpOption();
-    parser.addVersionOption();
-    parser.addOption({"url", "Transmission server URL.", "url"});
-    parser.addOption({"user", "RPC user.", "user"});
-    parser.addOption({"pass", "RPC password (unsafe: visible in the command line).", "password"});
-    parser.addOption({"pass-stdin", "Read the RPC password from standard input."});
-    parser.addOption({"path", "RPC path.", "path"});
-    parser.addOption({"smoke-test", "Check startup with isolated settings."});
-    parser.addPositionalArgument("torrent", "Local .torrent files or magnet links.", "[torrent...]");
-    parser.process(app);
-    const bool smokeTest = parser.isSet("smoke-test");
+    // Изолированные настройки для --smoke-test нужны раньше, чем читаются QSettings
+    // (язык интерфейса), поэтому аргументы проверяем до разбора командной строки.
+    const bool smokeTest = app.arguments().contains(QStringLiteral("--smoke-test"));
     std::optional<QTemporaryDir> smokeSettings;
     if (smokeTest) {
         smokeSettings.emplace();
@@ -92,6 +86,52 @@ int main(int argc, char* argv[])
         QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, smokeSettings->path());
         QSettings().setValue("ui/trayIcon", false);
     }
+
+    // i18n (W06, I18N-02): язык — QSettings("ui/language"). Значение из ini не доверяем:
+    // допускаем "system" или код вида ru / pt_BR, иначе откатываемся на русский.
+    // Переводы Qt (qtbase_*.qm) грузим отдельным переводчиком: без них остаются
+    // английскими кнопки диалогов и контекстные меню стандартных виджетов.
+    // Переводчик живёт до выхода из main (installTranslator держит указатель на него).
+    QTranslator translator;
+    QTranslator qtTranslator;
+    QString lang = QSettings().value("ui/language", QStringLiteral("ru")).toString();
+    if (lang == QLatin1String("system"))
+        lang = QLocale::system().name();
+    static const QRegularExpression languagePattern(QStringLiteral("^[a-z]{2}(_[A-Z]{2})?$"));
+    if (!languagePattern.match(lang).hasMatch())
+        lang = QStringLiteral("ru");
+    {
+        const QString qmPath = QStringLiteral("/translations/tgui_") + lang + QStringLiteral(".qm");
+        if (translator.load(QCoreApplication::applicationDirPath() + qmPath) ||
+            translator.load(QStringLiteral(":") + qmPath))
+            app.installTranslator(&translator);
+    }
+    {
+        const QLocale locale(lang);
+        if (qtTranslator.load(locale, QStringLiteral("qtbase"), QStringLiteral("_"),
+                             QLibraryInfo::path(QLibraryInfo::TranslationsPath)) ||
+            qtTranslator.load(locale, QStringLiteral("qtbase"), QStringLiteral("_"),
+                              QCoreApplication::applicationDirPath() + QStringLiteral("/translations")))
+            app.installTranslator(&qtTranslator);
+    }
+
+    // Описания опций переводим после установки переводчика, чтобы справка была на выбранном языке.
+    QCommandLineParser parser;
+    parser.addHelpOption();
+    parser.addVersionOption();
+    const auto optionText = [](const char* text) {
+        return QCoreApplication::translate("main", text);
+    };
+    parser.addOption({"url", optionText("Transmission server URL."), optionText("url"), "url"});
+    parser.addOption({"user", optionText("RPC user."), optionText("user"), "user"});
+    parser.addOption({"pass", optionText("RPC password (unsafe: visible in the command line)."),
+                      optionText("password"), "password"});
+    parser.addOption({"pass-stdin", optionText("Read the RPC password from standard input.")});
+    parser.addOption({"path", optionText("RPC path."), optionText("path"), "path"});
+    parser.addOption({"smoke-test", optionText("Check startup with isolated settings.")});
+    parser.addPositionalArgument("torrent", optionText("Local .torrent files or magnet links."),
+                                 optionText("[torrent...]"));
+    parser.process(app);
 
     QStringList inputs;
     for (const auto& argument : parser.positionalArguments()) {
@@ -133,23 +173,13 @@ int main(int argc, char* argv[])
     tgui::theme::apply(app);
     app.setWindowIcon(tgui::theme::icon(tgui::theme::Icon::App));
 
-    // i18n (W06): русский по умолчанию, язык — QSettings("ui/language");
-    // Сначала внешний .qm рядом с exe, затем встроенный перевод.
-    // Переводчик живёт до выхода из main (installTranslator держит указатель на него).
-    QTranslator translator;
-    {
-        const QString lang = QSettings().value("ui/language", QStringLiteral("ru")).toString();
-        const QString qmPath = QStringLiteral("/translations/tgui_") + lang + QStringLiteral(".qm");
-        if (translator.load(QCoreApplication::applicationDirPath() + qmPath) ||
-            translator.load(QStringLiteral(":") + qmPath))
-            app.installTranslator(&translator);
-    }
-
     // Масштаб интерфейса (W07): ui/scale в %; применяется к базовому шрифту до создания окна.
     // Требует перезапуска (выбирается в «Параметрах»); 100% — без изменений.
+    // Значение из ini ограничиваем: слишком большой или отрицательный масштаб
+    // сделал бы интерфейс нечитаемым/невидимым без возможности это исправить из UI.
     {
-        const int scale = QSettings().value("ui/scale", 100).toInt();
-        if (scale > 0 && scale != 100) {
+        const int scale = qBound(50, QSettings().value("ui/scale", 100).toInt(), 300);
+        if (scale != 100) {
             QFont f = app.font();
             if (f.pointSizeF() > 0.0)
                 f.setPointSizeF(f.pointSizeF() * scale / 100.0);

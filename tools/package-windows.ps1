@@ -16,7 +16,8 @@ try {
     $env:Path = "$qtTools;$oldPath"
     Copy-Item -LiteralPath $app -Destination $stage
     Copy-Item -LiteralPath "$PSScriptRoot/../LICENSE" -Destination $stage
-    & "$qtTools/windeployqt.exe" --release --no-translations --no-compiler-runtime --force-openssl --include-plugins qwindows,qoffscreen "$stage/transmissiongui.exe"
+    # --translations ru: qtbase_ru.qm для стандартных строк Qt (кнопки диалогов и т.п.).
+    & "$qtTools/windeployqt.exe" --release --translations ru --no-compiler-runtime --force-openssl --include-plugins qwindows,qoffscreen "$stage/transmissiongui.exe"
     if ($LASTEXITCODE -ne 0) { throw "windeployqt exited with code $LASTEXITCODE" }
 
     # Qt can load OpenSSL without listing it in the PE imports.

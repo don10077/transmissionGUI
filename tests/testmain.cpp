@@ -8,6 +8,10 @@
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
+    // Без имени организации QSettings на Windows возвращает AccessError,
+    // поэтому профили не сохранялись бы в изолированном прогоне.
+    QCoreApplication::setOrganizationName(QStringLiteral("tgui-tests"));
+    QCoreApplication::setApplicationName(QStringLiteral("tgui_tests"));
     const QTemporaryDir settings;
     if (!settings.isValid())
         return 1;

@@ -67,36 +67,58 @@ add_executable(transmissiongui WIN32
 target_link_libraries(transmissiongui PRIVATE tgui_app_lib)
 if(WIN32)
     enable_language(RC)
-    target_sources(transmissiongui PRIVATE icons/transmissiongui.rc)
+    configure_file(icons/transmissiongui.rc.in
+        "${CMAKE_CURRENT_BINARY_DIR}/transmissiongui.rc" @ONLY)
+    target_sources(transmissiongui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/transmissiongui.rc")
     target_include_directories(transmissiongui PRIVATE
         "$<$<COMPILE_LANGUAGE:RC>:${CMAKE_CURRENT_SOURCE_DIR}/icons>")
-    set_property(SOURCE icons/transmissiongui.rc APPEND PROPERTY OBJECT_DEPENDS
+    set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/transmissiongui.rc" APPEND PROPERTY OBJECT_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/icons/transmission-upstream.ico")
 endif()
 tgui_set_warnings(transmissiongui)
 
-# i18n (W06): компилируем tgui_ru.ts -> tgui_ru.qm рядом с exe (<build>/app/translations/).
-# Переводчик загружается в main.cpp; по умолчанию русский, fallback на английский, если .qm нет.
-set(TGUI_I18N_TS ${PROJECT_SOURCE_DIR}/translations/tgui_ru.ts)
-set(TGUI_I18N_QM ${CMAKE_CURRENT_BINARY_DIR}/translations/tgui_ru.qm)
-add_custom_command(
-    OUTPUT ${TGUI_I18N_QM}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/translations
-    COMMAND Qt6::lrelease ${TGUI_I18N_TS} -qm ${TGUI_I18N_QM}
-    DEPENDS ${TGUI_I18N_TS}
-    COMMENT "Compiling translation tgui_ru.ts -> tgui_ru.qm"
-    VERBATIM)
-add_custom_target(tgui_translations DEPENDS ${TGUI_I18N_QM})
-add_dependencies(transmissiongui tgui_translations)
-qt_add_resources(transmissiongui "translations"
-    PREFIX "/"
-    BASE "${CMAKE_CURRENT_BINARY_DIR}"
-    FILES "${TGUI_I18N_QM}")
+# i18n (I18N-01): штатный механизм Qt — lupdate по исходникам tgui_app_lib,
+# lrelease и встраивание .qm в ресурс :/translations/tgui_ru.qm.
+# Цель update_translations обновляет translations/tgui_ru.ts из кода.
+qt_add_translations(transmissiongui
+    TS_FILES "${PROJECT_SOURCE_DIR}/translations/tgui_ru.ts"
+    SOURCE_TARGETS tgui_app_lib transmissiongui
+    RESOURCE_PREFIX "/translations"
+    LUPDATE_OPTIONS -no-obsolete)
 
 if(APPLE)
+    # .icns генерируется из PNG на этапе сборки: бинарный файл не хранится в репозитории.
+    set(_tgui_icon_png "${CMAKE_CURRENT_SOURCE_DIR}/icons/transmission-upstream.png")
+    set(_tgui_iconset "${CMAKE_CURRENT_BINARY_DIR}/transmissiongui.iconset")
+    set(_tgui_icns "${CMAKE_CURRENT_BINARY_DIR}/transmissiongui.icns")
+    add_custom_command(
+        OUTPUT "${_tgui_icns}"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${_tgui_iconset}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_tgui_iconset}"
+        COMMAND sips -z 16 16 "${_tgui_icon_png}" --out "${_tgui_iconset}/icon_16x16.png"
+        COMMAND sips -z 32 32 "${_tgui_icon_png}" --out "${_tgui_iconset}/icon_16x16@2x.png"
+        COMMAND sips -z 32 32 "${_tgui_icon_png}" --out "${_tgui_iconset}/icon_32x32.png"
+        COMMAND sips -z 64 64 "${_tgui_icon_png}" --out "${_tgui_iconset}/icon_32x32@2x.png"
+        COMMAND sips -z 128 128 "${_tgui_icon_png}" --out "${_tgui_iconset}/icon_128x128.png"
+        COMMAND sips -z 256 256 "${_tgui_icon_png}" --out "${_tgui_iconset}/icon_128x128@2x.png"
+        COMMAND sips -z 256 256 "${_tgui_icon_png}" --out "${_tgui_iconset}/icon_256x256.png"
+        COMMAND sips -z 512 512 "${_tgui_icon_png}" --out "${_tgui_iconset}/icon_256x256@2x.png"
+        COMMAND sips -z 512 512 "${_tgui_icon_png}" --out "${_tgui_iconset}/icon_512x512.png"
+        COMMAND sips -z 1024 1024 "${_tgui_icon_png}" --out "${_tgui_iconset}/icon_512x512@2x.png"
+        COMMAND iconutil -c icns "${_tgui_iconset}" -o "${_tgui_icns}"
+        DEPENDS "${_tgui_icon_png}"
+        COMMENT "Generating transmissiongui.icns"
+        VERBATIM)
+    add_custom_target(tgui_icns DEPENDS "${_tgui_icns}")
+    set_source_files_properties("${_tgui_icns}" PROPERTIES
+        MACOSX_PACKAGE_LOCATION Resources
+        GENERATED TRUE)
+    target_sources(transmissiongui PRIVATE "${_tgui_icns}")
+    add_dependencies(transmissiongui tgui_icns)
     set_target_properties(transmissiongui PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
+        MACOSX_BUNDLE_ICON_FILE "transmissiongui.icns"
         MACOSX_BUNDLE_GUI_IDENTIFIER "org.transmissiongui.client"
         MACOSX_BUNDLE_BUNDLE_NAME "transmissionGUI"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
@@ -114,4 +136,8 @@ elseif(UNIX)
         DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/${PROJECT_NAME}")
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/transmissiongui.desktop"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
+    # Исходный PNG — 192x214; кладём в каталог ширины 192, чтобы тема не масштабировала иконку вверх.
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/transmission-upstream.png"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/192x192/apps"
+        RENAME "transmissiongui.png")
 endif()
