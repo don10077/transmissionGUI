@@ -139,6 +139,21 @@ jobs:
           if ($remaining.Count -ne 1 -or $remaining[0].FullName -ne $userFile) {
             throw 'Uninstaller must leave only the user file'
           }
+          foreach ($key in 'HKCU:\Software\Classes\transmissionGUI.Torrent',
+                         'HKCU:\Software\Classes\transmissionGUI.Magnet',
+                         'HKCU:\Software\transmissionGUI\Capabilities') {
+            if (Test-Path -LiteralPath $key) { throw "Uninstaller left $key" }
+          }
+          $registered = Get-ItemProperty -LiteralPath 'HKCU:\Software\RegisteredApplications' -ErrorAction SilentlyContinue
+          if ($null -ne $registered -and $null -ne $registered.transmissionGUI) {
+            throw 'Uninstaller left the RegisteredApplications entry'
+          }
+          if (Test-Path -LiteralPath 'HKCU:\Software\Classes\.torrent\OpenWithProgids') {
+            $progIds = (Get-Item -LiteralPath 'HKCU:\Software\Classes\.torrent\OpenWithProgids').GetValueNames()
+            if ($progIds -contains 'transmissionGUI.Torrent') {
+              throw 'Uninstaller left the .torrent OpenWithProgids entry'
+            }
+          }
 
   linux:
     runs-on: ubuntu-24.04

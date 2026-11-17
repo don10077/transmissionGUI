@@ -136,6 +136,19 @@ Section "Uninstall"
         DeleteRegKey HKCU "${SHELL_APP_KEY}"
         System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
     ${EndIf}
+    ; Remove the file and URL associations only when they still point to this copy.
+    ReadRegStr $0 HKCU "${TORRENT_COMMAND}" ""
+    ${If} $0 == '"$INSTDIR\transmissiongui.exe" -- "%1"'
+        DeleteRegKey HKCU "Software\Classes\transmissionGUI.Torrent"
+        DeleteRegValue HKCU "Software\Classes\.torrent\OpenWithProgids" "transmissionGUI.Torrent"
+    ${EndIf}
+    ReadRegStr $0 HKCU "${MAGNET_COMMAND}" ""
+    ${If} $0 == '"$INSTDIR\transmissiongui.exe" -- "%1"'
+        DeleteRegKey HKCU "Software\Classes\transmissionGUI.Magnet"
+    ${EndIf}
+    DeleteRegKey HKCU "Software\transmissionGUI\Capabilities"
+    DeleteRegValue HKCU "Software\RegisteredApplications" "transmissionGUI"
+    System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
     DeleteRegKey HKCU "${UNINSTALL_KEY}"
     Delete "$INSTDIR\uninstall.exe"
     RMDir "$INSTDIR"
