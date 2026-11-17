@@ -914,6 +914,7 @@ QCheckBox, QRadioButton { spacing: 6px; }
         {"%btnDisabledBg%", p.btnDisabledBg},
         {"%btnDisabledBorder%", p.btnDisabledBorder},
         {"%btnDisabledText%", p.btnDisabledText},
+        {"%green%", p.green},
         {"%red%", p.red},
         {"%groupTitle%", p.groupTitle},
         {"%groupBorder%", p.groupBorder},
