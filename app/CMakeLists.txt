@@ -147,6 +147,24 @@ if(APPLE)
     install(FILES "${PROJECT_SOURCE_DIR}/LICENSE" DESTINATION "transmissiongui.app/Contents/Resources")
     qt_generate_deploy_app_script(TARGET transmissiongui OUTPUT_SCRIPT deploy_script)
     install(SCRIPT "${deploy_script}")
+    # Стандартные переводы Qt (I18N-02): macdeployqt .qm-файлы не копирует, а
+    # main.cpp ищет qtbase_ru.qm в <bundle>/Contents/Translations — кладём его явно.
+    get_target_property(_tgui_qt_tool Qt6::lrelease IMPORTED_LOCATION)
+    if(_tgui_qt_tool)
+        get_filename_component(_tgui_qt_bin "${_tgui_qt_tool}" DIRECTORY)
+        find_program(_tgui_qtpaths NAMES qtpaths6 qtpaths HINTS "${_tgui_qt_bin}")
+        if(_tgui_qtpaths)
+            execute_process(COMMAND "${_tgui_qtpaths}" --query QT_INSTALL_TRANSLATIONS
+                OUTPUT_VARIABLE _tgui_qt_translations
+                OUTPUT_STRIP_TRAILING_WHITESPACE)
+        endif()
+    endif()
+    if(EXISTS "${_tgui_qt_translations}/qtbase_ru.qm")
+        install(FILES "${_tgui_qt_translations}/qtbase_ru.qm"
+            DESTINATION "transmissiongui.app/Contents/Translations")
+    else()
+        message(WARNING "qtbase_ru.qm не найден в «${_tgui_qt_translations}»: стандартные строки Qt останутся английскими в упакованном приложении")
+    endif()
 elseif(UNIX)
     install(FILES "${PROJECT_SOURCE_DIR}/LICENSE"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/${PROJECT_NAME}")
