@@ -43,12 +43,14 @@ jobs:
             mingw-w64-ucrt-x86_64-libarchive
             mingw-w64-ucrt-x86_64-gtest
             mingw-w64-ucrt-x86_64-nsis
-      - name: Configure and check translations
+      - name: Configure and update translations
         shell: msys2 {0}
         run: |
           cmake --preset ci
           cmake --build build/ci --target update_translations
-          git diff --exit-code -- translations/
+      - name: Check translations are up to date
+        shell: pwsh
+        run: git diff --exit-code -- translations/
       - name: Build and run tests
         shell: msys2 {0}
         run: |
