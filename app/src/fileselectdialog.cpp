@@ -42,6 +42,7 @@ namespace {
 // Размер файла в UserRole+1 нужен для подсчёта выбранного объёма.
 constexpr int kFileIndexRole = Qt::UserRole;
 constexpr int kFileSizeRole = Qt::UserRole + 1;
+constexpr int kFreeSpaceDebounceMs = 250; // отложенный запрос free-space при смене пути
 
 /** Кэширует совпадения простых масок расширений, остальные проверяет по имени. */
 class DestinationPatterns {
@@ -157,12 +158,12 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
 
     m_saveAs = new QLineEdit(details.name, this);
     m_saveAs->setObjectName(QStringLiteral("saveAs"));
-    m_saveAs->setEnabled(rpcVersion >= 15 && !details.files.isEmpty());
+    m_saveAs->setEnabled(rpcVersion >= tgui::kRpcFreeSpace && !details.files.isEmpty());
     tgui::theme::addFormRow(form, tr("Save as:"), m_saveAs);
 
     // Порядок строк как в макете: «Сохранить как», «Метка», «Лимит пиров».
     const auto labels = torrentlabels::configured();
-    if (rpcVersion >= 16 && !labels.isEmpty()) {
+    if (rpcVersion >= tgui::kRpcLabels && !labels.isEmpty()) {
         m_label = torrentlabels::createPicker(destination, labels);
         tgui::theme::addFormRow(form, tr("Label"), m_label);
     }
@@ -193,7 +194,7 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
             initialPath = it.key();
         }
     }
-    if (rpcVersion < 6) {
+    if (rpcVersion < tgui::kRpcSetLocation) {
         initialPath = details.downloadDir;
         m_destination->setEnabled(false);
         m_browse->setEnabled(false);
@@ -206,14 +207,16 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
     });
 
     freeSpace->setText(tr("Free disk space: %1").arg(QStringLiteral("—")));
-    if (rpc && rpcVersion >= 15) {
+    if (rpc && rpcVersion >= tgui::kRpcFreeSpace) {
         auto* timer = new QTimer(this);
         timer->setSingleShot(true);
-        timer->setInterval(250);
-        connect(timer, &QTimer::timeout, this, [this, rpc] {
+        timer->setInterval(kFreeSpaceDebounceMs);
+        connect(timer, &QTimer::timeout, this, [this] {
+            if (!m_rpc)
+                return;
             const auto path = m_destination->currentText().trimmed();
             if (!path.isEmpty())
-                rpc->getFreeSpace(path);
+                m_rpc->getFreeSpace(path);
         });
         connect(rpc, &QObject::destroyed, timer, &QTimer::stop);
         connect(rpc, &tgui::RpcClient::freeSpaceReceived, this,
@@ -335,7 +338,7 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
     m_sequential = new QCheckBox(tr("Sequential download"), this);
     m_sequential->setObjectName(QStringLiteral("sequentialDownload"));
     m_sequential->setChecked(tgui::automaticSequential(details.files, rpcVersion));
-    if (rpcVersion < 18) {
+    if (rpcVersion < tgui::kRpcSequential) {
         m_sequential->setChecked(false);
         m_sequential->setEnabled(false);
         m_sequential->setToolTip(tr("Requires Transmission 4.1 or newer (RPC 18)"));

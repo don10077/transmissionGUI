@@ -325,6 +325,7 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
                 [client, status = QPointer<QLabel>(portStatus), button = QPointer<QPushButton>(btnPortTest)] {
             if (!client || !status || !button)
                 return;
+            tgui::theme::setStatusState(status, QString());
             status->setText(tr("Checking…"));
             button->setEnabled(false);
             client->portTest([status, button](const tgui::JsonRpcResult& result) {
@@ -332,15 +333,13 @@ DaemonOptionsDialog::DaemonOptionsDialog(const tgui::SessionInfo& initial, QWidg
                     return;
                 button->setEnabled(true);
                 if (!result.ok) {
+                    tgui::theme::setStatusState(status, QStringLiteral("error"));
                     status->setText(result.error);
                     return;
                 }
-                status->setPalette(QPalette(result.arguments.value("port-is-open").toBool()
-                                                 ? tgui::theme::color::green
-                                                 : tgui::theme::color::red));
-                status->setText(result.arguments.value("port-is-open").toBool()
-                                    ? tr("The port is open.")
-                                    : tr("The port is closed."));
+                const bool open = result.arguments.value("port-is-open").toBool();
+                tgui::theme::setStatusState(status, open ? QStringLiteral("ok") : QStringLiteral("error"));
+                status->setText(open ? tr("The port is open.") : tr("The port is closed."));
             });
         });
         connect(btnBlocklistUpdate, &QPushButton::clicked, this,

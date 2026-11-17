@@ -52,13 +52,13 @@ std::string formatSize(double bytes, int roundTo)
     if (bytes < 0)
         return "-";
 
-    static const char* units[] = {"b", "KB", "MB", "GB", "TB"};
+    static const char* units[] = {"b", "KB", "MB", "GB", "TB", "PB"};
     int unit = 0; // 'b'
     if (roundTo > 0) {
         unit = 1; // 'KB'
         bytes /= 1024.0;
     }
-    while (unit < 4 && bytes >= 1024.0) {
+    while (unit < 5 && bytes >= 1024.0) {
         bytes /= 1024.0;
         ++unit;
     }
@@ -133,10 +133,8 @@ double percentComplete(double sizeWhenDone, double leftUntilDone)
 {
     if (sizeWhenDone <= 0.0)
         return 0.0;
-    double p = (sizeWhenDone - leftUntilDone) * 100.0 / sizeWhenDone;
-    if (p < 0.0)
-        p = 0.0;
-    return p;
+    // leftUntilDone может чуть «уходить» в минус из-за округления демона — жмём 0..100.
+    return std::clamp((sizeWhenDone - leftUntilDone) * 100.0 / sizeWhenDone, 0.0, 100.0);
 }
 
 std::optional<QVersionNumber> parseLatestRelease(const QJsonDocument& document)

@@ -1425,6 +1425,89 @@ TEST_F(RpcClientTest, DuplicateFileWithSameTrackerSkipsMutation)
     EXPECT_EQ(server.requests().last().rpcMethod, "torrent-get");
 }
 
+TEST_F(RpcClientTest, DuplicateTrackerMatchesAfterNormalization)
+{
+    connectWith(18);
+    // Одинаковые трекеры, но с разным регистром схем/хоста и дефолтным
+    // портом — дубликат, torrent-set не нужен (ARCH-08).
+    const QByteArray metainfo = "d8:announce31:http://tracker.example/announce4:infodee";
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[
+        {"id":7,"trackers":[{"announce":"HTTP://TRACKER.EXAMPLE:80/announce"}]}
+    ]}})", {}});
+    QEventLoop loop;
+    bool called = false;
+    QTimer::singleShot(3000, &loop, &QEventLoop::quit);
+    client->updateDuplicateTrackers(7, {}, metainfo, [&](const QString& error, bool changed) {
+        EXPECT_TRUE(error.isEmpty()) << error.toStdString();
+        EXPECT_FALSE(changed);
+        called = true;
+        loop.quit();
+    });
+    if (!called)
+        loop.exec();
+    ASSERT_TRUE(called);
+    ASSERT_FALSE(server.requests().isEmpty());
+    EXPECT_EQ(server.requests().last().rpcMethod, "torrent-get");
+}
+
+TEST_F(RpcClientTest, DuplicateMagnetV2HashIdentifiesTorrent)
+{
+    connectWith(18);
+    const QString v2hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[
+        {"id":9,"trackers":[{"announce":"https://known.example/announce"}]}
+    ]}})", {}});
+    server.enqueue({});
+    const QString magnet = "magnet:?xt=urn:btmh:1220" + v2hash
+                           + "&tr=https%3A%2F%2Fknown.example%2Fannounce"
+                           + "&tr=https%3A%2F%2Fnew.example%2Fannounce";
+    QEventLoop loop;
+    bool updated = false;
+    QString error;
+    QTimer::singleShot(3000, &loop, &QEventLoop::quit);
+    client->updateDuplicateTrackers(-1, magnet, {}, [&](const QString& failure, bool changed) {
+        error = failure;
+        updated = changed;
+        loop.quit();
+    });
+    loop.exec();
+    ASSERT_TRUE(error.isEmpty()) << error.toStdString();
+    ASSERT_TRUE(updated);
+    const auto requests = server.requests();
+    ASSERT_GE(requests.size(), 4); // session-get, free-space, torrent-get, torrent-set
+    EXPECT_EQ(requests.at(2).rpcMethod, "torrent-get");
+    EXPECT_EQ(requests.at(2).arguments.value("ids").toArray(), QJsonArray{v2hash});
+    EXPECT_EQ(requests.last().rpcMethod, "torrent-set");
+}
+
+TEST_F(RpcClientTest, DuplicateUnsortedMetainfoTrackersStillRead)
+{
+    connectWith(18);
+    // Ключи корневого словаря не отсортированы (info раньше announce):
+    // строгий decode и repair отклоняют файл, нужны нестрогое чтение (ARCH-08).
+    const QByteArray metainfo = "d4:infod4:name4:filee8:announce29:http://fresh.example/announcee";
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[
+        {"id":7,"trackers":[{"announce":"https://known.example/announce"}]}
+    ]}})", {}});
+    server.enqueue({});
+    QEventLoop loop;
+    bool updated = false;
+    QString error;
+    QTimer::singleShot(3000, &loop, &QEventLoop::quit);
+    client->updateDuplicateTrackers(7, {}, metainfo, [&](const QString& failure, bool changed) {
+        error = failure;
+        updated = changed;
+        loop.quit();
+    });
+    loop.exec();
+    ASSERT_TRUE(error.isEmpty()) << error.toStdString();
+    ASSERT_TRUE(updated);
+    ASSERT_FALSE(server.requests().isEmpty());
+    const auto request = server.requests().last();
+    EXPECT_EQ(request.rpcMethod, "torrent-set");
+    EXPECT_EQ(request.arguments.value("trackerAdd").toArray(), QJsonArray{"http://fresh.example/announce"});
+}
+
 TEST_F(RpcClientTest, ConfiguresNewTorrentBeforeStarting)
 {
     connectWith(18);

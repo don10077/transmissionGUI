@@ -22,6 +22,16 @@ enum class TorrentStatus : int {
     Seed = 6,
 };
 
+// Минимальные версии RPC для функций (Transmission docs/rpc-spec.md).
+inline constexpr int kRpcFilePriority = 5;    // приоритет файлов; pieces; seed ratio; инкрементальный список
+inline constexpr int kRpcSetLocation = 6;     // torrent-set-location
+inline constexpr int kRpcTrackers = 10;       // управление трекерами (tracker-*)
+inline constexpr int kRpcTorrentReplace = 14; // torrent-replace
+inline constexpr int kRpcFreeSpace = 15;      // free-space; torrent-rename-path; "saveas"
+inline constexpr int kRpcLabels = 16;         // labels; "format: table"
+inline constexpr int kRpcTrackerTier = 17;    // tier трекеров
+inline constexpr int kRpcSequential = 18;     // sequential_download
+
 // Псевдо-статус «Завершено»: Seed при
 // sizeWhenDone > 0 и leftUntilDone == 0.
 bool statusIsFinished(int status, double sizeWhenDone, double leftUntilDone);
@@ -37,8 +47,8 @@ struct TrackerStat {
     bool hasAnnounced = false;
     bool lastAnnounceSucceeded = false;
     QString lastAnnounceResult;
-    int lastAnnounceTime = 0;       // unix-время
-    int nextAnnounceTime = 0;       // unix-время следующего анонса
+    qint64 lastAnnounceTime = 0;  // unix-время (qint64: без проблемы 2038)
+    qint64 nextAnnounceTime = 0;  // unix-время следующего анонса
     int seederCount = -1;
     int leecherCount = -1;
     int tier = 0;
@@ -67,9 +77,9 @@ struct Torrent {
     std::optional<int> peersSendingToUs;
     std::optional<int> peersGettingFromUs;
     std::optional<int> eta;                        // сек, -1 = ∞
-    std::optional<int> addedDate;                  // unix
-    std::optional<int> doneDate;                   // unix
-    std::optional<int> activityDate;               // unix
+    std::optional<qint64> addedDate;             // unix
+    std::optional<qint64> doneDate;              // unix
+    std::optional<qint64> activityDate;          // unix
     std::optional<int> secondsSeeding;
     std::optional<int> secondsDownloading;
     std::optional<int> bandwidthPriority;          // -1 / 0 / 1
@@ -85,7 +95,7 @@ struct Torrent {
     std::optional<QString> hashString;
     std::optional<QString> comment;
     std::optional<QString> creator;
-    std::optional<int> dateCreated;       // unix
+    std::optional<qint64> dateCreated;   // unix
     std::optional<int> pieceCount;
     std::optional<double> pieceSize;      // байты
     std::optional<double> haveValid;      // байты
@@ -146,6 +156,17 @@ struct TorrentDetails {
     QVector<FileStat> files;
     QString name;
     int peerLimit = 0;
+    // Настройки раздачи (переносим на новую раздачу при замене, ARCH-08).
+    std::optional<int> bandwidthPriority;   // -1/0/1
+    std::optional<int> queuePosition;       // -1 — вне очереди
+    std::optional<bool> downloadLimited;
+    std::optional<int> downloadLimit;       // КБ/с
+    std::optional<bool> uploadLimited;
+    std::optional<int> uploadLimit;         // КБ/с
+    std::optional<bool> seedRatioMode;
+    std::optional<double> seedRatioLimit;
+    std::optional<bool> seedIdleMode;
+    std::optional<int> seedIdleLimit;       // минуты
     // Состояние торрента в момент ответа: во время проверки per-file
     // bytesCompleted уже скачанного торрента остаётся 100%, а реальный
     // прогресс проверки есть только в recheckProgress (0..1).

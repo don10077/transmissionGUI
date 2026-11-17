@@ -53,11 +53,9 @@ void ClipboardMonitor::onClipboardChanged()
     if (m_clipboardLinksSeen.size() > 256)
         m_clipboardLinksSeen.removeFirst();
 
-    tgui::RpcClient::AddTorrent params;
+    tgui::RpcClient::AddTorrent params = tgui::RpcClient::makeAddParams(client->sessionInfo());
     params.source = tgui::RpcClient::AddTorrent::Source::Url;
     params.url = link;
-    params.downloadDir = client->sessionInfo().downloadDir;
-    params.start = client->sessionInfo().startAddedTorrents;
     if (!magnet.isEmpty()) {
         m_add(params);
         return;

@@ -9,6 +9,10 @@
 
 class QWidget;
 
+// Экспоненциальная задержка повторного подключения: 1s → 2s → … → 60s.
+inline constexpr int kReconnectBaseDelayMs = 1000;
+inline constexpr int kReconnectMaxDelayMs = 60000;
+
 /** Управляет клиентом RPC, выбором профиля и восстановлением подключения. */
 class ConnectionController final : public QObject {
     Q_OBJECT
@@ -72,7 +76,7 @@ private:
     bool m_connected = false;
     QTimer m_reconnectTimer;
     std::optional<tgui::RpcClient::Options> m_reconnectOptions;
-    int m_reconnectDelayMs = 1000;
+    int m_reconnectDelayMs = kReconnectBaseDelayMs;
     bool m_reconnecting = false;
     tgui::RpcClient::Options m_autoConnectOpts;
     std::unique_ptr<tgui::RpcClient> m_rpc;

@@ -52,6 +52,12 @@ static QString actionLabel(const QString& method)
 }
 } // namespace
 
+namespace {
+constexpr int kMoveVerifyDelayMs = 1000;     // интервал опроса подтверждения переноса
+constexpr int kMoveDeadlineNoDataMs = 10000; // ожидание переноса без копирования данных
+constexpr int kMoveDeadlineWithDataMs = 120000; // ожидание длительной копировки
+}
+
 TorrentActions::TorrentActions(QMainWindow& window, const ConnectionController& connection,
                                const TorrentModel& model, StatusBarController& status, QStringList& labels,
                                Selection selection, CurrentTorrent current, RefreshDetails refresh,
@@ -62,7 +68,7 @@ TorrentActions::TorrentActions(QMainWindow& window, const ConnectionController& 
 {
     // После переноса демон может ответить раньше, чем обновится список.
     m_moveVerifyTimer.setSingleShot(true);
-    m_moveVerifyTimer.setInterval(1000);
+    m_moveVerifyTimer.setInterval(kMoveVerifyDelayMs);
     connect(&m_moveVerifyTimer, &QTimer::timeout, this, &TorrentActions::checkPendingMove);
 }
 
@@ -370,7 +376,7 @@ void TorrentActions::onMoveSelected()
         m_moveVerifyTimer.stop();
         m_movePendingIds = ids;
         m_movePendingTarget = target;
-        m_moveDeadline = QDeadlineTimer(moveData ? 120000 : 10000);
+        m_moveDeadline = QDeadlineTimer(moveData ? kMoveDeadlineWithDataMs : kMoveDeadlineNoDataMs);
         ++m_moveGeneration;
         checkPendingMove();
     });
@@ -379,17 +385,13 @@ void TorrentActions::onMoveSelected()
 void TorrentActions::onSetLabels()
 {
     const auto ids = m_selection();
-    if (ids.isEmpty() || m_labels.isEmpty() || !m_connection.client() || !m_connection.isConnected() || !m_connection.client()->supports(16))
+    if (ids.isEmpty() || m_labels.isEmpty() || !m_connection.client() || !m_connection.isConnected() || !m_connection.client()->supports(tgui::kRpcLabels))
         return;
     const QPointer<tgui::RpcClient> rpc(m_connection.client());
     QStringList current;
     if (ids.size() == 1) {
-        for (const auto& t : m_model.torrents()) {
-            if (t.id == ids.first()) {
-                current = t.labels.value_or(QStringList{});
-                break;
-            }
-        }
+        if (const auto* t = m_model.torrentById(ids.first()))
+            current = t->labels.value_or(QStringList{});
     }
     QDialog dialog(&m_window);
     dialog.setWindowTitle(tr("Torrent labels"));
@@ -577,12 +579,7 @@ void TorrentActions::onRenameSelected()
         return;
     }
     const int id = ids.first();
-    const tgui::Torrent* found = nullptr;
-    for (const auto& t : m_model.torrents())
-        if (t.id == id) {
-            found = &t;
-            break;
-        }
+    const tgui::Torrent* found = m_model.torrentById(id);
     if (!found || !found->name.has_value())
         return;
     const QPointer<tgui::RpcClient> rpc(m_connection.client());

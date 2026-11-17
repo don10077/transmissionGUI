@@ -177,7 +177,7 @@ void RpcClient::connectToDaemon(bool retryOnNetworkError)
 
         auto finish = [this] { emit connected(m_sessionInfo); };
         // При rpc >= 15 → free-space для download-dir.
-        if (m_rpcVersion >= 15 && !m_sessionInfo.downloadDir.isEmpty()) {
+        if (m_rpcVersion >= kRpcFreeSpace && !m_sessionInfo.downloadDir.isEmpty()) {
             call("free-space", QJsonObject{{"path", m_sessionInfo.downloadDir}},
                        [this, finish](const JsonRpcResult& fs) {
                            if (m_connectionProblemReported)
@@ -273,6 +273,19 @@ QJsonArray toJsonArray(const QStringList& list)
     return array;
 }
 
+QJsonArray toJsonArray(const QVector<int>& ids)
+{
+    QJsonArray array;
+    for (const int id : ids)
+        array.append(id);
+    return array;
+}
+
+// Снимок списка считается свежим ~1 минуту; затем полный опрос.
+constexpr int kListCacheTtlMs = 30000;
+// После N инкрементальных опросов — полный снимок (защита от накопления расхождений).
+constexpr int kMaxIncrementalPolls = 29;
+
 // Убрать поле из списка, если версия RPC ниже нужной.
 void removeFieldIfUnsupported(QStringList& fields, const QString& field,
                               int currentVersion, int minVersion)
@@ -293,8 +306,8 @@ void RpcClient::pollTorrents()
 {
     if (m_listPending)
         return;
-    const bool incremental = supports(5) && m_lastFullList.isValid() &&
-        !m_lastFullList.hasExpired(30000) && m_incrementalPolls < 29;
+    const bool incremental = supports(kRpcFilePriority) && m_lastFullList.isValid() &&
+        !m_lastFullList.hasExpired(kListCacheTtlMs) && m_incrementalPolls < kMaxIncrementalPolls;
     requestTorrentList(incremental);
 }
 
@@ -313,15 +326,15 @@ void RpcClient::requestTorrentList(bool incremental, const QStringList& extraFie
         incremental ? "trackers" : "trackerStats",
     };
     fields += extraFields;
-    removeFieldIfUnsupported(fields, "labels", m_rpcVersion, 16);
-    removeFieldIfUnsupported(fields, "sequential_download", m_rpcVersion, 18);
-    removeFieldIfUnsupported(fields, "pieces", m_rpcVersion, 5);
+    removeFieldIfUnsupported(fields, "labels", m_rpcVersion, kRpcLabels);
+    removeFieldIfUnsupported(fields, "sequential_download", m_rpcVersion, kRpcSequential);
+    removeFieldIfUnsupported(fields, "pieces", m_rpcVersion, kRpcFilePriority);
     fields.removeDuplicates();
     std::sort(fields.begin(), fields.end());
 
     QJsonObject args;
     args.insert("fields", toJsonArray(fields));
-    if (m_rpcVersion >= 16)
+    if (m_rpcVersion >= kRpcLabels)
         args.insert("format", "table");
     if (incremental)
         args.insert("ids", "recently-active");
@@ -394,14 +407,14 @@ void RpcClient::getTorrentProperties(int id, TorrentCallback callback, TorrentPr
             fields = toJsonArray({"id", "hashString", "comment", "creator", "dateCreated",
                                   "pieceCount", "pieceSize", "haveValid", "magnetLink",
                                   "maxConnectedPeers", "trackerStats", "corruptEver"});
-            if (supports(5))
+            if (supports(kRpcFilePriority))
                 fields.append("pieces");
             break;
         case TorrentProperties::Settings:
             fields = toJsonArray({"id", "hashString", "name", "maxConnectedPeers", "downloadLimited",
                                   "downloadLimit", "uploadLimited", "uploadLimit", "seedRatioMode",
                                   "seedRatioLimit", "seedIdleMode", "seedIdleLimit"});
-            if (supports(18))
+            if (supports(kRpcSequential))
                 fields.append("sequential_download");
             break;
         case TorrentProperties::Magnet:
@@ -488,16 +501,22 @@ void RpcClient::getTorrentDetails(const QJsonValue& identifier, DetailsCallback 
     QJsonObject args;
     args.insert("ids", QJsonArray{identifier});
     auto requestedFields = toJsonArray({"id", "files", "priorities", "wanted", "downloadDir",
-                                       "name", "maxConnectedPeers", "status", "recheckProgress", "pieceCount"});
+                                       "name", "maxConnectedPeers", "status", "recheckProgress", "pieceCount",
+                                       "downloadLimited", "downloadLimit", "uploadLimited", "uploadLimit",
+                                       "seedRatioMode", "seedRatioLimit", "seedIdleMode", "seedIdleLimit"});
+    if (supports(kRpcTorrentReplace)) {
+        requestedFields.append("bandwidthPriority");
+        requestedFields.append("queuePosition");
+    }
     if (identifier.isString()) {
         requestedFields.append("hashString");
-        if (supports(16))
+        if (supports(kRpcLabels))
             requestedFields.append("labels");
-        if (supports(18))
+        if (supports(kRpcSequential))
             requestedFields.append("sequential_download");
     }
     args.insert("fields", requestedFields);
-    if (m_rpcVersion >= 16)
+    if (m_rpcVersion >= kRpcLabels)
         args.insert("format", "table");
 
     const auto sequence = ++m_readSequence;
@@ -546,6 +565,26 @@ void RpcClient::getTorrentDetails(const QJsonValue& identifier, DetailsCallback 
         details.pieceCount = torrent.value("pieceCount").toInt();
         if (torrent.value("recheckProgress").isDouble())
             details.recheckProgress = torrent.value("recheckProgress").toDouble();
+        if (torrent.value("bandwidthPriority").isDouble())
+            details.bandwidthPriority = torrent.value("bandwidthPriority").toInt();
+        if (torrent.value("queuePosition").isDouble())
+            details.queuePosition = torrent.value("queuePosition").toInt();
+        if (torrent.value("downloadLimited").isBool())
+            details.downloadLimited = torrent.value("downloadLimited").toBool();
+        if (torrent.value("downloadLimit").isDouble())
+            details.downloadLimit = torrent.value("downloadLimit").toInt();
+        if (torrent.value("uploadLimited").isBool())
+            details.uploadLimited = torrent.value("uploadLimited").toBool();
+        if (torrent.value("uploadLimit").isDouble())
+            details.uploadLimit = torrent.value("uploadLimit").toInt();
+        if (torrent.value("seedRatioMode").isBool())
+            details.seedRatioMode = torrent.value("seedRatioMode").toBool();
+        if (torrent.value("seedRatioLimit").isDouble())
+            details.seedRatioLimit = torrent.value("seedRatioLimit").toDouble();
+        if (torrent.value("seedIdleMode").isBool())
+            details.seedIdleMode = torrent.value("seedIdleMode").toBool();
+        if (torrent.value("seedIdleLimit").isDouble())
+            details.seedIdleLimit = torrent.value("seedIdleLimit").toInt();
         // При проверке демон не сбрасывает have-биты, поэтому bytesCompleted
         // уже скачанного торрента всё время проверки равен 100%. Реальный
         // прогресс — recheckProgress; раскладываем его по файлам.
@@ -664,11 +703,8 @@ void RpcClient::torrentAction(const QString& method, const QVector<int>& ids,
         finishLocally(method, std::move(callback));
         return;
     }
-    QJsonArray torrentIds;
-    for (const int id : ids)
-        torrentIds.append(id);
     auto args = params;
-    args.insert("ids", torrentIds);
+    args.insert("ids", toJsonArray(ids));
     requestReport(method, args, std::move(callback));
 }
 
@@ -753,7 +789,7 @@ void RpcClient::setStarted(int id, bool started)
 void RpcClient::setSequential(int id, bool enabled)
 {
     // sequential_download доступен с RPC 18 (Transmission 4.0+).
-    if (!supports(18)) {
+    if (!supports(kRpcSequential)) {
         finishLocally("torrent-set", {},
                       QStringLiteral("sequential download requires Transmission RPC version 18 or newer"));
         return;
@@ -767,7 +803,7 @@ void RpcClient::setSequential(int id, bool enabled)
 void RpcClient::renamePath(int id, const QString& path, const QString& newName, RequestCallback callback)
 {
     // torrent-rename-path доступен с RPC 15 (Transmission 2.84+).
-    if (!supports(15)) {
+    if (!supports(kRpcFreeSpace)) {
         finishLocally("torrent-rename-path", std::move(callback),
                       QStringLiteral("rename path requires Transmission RPC version 15 or newer"));
         return;
@@ -787,7 +823,7 @@ void RpcClient::setLocation(int id, const QString& path, bool moveData)
 void RpcClient::setLocation(const QVector<int>& ids, const QString& path, bool moveData,
                             RequestCallback callback)
 {
-    if (!supports(6)) {
+    if (!supports(kRpcSetLocation)) {
         finishLocally("torrent-set-location", std::move(callback), QStringLiteral("RPC 6 or newer is required."));
         return;
     }
@@ -815,7 +851,7 @@ void RpcClient::setTorrent(int id, const QJsonObject& params)
 void RpcClient::setLabels(int id, const QStringList& labels)
 {
     // labels доступны с RPC 16 (Transmission 3.0+).
-    if (!supports(16)) {
+    if (!supports(kRpcLabels)) {
         finishLocally("torrent-set", {}, QStringLiteral("labels require Transmission RPC version 16 or newer"));
         return;
     }
@@ -824,7 +860,7 @@ void RpcClient::setLabels(int id, const QStringList& labels)
 
 void RpcClient::renameLabel(const QString& from, const QString& to, RequestCallback callback)
 {
-    if (!supports(16)) {
+    if (!supports(kRpcLabels)) {
         finishLocally("torrent-set", std::move(callback),
                       QStringLiteral("labels require Transmission RPC version 16 or newer"));
         return;
@@ -886,12 +922,8 @@ void RpcClient::setFilesWanted(int id, const QVector<int>& wanted, const QVector
     // files-wanted + files-unwanted (индексы файлов).
     QJsonObject args;
     torrentIds(args, id);
-    QJsonArray w;
-    for (int index : wanted)
-        w.append(index);
-    QJsonArray u;
-    for (int index : unwanted)
-        u.append(index);
+    const QJsonArray w = toJsonArray(wanted);
+    const QJsonArray u = toJsonArray(unwanted);
     // Пустой массив в torrent-set означает «все файлы».
     if (!w.isEmpty())
         args.insert("files-wanted", w);
@@ -908,7 +940,7 @@ void RpcClient::setFilePriority(int id, const QVector<int>& files, int priority,
 {
     // Per-file приоритет (legacy-протокол): files-wanted + priority-{low|normal|high}
     // (массив индексов файлов). Гейт как в образце — RPC >= 5.
-    if (!supports(5)) {
+    if (!supports(kRpcFilePriority)) {
         finishLocally("torrent-set", std::move(callback),
                       QStringLiteral("file priority requires Transmission RPC version 5 or newer"));
         return;
@@ -919,9 +951,7 @@ void RpcClient::setFilePriority(int id, const QVector<int>& files, int priority,
     }
     QJsonObject args;
     torrentIds(args, id);
-    QJsonArray f;
-    for (int index : files)
-        f.append(index);
+    const QJsonArray f = toJsonArray(files);
     args.insert("files-wanted", f);
     const QString key = priority < 0 ? QStringLiteral("priority-low")
                         : priority > 0 ? QStringLiteral("priority-high")
@@ -933,7 +963,7 @@ void RpcClient::setFilePriority(int id, const QVector<int>& files, int priority,
 void RpcClient::addTracker(int id, const QString& url, RequestCallback callback)
 {
     // Трекеры требуют RPC >= 10 (как в образце).
-    if (!supports(10)) {
+    if (!supports(kRpcTrackers)) {
         finishLocally("torrent-set", std::move(callback),
                       QStringLiteral("tracker management requires Transmission RPC version 10 or newer"));
         return;
@@ -952,7 +982,7 @@ void RpcClient::addTracker(int id, const QString& url, RequestCallback callback)
 
 void RpcClient::removeTracker(int id, int trackerId, RequestCallback callback)
 {
-    if (!supports(10)) {
+    if (!supports(kRpcTrackers)) {
         finishLocally("torrent-set", std::move(callback),
                       QStringLiteral("tracker management requires Transmission RPC version 10 or newer"));
         return;
@@ -967,7 +997,7 @@ void RpcClient::removeTracker(int id, int trackerId, RequestCallback callback)
 
 void RpcClient::replaceTracker(int id, int trackerId, const QString& newUrl, RequestCallback callback)
 {
-    if (!supports(10)) {
+    if (!supports(kRpcTrackers)) {
         finishLocally("torrent-set", std::move(callback),
                       QStringLiteral("tracker management requires Transmission RPC version 10 or newer"));
         return;
@@ -1052,9 +1082,9 @@ void RpcClient::addTorrent(const AddTorrent& params, AddCallback callback)
     args.insert("paused", !params.start);
     if (params.peerLimit > 0)
         args.insert("peer-limit", params.peerLimit);
-    if (supports(17) && !params.labels.isEmpty())
+    if (supports(17) && !params.labels.isEmpty()) // labels в torrent-add — с 17 (как в образце)
         args.insert("labels", toJsonArray(params.labels));
-    if (params.sequential && supports(18))
+    if (params.sequential && supports(kRpcSequential))
         args.insert("sequential_download", true);
     if (!callback) {
         requestReport("torrent-add", args);
@@ -1068,10 +1098,20 @@ void RpcClient::addTorrent(const AddTorrent& params, AddCallback callback)
 
 namespace {
 
-/** Read the v1 info hash from a hexadecimal or Base32 magnet identifier. */
+/** Читает info-hash из магнитного идентификатора: v1 (btih) или v2 (btmh). */
 QString magnetInfoHash(const QUrlQuery& query)
 {
     for (const auto& identifier : query.allQueryItemValues("xt", QUrl::FullyDecoded)) {
+        if (identifier.startsWith("urn:btmh:", Qt::CaseInsensitive)) {
+            // v2: urn:btmh:1220<sha256 hex 64> — hash берём как есть.
+            const QByteArray encoded = identifier.mid(9).toLatin1();
+            if (encoded.size() == 68 && encoded.left(4) == "1220") {
+                const QByteArray hex = encoded.mid(4);
+                if (QByteArray::fromHex(hex).size() == 32)
+                    return QString::fromLatin1(hex).toLower();
+            }
+            continue;
+        }
         if (!identifier.startsWith("urn:btih:", Qt::CaseInsensitive))
             continue;
         const QByteArray encoded = identifier.mid(9).toLatin1().toUpper();
@@ -1102,6 +1142,23 @@ QString magnetInfoHash(const QUrlQuery& query)
     return {};
 }
 
+/** Нормализует URL трекера для сравнения: trim, нижний регистр схемы и хоста,
+    убирает дефолтный порт (ARCH-08). */
+QString normalizeTrackerUrl(const QString& raw)
+{
+    const QString trimmed = raw.trimmed();
+    const QUrl url(trimmed, QUrl::TolerantMode);
+    if (!url.isValid() || url.scheme().isEmpty() || url.host().isEmpty())
+        return trimmed;
+    QUrl normalized(url);
+    const QString scheme = url.scheme().toLower();
+    normalized.setScheme(scheme);
+    normalized.setHost(url.host().toLower());
+    if ((scheme == "http" && url.port() == 80) || (scheme == "https" && url.port() == 443))
+        normalized.setPort(-1);
+    return normalized.toString();
+}
+
 } // namespace
 
 void RpcClient::updateDuplicateTrackers(int id, const QString& magnet, const QByteArray& metainfo,
@@ -1120,7 +1177,7 @@ void RpcClient::updateDuplicateTrackers(int id, const QString& magnet, const QBy
             cb(result.error, false);
         }, error);
     };
-    if (!supports(10)) {
+    if (!supports(kRpcTrackers)) {
         finish(tr("This daemon does not support updating trackers."));
         return;
     }
@@ -1140,13 +1197,16 @@ void RpcClient::updateDuplicateTrackers(int id, const QString& magnet, const QBy
         bencode::InfoSpan info;
         bencode::RepairResult repaired;
         std::string_view bytes(metainfo.constData(), static_cast<size_t>(metainfo.size()));
+        // Строгий decode (сортированные ключи) → ремонт длин/схем → нестрогое
+        // чтение: часть клиентов записывает .torrent с несортированными ключами (ARCH-08).
         if (!bencode::decode(bytes, root, nullptr, &info)) {
-            if (!bencode::repair(std::string(bytes), repaired) ||
-                !bencode::decode(repaired.fixedBytes, root, nullptr, &info)) {
+            if (bencode::repair(std::string(bytes), repaired) &&
+                bencode::decode(repaired.fixedBytes, root, nullptr, &info)) {
+                bytes = repaired.fixedBytes;
+            } else if (!bencode::decode(bytes, root, nullptr, &info, /*requireSortedKeys=*/false)) {
                 finish(tr("Unable to read trackers from the torrent file."));
                 return;
             }
-            bytes = repaired.fixedBytes;
         }
         const auto append = [&trackers](const bencode::Value& entry) {
             if (entry.type() == bencode::Value::Type::String)
@@ -1206,8 +1266,15 @@ void RpcClient::updateDuplicateTrackers(int id, const QString& magnet, const QBy
                 callback(tr("Unable to read the existing torrent's trackers."), false);
                 return;
             }
-            for (const auto& tracker : existing.value("trackers").toArray())
-                trackers.removeAll(tracker.toObject().value("announce").toString());
+            const QJsonArray known = existing.value("trackers").toArray();
+            // Сравнение с нормализацией (схема/хост без учёта регистра, дефолтный
+            // порт) — иначе «HTTP://Tracker:80/» дублировался с «http://tracker/».
+            QSet<QString> knownNormalized;
+            for (const auto& tracker : known)
+                knownNormalized.insert(normalizeTrackerUrl(tracker.toObject().value("announce").toString()));
+            for (int i = trackers.size() - 1; i >= 0; --i)
+                if (knownNormalized.contains(normalizeTrackerUrl(trackers.at(i))))
+                    trackers.removeAt(i);
             if (trackers.isEmpty()) {
                 callback({}, false);
                 return;
@@ -1231,7 +1298,7 @@ void RpcClient::configureAddedTorrent(const TorrentDetails& details, const AddTo
             path.chop(1);
         return path;
     };
-    if (supports(6) && !options.downloadDir.trimmed().isEmpty() &&
+    if (supports(kRpcSetLocation) && !options.downloadDir.trimmed().isEmpty() &&
         withoutTrailingSlashes(options.downloadDir) != withoutTrailingSlashes(details.downloadDir))
         requests.append({"torrent-set-location", {{"ids", ids},
                                                    {"location", options.downloadDir}, {"move", false}}});
@@ -1239,9 +1306,9 @@ void RpcClient::configureAddedTorrent(const TorrentDetails& details, const AddTo
     QJsonObject settings;
     if (options.peerLimit > 0 && options.peerLimit != details.peerLimit)
         settings.insert("peer-limit", options.peerLimit);
-    if (supports(18))
+    if (supports(kRpcSequential))
         settings.insert("sequential_download", options.sequential);
-    if (supports(16) && !options.labels.isEmpty())
+    if (supports(kRpcLabels) && !options.labels.isEmpty())
         settings.insert("labels", toJsonArray(options.labels));
     if (!unwanted.isEmpty()) {
         QJsonArray skipped;
@@ -1253,7 +1320,7 @@ void RpcClient::configureAddedTorrent(const TorrentDetails& details, const AddTo
         settings.insert("ids", ids);
         requests.append({"torrent-set", settings});
     }
-    if (supports(15) && !name.isEmpty() && name != details.name)
+    if (supports(kRpcFreeSpace) && !name.isEmpty() && name != details.name)
         requests.append({"torrent-rename-path", {{"ids", ids},
                                                   {"path", details.name}, {"name", name}}});
     if (options.start)
@@ -1315,8 +1382,6 @@ void RpcClient::updateBlocklist(RequestCallback callback)
     requestReport("blocklist-update", QJsonObject{}, std::move(callback));
 }
 
-} // namespace tgui
-namespace tgui {
 void RpcClient::getSession()
 {
     call("session-get", QJsonObject{}, [this](const JsonRpcResult& result) {

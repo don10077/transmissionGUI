@@ -62,6 +62,54 @@ TEST(FlagArchive, PublishesValidFlagsAndRejectsPathsOutsideDestination)
     EXPECT_FALSE(QFileInfo::exists(directory.filePath("us.png")));
 }
 
+TEST(FlagArchive, ReplacesNonEmptyExistingDirectory)
+{
+    // Пустой rmdir не удаляет каталог с «осколками»: extract должен снести
+    // старую директорию и извлечь заново (ARCH-08).
+    QImage image(16, 11, QImage::Format_RGB32);
+    image.fill(Qt::red);
+    QByteArray png;
+    QBuffer data(&png);
+    ASSERT_TRUE(data.open(QIODevice::WriteOnly));
+    ASSERT_TRUE(image.save(&data, "PNG"));
+    auto makeZip = [](const char* name, const QByteArray& payload) -> QByteArray {
+        QByteArray bytes(4096, Qt::Uninitialized);
+        size_t size = 0;
+        std::unique_ptr<archive, decltype(&archive_write_free)> writer(archive_write_new(), archive_write_free);
+        std::unique_ptr<archive_entry, decltype(&archive_entry_free)> entry(archive_entry_new(), archive_entry_free);
+        if (!writer || !entry || archive_write_set_format_zip(writer.get()) != ARCHIVE_OK ||
+            archive_write_open_memory(writer.get(), bytes.data(), static_cast<size_t>(bytes.size()), &size) != ARCHIVE_OK)
+            return {};
+        archive_entry_set_pathname(entry.get(), name);
+        archive_entry_set_filetype(entry.get(), AE_IFREG);
+        archive_entry_set_size(entry.get(), static_cast<size_t>(payload.size()));
+        if (archive_write_header(writer.get(), entry.get()) != ARCHIVE_OK ||
+            archive_write_data(writer.get(), payload.constData(), static_cast<size_t>(payload.size())) != payload.size() ||
+            archive_write_close(writer.get()) != ARCHIVE_OK)
+            return {};
+        bytes.resize(static_cast<qsizetype>(size));
+        return bytes;
+    };
+
+    QTemporaryDir directory;
+    ASSERT_TRUE(directory.isValid());
+    const QString destination = directory.filePath("flags");
+    ASSERT_TRUE(QDir().mkpath(destination));
+    {
+        QFile stray(QDir(destination).filePath("stray.txt"));
+        ASSERT_TRUE(stray.open(QIODevice::WriteOnly));
+        stray.write("junk");
+    }
+    const auto valid = makeZip("us.png", png);
+    ASSERT_FALSE(valid.isEmpty());
+    ASSERT_TRUE(flagarchive::extract(valid, destination));
+    EXPECT_FALSE(QImage(QDir(destination).filePath("us.png")).isNull());
+    EXPECT_FALSE(QFile::exists(QDir(destination).filePath("stray.txt")));
+    // Временно переименованный каталог не должен остаться в parent.
+    const auto leftovers = QDir(directory.path()).entryList({QStringLiteral("flags-old-*")}, QDir::AllEntries);
+    EXPECT_TRUE(leftovers.isEmpty());
+}
+
 namespace {
 QVector<FileStat> makeFiles()
 {

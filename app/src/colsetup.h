@@ -5,6 +5,7 @@
 #include <QMap>
 #include <QStringList>
 
+class QHeaderView;
 class QTableView;
 class QTreeView;
 class QListWidget;
@@ -27,6 +28,7 @@ struct ColumnLayout {
     void applyToView(QTreeView* view) const;
     void applyToView(QTableView* view) const; // W11: пиры
     static ColumnLayout fromView(QTableView* view, int count); // W11: текущая раскладка пиров
+    static void configureHeader(QHeaderView* header); // общие настройки заголовка (выравнивание, stretch, подсветка)
 };
 
 // Диалог настройки колонок: порядок (Up/Down) + видимость (checkbox).

@@ -372,6 +372,7 @@ void ConnOptionsDialog::setProfile(const DaemonProfile& p)
     m_proxyPass->setEnabled(p.useProxy && m_proxyAuth->isChecked());
     m_ignoreSsl->setEnabled(p.useSsl);
     m_testStatus->clear();
+    tgui::theme::setStatusState(m_testStatus, QString());
 }
 
 DaemonProfile ConnOptionsDialog::current() const
@@ -496,7 +497,7 @@ void ConnOptionsDialog::onTest()
 {
     DaemonProfile p = current();
     if (p.host.isEmpty()) {
-        m_testStatus->setPalette(QPalette(tgui::theme::color::red));
+        tgui::theme::setStatusState(m_testStatus, QStringLiteral("error"));
         m_testStatus->setText(tr("Host is empty."));
         return;
     }
@@ -509,6 +510,7 @@ void ConnOptionsDialog::onTest()
         setEnabled(true);
         return result;
     };
+    tgui::theme::setStatusState(m_testStatus, QString());
     m_testStatus->setText(tr("Connecting…"));
     auto r = test();
     if (r.needsPassphrase) {
@@ -517,14 +519,12 @@ void ConnOptionsDialog::onTest()
             tr("Passphrase for the client certificate or key:"), QLineEdit::Password, {}, &accepted);
         if (!accepted) {
             m_testStatus->clear();
+            tgui::theme::setStatusState(m_testStatus, QString());
             return;
         }
         options.clientKeyPassphrase = passphrase.toUtf8();
         r = test();
     }
-    QPalette palette = m_testStatus->palette();
-    palette.setColor(QPalette::WindowText,
-                     r.ok ? tgui::theme::color::green : tgui::theme::color::red);
-    m_testStatus->setPalette(palette);
+    tgui::theme::setStatusState(m_testStatus, r.ok ? QStringLiteral("ok") : QStringLiteral("error"));
     m_testStatus->setText(r.message);
 }

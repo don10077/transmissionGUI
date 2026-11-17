@@ -20,8 +20,10 @@
 #include <QPalette>
 #include <QPushButton>
 #include <QSettings>
+#include <QSizeGrip>
 #include <QStyleFactory>
 #include <QSvgRenderer>
+#include <QScreen>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -344,7 +346,6 @@ const Palette& palette()
         // Акцент
         QColor(0x00, 0x67, 0xC0), // accent
         QColor(0x00, 0x53, 0x9E), // accentDark
-        QColor(0x1A, 0x88, 0xE0), // accentHover
         // Статусы
         QColor(0x2F, 0x9E, 0x4A), // green
         QColor(0xE7, 0xF6, 0xED), // greenLight
@@ -541,7 +542,6 @@ QPixmap statusDotPixmap(const QColor& color, int size, qreal dpr)
 QString buildQss(const Palette& p)
 {
     QString q = QStringLiteral(R"(
-* { outline: none; }
 QWidget { color: %text%; }
 QMainWindow, QDialog { background: %window%; }
 /* DLG (mockup .dlg/.dtt): тонкая рамка и своя белая шапка без системного хрома. */
@@ -611,6 +611,9 @@ QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTimeEdit, QPlainTextEdit, QText
 }
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTimeEdit:focus,
 QPlainTextEdit:focus, QTextEdit:focus { border-color: %inputFocus%; }
+/* Видимый фокус клавиатуры (outline: none убран — ARCH-07): кнопки и списки. */
+QPushButton:focus, QToolButton:focus { border-color: %inputFocus%; }
+QTreeView:focus, QTableView:focus, QListView:focus { border-color: %inputFocus%; }
 QLineEdit#searchEdit { min-height: 24px; padding: 0 5px; }
 QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled,
 QTimeEdit:disabled {
@@ -783,8 +786,8 @@ QTableWidget#statisticsTable::item:selected { background: %selBg%; color: %text%
 QStatusBar { background: %window%; border-top: 1px solid %layoutBorder%; color: %text%; min-height: 22px; }
 QStatusBar::item { border: none; }
 QWidget#statusStrip { background: %window%; }
-QWidget#statusSegmentGroup, QLabel#statusSegment { border-right: 1px solid %border%; }
-QLabel#statusSegment { padding: 0 10px; }
+QWidget#statusSegmentGroup { border-right: 1px solid %border%; }
+QLabel#statusSegment { border-right: 1px solid %border%; padding: 0 10px; }
 QToolButton#statusRate { border: none; border-right: 1px solid %border%; border-radius: 0; padding: 0 10px; }
 QToolButton#statusRate:hover, QToolButton#statusRate:pressed { background: %statusRateHover%; }
 QToolButton#statusRate:focus { border-bottom: 1px solid %inputFocus%; }
@@ -839,6 +842,9 @@ QLabel#fieldLabel { color: %detailFieldLabel%; }
 QLabel#fieldValue { color: %text%; }
 QLabel#formLabel { color: %formLabel%; }
 QLabel#hintLabel, QLabel#aboutVersion { color: %textMuted%; }
+/* Цветные статусы («Тест порта», тест соединения) — динамическое свойство (ARCH-07). */
+QLabel[statusState="ok"] { color: %green%; }
+QLabel[statusState="error"] { color: %red%; }
 QDialog[aboutDialog="true"] QWidget#dialogTitleBar,
 QGroupBox#donateGroup, QPlainTextEdit#licenseText { background: %window%; }
 QLabel#donateQr { background: transparent; }
@@ -846,8 +852,7 @@ QToolButton#licenseToggle { border: none; background: transparent; color: %accen
 QToolButton#licenseToggle:hover { text-decoration: underline; }
 QToolButton#licenseToggle:checked { background: transparent; }
 QLabel#toast { background: %toastBackground%; color: %panel%; border-radius: 3px; padding: 7px 14px; }
-QPushButton#propertyLink, QPushButton#propertyLink:hover,
-QPushButton[linkStyle="true"], QPushButton[linkStyle="true"]:hover {
+QPushButton#propertyLink, QPushButton[linkStyle="true"] {
     color: %accent%; background: transparent; border: none; min-width: 0; min-height: 0; padding: 0;
 }
 QPushButton#propertyLink:hover, QPushButton[linkStyle="true"]:hover { text-decoration: underline; }
@@ -890,8 +895,6 @@ QCheckBox, QRadioButton { spacing: 6px; }
         {"%iconSlate%", p.iconSlate},
         {"%accent%", p.accent},
         {"%disabledText%", p.disabledText},
-        {"%accentDark%", p.accentDark},
-        {"%accentHover%", p.accentHover},
         {"%hoverBg%", p.hoverBg},
         {"%selBg%", p.selBg},
         {"%selBgActive%", p.selBgActive},
@@ -988,6 +991,63 @@ void apply(QApplication& app)
 
 namespace {
 
+/** Без системного хрома ОС не втискивает окно в экран: при показе возвращаем
+    диалог в видимую область ближайшего экрана; QSizeGrip держим в правом
+    нижнем углу body (ARCH-07). */
+class DialogChromeFilter : public QObject {
+public:
+    DialogChromeFilter(QWidget* dialog, QWidget* body, QSizeGrip* grip)
+        : QObject(dialog), m_dialog(dialog), m_body(body), m_grip(grip) {}
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        // Фильтр стоит на диалоге и видит события всех потомков, но реагируем
+        // только на свои: Resize самого grip нельзя обрабатывать изнутри него.
+        if (watched == m_dialog && event->type() == QEvent::Show) {
+            moveIntoVisibleArea(m_dialog);
+            positionGrip();
+        } else if (watched == m_body && event->type() == QEvent::Resize) {
+            positionGrip();
+        }
+        return false;
+    }
+
+private:
+    void positionGrip()
+    {
+        if (m_grip && m_body)
+            m_grip->move(m_body->width() - m_grip->sizeHint().width(),
+                         m_body->height() - m_grip->sizeHint().height());
+    }
+
+    static void moveIntoVisibleArea(QWidget* widget)
+    {
+        auto* screen = QApplication::screenAt(widget->pos());
+        if (!screen)
+            screen = widget->screen();
+        if (!screen)
+            return;
+        const QRect avail = screen->availableGeometry();
+        // Окно может быть больше доступной области (и в тестах экран «маленький»):
+        // qBound(min, val, max) при max < min — ASSERT, поэтому в этом случае
+        // просто не выталкиваем окно дальше левого/верхнего края.
+        const int maxX = avail.right() - widget->width();
+        const int maxY = avail.bottom() - widget->height();
+        const int x = maxX >= avail.left()
+            ? qBound(avail.left(), widget->x(), maxX)
+            : qMin(widget->x(), avail.left());
+        const int y = maxY >= avail.top()
+            ? qBound(avail.top(), widget->y(), maxY)
+            : qMin(widget->y(), avail.top());
+        widget->move(x, y);
+    }
+
+    QWidget* m_dialog;
+    QWidget* m_body;
+    QSizeGrip* m_grip;
+};
+
 /** Перетаскивание диалога за собственную шапку (системного заголовка нет). */
 class DialogDragFilter : public QObject {
 public:
@@ -1029,6 +1089,17 @@ private:
 
 } // namespace
 
+void setStatusState(QWidget* widget, const QString& state)
+{
+    if (!widget)
+        return;
+    widget->setProperty("statusState", state);
+    if (auto* style = widget->style()) {
+        style->unpolish(widget);
+        style->polish(widget);
+    }
+}
+
 void decorateDialog(QDialog* dialog)
 {
     // Mockup .dlg: тонкая рамка и своя шапка вместо системного заголовка.
@@ -1051,6 +1122,9 @@ void decorateDialog(QDialog* dialog)
     body->setObjectName(QStringLiteral("dialogBody"));
     body->setAttribute(Qt::WA_StyledBackground, true);
     body->setLayout(contentLayout);
+    // Grip — child body (не в раскладке, чтобы не менять структуру потомков,
+    // на которую опираются тесты); позиция — правый нижний угол body (ARCH-07).
+    auto* grip = new QSizeGrip(body);
 
     auto* header = new QWidget(dialog);
     header->setObjectName(QStringLiteral("dialogTitleBar"));
@@ -1082,6 +1156,9 @@ void decorateDialog(QDialog* dialog)
     auto* drag = new DialogDragFilter(dialog);
     header->installEventFilter(drag);
     title->installEventFilter(drag);
+
+    // Возврат в видимую область экрана и позиционирование grip (см. класс выше).
+    dialog->installEventFilter(new DialogChromeFilter(dialog, body, grip));
 }
 
 } // namespace tgui::theme

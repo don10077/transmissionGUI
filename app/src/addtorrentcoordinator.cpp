@@ -59,12 +59,11 @@ void AddTorrentCoordinator::openPendingExternalTorrents()
 void AddTorrentCoordinator::addWatchedFile(const QString& path)
 {
     const auto& session = m_connection.client()->sessionInfo();
-    tgui::RpcClient::AddTorrent params;
+    tgui::RpcClient::AddTorrent params = tgui::RpcClient::makeAddParams(session);
     params.file = path;
-    params.downloadDir = QSettings().value(OptionsDialog::watchDestinationKey).toString();
-    if (params.downloadDir.isEmpty())
-        params.downloadDir = session.downloadDir;
-    params.start = session.startAddedTorrents;
+    const QString watchDir = QSettings().value(OptionsDialog::watchDestinationKey).toString();
+    if (!watchDir.isEmpty())
+        params.downloadDir = watchDir;
     startAdd(params, AddOrigin::WatchFolder);
 }
 
@@ -121,15 +120,13 @@ void AddTorrentCoordinator::openExternalTorrents(const QStringList& inputs)
     }
     const auto& session = m_connection.client()->sessionInfo();
     for (const auto& input : accepted) {
-        tgui::RpcClient::AddTorrent params;
+        tgui::RpcClient::AddTorrent params = tgui::RpcClient::makeAddParams(session);
         if (input.startsWith("magnet:", Qt::CaseInsensitive)) {
             params.source = tgui::RpcClient::AddTorrent::Source::Url;
             params.url = input;
         } else {
             params.file = input;
         }
-        params.downloadDir = session.downloadDir;
-        params.start = session.startAddedTorrents;
         startAdd(params, AddOrigin::External);
     }
 }
@@ -145,10 +142,8 @@ void AddTorrentCoordinator::onAddTorrent()
         return;
     const auto& session = rpc->sessionInfo();
     for (const auto& path : paths) {
-        tgui::RpcClient::AddTorrent params;
+        tgui::RpcClient::AddTorrent params = tgui::RpcClient::makeAddParams(session);
         params.file = path;
-        params.downloadDir = session.downloadDir;
-        params.start = session.startAddedTorrents;
         startAdd(params);
     }
 }
@@ -167,11 +162,10 @@ void AddTorrentCoordinator::onAddFromLink()
     if (link.isEmpty())
         return;
     QSettings().setValue("lastAddLink", link);
-    tgui::RpcClient::AddTorrent at;
+    tgui::RpcClient::AddTorrent at = tgui::RpcClient::makeAddParams(rpc->sessionInfo());
     at.source = tgui::RpcClient::AddTorrent::Source::Url;
     at.url = link;
     at.start = dlg.startWhenAdded();
-    at.downloadDir = rpc->sessionInfo().downloadDir;
     startAdd(at);
 }
 
@@ -274,7 +268,7 @@ void AddTorrentCoordinator::addNextTorrent()
     details->peerLimit = rpc->sessionInfo().peerLimitPerTorrent;
     auto* dialog = new FileSelectDialog(*details, params.start, rpc->rpcVersion(), rpc, &m_window, true, pending.profile);
     dialog->offerMetainfoCopy(metainfo);
-    if (rpc->supports(14))
+    if (rpc->supports(tgui::kRpcTorrentReplace))
         dialog->offerReplacement(m_model.torrents(), m_currentId());
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     connect(rpc.data(), &QObject::destroyed, dialog, &QDialog::reject);

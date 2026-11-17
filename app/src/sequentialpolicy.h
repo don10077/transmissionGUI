@@ -26,7 +26,7 @@ inline QStringList normalizedSequentialExtensions(const QString& text)
 inline bool automaticSequential(const QVector<FileStat>& files, int rpcVersion)
 {
     const QSettings settings;
-    if (rpcVersion < 18 || files.size() != 1 ||
+    if (rpcVersion < kRpcSequential || files.size() != 1 ||
         !settings.value("downloads/autoSequential", false).toBool())
         return false;
     const auto extensions = normalizedSequentialExtensions(settings.value(

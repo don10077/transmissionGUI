@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QBuffer>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -74,8 +75,24 @@ inline bool extract(const QByteArray& zip, const QString& directory)
     if (status != ARCHIVE_EOF || count == 0)
         return false;
 
-    if (destination.exists() && !parent.rmdir(destination.fileName()))
+    // Старый каталог может быть непустым (чужеродные файлы): rmdir его не
+    // удалит и обновление флагов заблокируется навсегда (ARCH-08). Поэтому —
+    // отодвигаем старый в .old-<stamp>, переключаемся на новый и удаляем
+    // старый; при неудаче переименования восстанавливаем прежний.
+    QString oldBackup;
+    if (destination.exists()) {
+        oldBackup = parent.filePath(destination.fileName() + "-old-"
+            + QString::number(QDateTime::currentMSecsSinceEpoch()));
+        if (QFileInfo(oldBackup).exists() || !parent.rename(destination.fileName(), oldBackup))
+            return false;
+    }
+    if (!parent.rename(stage.path(), directory)) {
+        if (!oldBackup.isEmpty())
+            parent.rename(oldBackup, directory);
         return false;
-    return parent.rename(stage.path(), directory);
+    }
+    if (!oldBackup.isEmpty())
+        QDir(oldBackup).removeRecursively();
+    return true;
 }
 }

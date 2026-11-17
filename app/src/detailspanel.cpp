@@ -36,6 +36,16 @@
 
 using RefreshAfter = TorrentActions::RefreshAfter;
 
+static void applyDefaultFileColumnWidths(QTreeView* view)
+{
+    view->setColumnWidth(FileTreeModel::Want, 36);
+    view->setColumnWidth(FileTreeModel::Name, 350);
+    view->setColumnWidth(FileTreeModel::Size, 90);
+    view->setColumnWidth(FileTreeModel::Done, 90);
+    view->setColumnWidth(FileTreeModel::Progress, 86);
+    view->setColumnWidth(FileTreeModel::Priority, 100);
+}
+
 DetailsPanel::DetailsPanel(QWidget* parent, const ConnectionController& connection, const TorrentModel& model,
                            const tgui::SessionInfo& session, MapPath map, OpenPath open, SelectionCount count)
     : QTabWidget(parent), m_connection(connection), m_model(model), m_sessionInfo(session),
@@ -58,11 +68,9 @@ DetailsPanel::DetailsPanel(QWidget* parent, const ConnectionController& connecti
         const int rowHeight = qMax(21, view->fontMetrics().height() + 5);
         view->verticalHeader()->setMinimumSectionSize(rowHeight);
         view->verticalHeader()->setDefaultSectionSize(rowHeight);
-        view->horizontalHeader()->setStretchLastSection(false);
+        ColumnLayout::configureHeader(view->horizontalHeader());
         view->horizontalHeader()->setSectionsMovable(true);
         view->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
-        view->horizontalHeader()->setHighlightSections(false);
-        view->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         return view;
     };
 
@@ -81,18 +89,12 @@ DetailsPanel::DetailsPanel(QWidget* parent, const ConnectionController& connecti
     filesView->setIndentation(16);
     filesView->setIconSize(QSize(16, 16));
     filesView->setTreePosition(FileTreeModel::Name);
-    filesView->header()->setStretchLastSection(false);
-    filesView->header()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    ColumnLayout::configureHeader(filesView->header());
     filesView->header()->setSectionsMovable(true);
     filesView->setItemDelegateForColumn(FileTreeModel::Progress, new ProgressDelegate(filesView));
     filesView->setItemDelegateForColumn(FileTreeModel::Want, new WantCheckDelegate(filesView));
     m_filesView = filesView;
-    filesView->setColumnWidth(FileTreeModel::Want, 36);
-    filesView->setColumnWidth(FileTreeModel::Name, 350);
-    filesView->setColumnWidth(FileTreeModel::Size, 90);
-    filesView->setColumnWidth(FileTreeModel::Done, 90);
-    filesView->setColumnWidth(FileTreeModel::Progress, 86);
-    filesView->setColumnWidth(FileTreeModel::Priority, 100);
+    applyDefaultFileColumnWidths(filesView);
     // Восстановить сохранённую раскладку вкладки «Файлы» (порядок/видимость/ширины).
     const bool filesColumnsSaved =
         QSettings().contains(QStringLiteral("files/columns/order"));
@@ -117,14 +119,8 @@ DetailsPanel::DetailsPanel(QWidget* parent, const ConnectionController& connecti
         m_filesView->header()->restoreState(header);
         if (first) {
             // Без сохранённой раскладки — ширины по умолчанию; сохранённые не перетираем.
-            if (!filesColumnsSaved) {
-                m_filesView->setColumnWidth(FileTreeModel::Want, 36);
-                m_filesView->setColumnWidth(FileTreeModel::Name, 350);
-                m_filesView->setColumnWidth(FileTreeModel::Size, 90);
-                m_filesView->setColumnWidth(FileTreeModel::Done, 90);
-                m_filesView->setColumnWidth(FileTreeModel::Progress, 86);
-                m_filesView->setColumnWidth(FileTreeModel::Priority, 100);
-            }
+            if (!filesColumnsSaved)
+                applyDefaultFileColumnWidths(m_filesView);
             m_filesView->expandToDepth(0);
         }
     });
@@ -321,12 +317,8 @@ void DetailsPanel::setCurrentTorrent(int id)
     m_trackerModel.setTrackers({});
     // «General» обновляем из модели сразу — до ответа RPC.
     if (id >= 0) {
-        for (const auto& t : m_model.torrents()) {
-            if (t.id == id) {
-                updateGeneralTorrent(t);
-                break;
-            }
-        }
+        if (const auto* t = m_model.torrentById(id))
+            updateGeneralTorrent(*t);
     } else {
         m_general->clear();
     }
@@ -527,13 +519,7 @@ void DetailsPanel::onFilesDoubleClicked(int row)
     const auto& files = m_fileModel.files();
     if (row < 0 || row >= files.size())
         return;
-    const tgui::Torrent* t = nullptr;
-    for (const auto& x : m_model.torrents()) {
-        if (x.id == m_currentId) {
-            t = &x;
-            break;
-        }
-    }
+    const tgui::Torrent* t = m_model.torrentById(m_currentId);
     const QString dir = (t && t->downloadDir.has_value()) ? t->downloadDir.value() : QString();
     if (dir.isEmpty())
         return;
@@ -756,9 +742,8 @@ void DetailsPanel::onFilesWantToggled(const QVector<int>& rows, bool wanted)
 
 QString DetailsPanel::currentDownloadDir() const
 {
-    for (const auto& x : m_model.torrents())
-        if (x.id == m_currentId)
-            return x.downloadDir.value_or(QString());
+    if (const auto* t = m_model.torrentById(m_currentId))
+        return t->downloadDir.value_or(QString());
     return QString();
 }
 

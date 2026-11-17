@@ -44,7 +44,7 @@ PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion
     // Последовательная загрузка (W04): переключается и для уже добавленных
     // торрентов (torrent-set sequential_download). Гейт RPC ≥ 18 — как в образце
     // (acSequentialDownload) и в Add-диалоге.
-    const bool sequentialSupported = rpcVersion >= 18;
+    const bool sequentialSupported = rpcVersion >= tgui::kRpcSequential;
     const bool sequentialInitial = t.sequentialDownload.value_or(false);
     auto* sequential = new QCheckBox(tr("Sequential download"), general);
     sequential->setObjectName(QStringLiteral("sequentialDownload"));
@@ -56,7 +56,7 @@ PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion
     tgui::theme::addFormRow(form, QString(), sequential);
     QList<std::function<void(QJsonObject&)>> readers;
     const auto labels = torrentlabels::configured();
-    if (rpcVersion >= 16 && !labels.isEmpty()) {
+    if (rpcVersion >= tgui::kRpcLabels && !labels.isEmpty()) {
         const auto current = t.labels.value_or(QStringList{});
         auto* picker = torrentlabels::createPicker(general, labels, current);
         tgui::theme::addFormRow(form, tr("Label"), picker);
@@ -131,7 +131,7 @@ PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion
     auto* trackersLayout = new QVBoxLayout(trackersPage);
     trackersLayout->setContentsMargins(16, 16, 16, 16);
     trackersLayout->setSpacing(8);
-    auto* trackersHint = new QLabel(rpcVersion >= 17
+    auto* trackersHint = new QLabel(rpcVersion >= tgui::kRpcTrackerTier
         ? tr("One announce URL per line. A blank line separates tiers (trackerList).")
         : tr("One announce URL per line."), trackersPage);
     trackersHint->setObjectName(QStringLiteral("hintLabel"));
@@ -142,7 +142,7 @@ PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion
     QStringList originalLines;
     for (const auto& tracker : t.trackerStats) original.append(tracker.announce);
     for (qsizetype i = 0; i < t.trackerStats.size(); ++i) {
-        if (rpcVersion >= 17 && i > 0 && t.trackerStats.at(i - 1).tier != t.trackerStats.at(i).tier)
+        if (rpcVersion >= tgui::kRpcTrackerTier && i > 0 && t.trackerStats.at(i - 1).tier != t.trackerStats.at(i).tier)
             originalLines.append(QString());
         originalLines.append(t.trackerStats.at(i).announce);
     }
@@ -184,7 +184,7 @@ PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion
                 lines.append(text);
             }
         }
-        if (rpcVersion >= 17) {
+        if (rpcVersion >= tgui::kRpcTrackerTier) {
             if (!lines.isEmpty() && lines.last().isEmpty())
                 lines.removeLast();
             if (lines != originalLines)
@@ -260,11 +260,11 @@ PropsDialog::PropsDialog(int torrentCount, QWidget* parent, int rpcVersion) : QD
     addLimit(tr("Maximum download speed"), "downloadLimited", "downloadLimit", limits, 2, 0, 1000000000);
     addLimit(tr("Maximum upload speed"), "uploadLimited", "uploadLimit", limits, 2, 0, 1000000000);
     const QStringList modes{tr("Use daemon settings"), tr("Custom limit"), tr("Unlimited")};
-    if (rpcVersion >= 5)
+    if (rpcVersion >= tgui::kRpcFilePriority)
         addLimit(tr("Seed ratio"), "seedRatioMode", "seedRatioLimit", modes, 2, 2, 1000000);
-    if (rpcVersion >= 10)
+    if (rpcVersion >= tgui::kRpcTrackers)
         addLimit(tr("Stop seeding when inactive"), "seedIdleMode", "seedIdleLimit", modes, 2, 0, 1000000);
-    if (rpcVersion >= 18) {
+    if (rpcVersion >= tgui::kRpcSequential) {
         auto* sequential = choiceRow(tr("Sequential download"), {tr("Enable"), tr("Disable")});
         readers.append([sequential](QJsonObject& changes) {
             if (sequential->currentIndex() > 0)

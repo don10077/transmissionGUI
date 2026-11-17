@@ -19,6 +19,18 @@ std::optional<int> optInt(const QJsonObject& j, const char* key)
     return static_cast<int>(d);
 }
 
+std::optional<qint64> optInt64(const QJsonObject& j, const char* key)
+{
+    const QJsonValue v = j.value(key);
+    if (!v.isDouble())
+        return std::nullopt;
+    const double d = v.toDouble();
+    constexpr double limit = 9223372036854775807.0; // INT64_MAX (в double)
+    if (d < -limit || d > limit)
+        return std::nullopt;
+    return static_cast<qint64>(d);
+}
+
 std::optional<double> optNum(const QJsonObject& j, const char* key)
 {
     const QJsonValue v = j.value(key);
@@ -125,9 +137,9 @@ bool parseTorrent(const QJsonObject& j, Torrent& t, bool partial)
     assign(t.peersSendingToUs, "peersSendingToUs", optInt);
     assign(t.peersGettingFromUs, "peersGettingFromUs", optInt);
     assign(t.eta, "eta", optInt);
-    assign(t.addedDate, "addedDate", optInt);
-    assign(t.doneDate, "doneDate", optInt);
-    assign(t.activityDate, "activityDate", optInt);
+    assign(t.addedDate, "addedDate", optInt64);
+    assign(t.doneDate, "doneDate", optInt64);
+    assign(t.activityDate, "activityDate", optInt64);
     assign(t.secondsSeeding, "secondsSeeding", optInt);
     assign(t.secondsDownloading, "secondsDownloading", optInt);
     assign(t.bandwidthPriority, "bandwidthPriority", optInt);
@@ -140,7 +152,7 @@ bool parseTorrent(const QJsonObject& j, Torrent& t, bool partial)
     assign(t.hashString, "hashString", optStr);
     assign(t.comment, "comment", optStr);
     assign(t.creator, "creator", optStr);
-    assign(t.dateCreated, "dateCreated", optInt);
+    assign(t.dateCreated, "dateCreated", optInt64);
     assign(t.pieceCount, "pieceCount", optInt);
     assign(t.pieceSize, "pieceSize", optNum);
     assign(t.haveValid, "haveValid", optNum);
@@ -245,8 +257,8 @@ QVector<TrackerStat> parseTrackerStats(const QJsonArray& array)
         s.hasAnnounced = j.value("hasAnnounced").toBool();
         s.lastAnnounceSucceeded = j.value("lastAnnounceSucceeded").toBool();
         s.lastAnnounceResult = j.value("lastAnnounceResult").toString();
-        s.lastAnnounceTime = j.value("lastAnnounceTime").toInt();
-        s.nextAnnounceTime = j.value("nextAnnounceTime").toInt();
+        s.lastAnnounceTime = j.value("lastAnnounceTime").toInteger();
+        s.nextAnnounceTime = j.value("nextAnnounceTime").toInteger();
         s.seederCount = j.value("seederCount").isDouble() ? j.value("seederCount").toInt() : -1;
         s.leecherCount =
             j.value("leecherCount").isDouble() ? j.value("leecherCount").toInt() : -1;
@@ -289,9 +301,9 @@ QVector<Peer> parsePeers(const QJsonArray& array)
         p.flagStr = str("flagStr", "flag-str");
         const double progress = num("progress", "progress");
         if (progress >= 0.0) {
-            // Демон может возвращать fraction (0.0-1.0) или percentage (0-100).
-            // Нормализуем к 0-100.
-            p.progress = progress <= 1.0 ? progress * 100.0 : progress;
+            // Демон может возвращать fraction (0.0-1.0) или percentage (0-100):
+            // трактуем значение как долю и нормализуем к 0-100.
+            p.progress = std::clamp(progress * 100.0, 0.0, 100.0);
         }
         const double rtc = num("rateToClient", "rate-to-client");
         if (rtc >= 0.0)
@@ -511,8 +523,6 @@ bool parseSessionStats(const QJsonObject& j, SessionStats& out)
     return true;
 }
 
-} // namespace tgui
-namespace tgui {
 QString torrentError(const Torrent& torrent)
 {
     QString global = torrent.errorString.value_or(QString());
@@ -533,7 +543,7 @@ QString torrentError(const Torrent& torrent)
     }
     // A stopped torrent does not announce; stale tracker errors are hidden,
     // but local failures (missing files, disk errors, etc.) remain visible.
-    if (result.isEmpty() || torrent.status.value_or(-1) == 0) return global;
+    if (result.isEmpty() || statusIsStopped(torrent.status.value_or(-1))) return global;
     return result;
 }
 } // namespace tgui

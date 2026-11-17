@@ -65,10 +65,10 @@ void ConnectionController::startConnect(const tgui::RpcClient::Options& opts, bo
     m_reconnectOptions.reset();
     m_reconnecting = retry;
     if (!retry)
-        m_reconnectDelayMs = 1000;
+        m_reconnectDelayMs = kReconnectBaseDelayMs;
     m_rpc = std::make_unique<tgui::RpcClient>(opts);
     connect(m_rpc.get(), &tgui::RpcClient::connected, this, [this](const tgui::SessionInfo& info) {
-        m_reconnectDelayMs = 1000;
+        m_reconnectDelayMs = kReconnectBaseDelayMs;
         m_connected = true;
         emit connected(info);
     });
@@ -120,7 +120,7 @@ void ConnectionController::onDisconnect()
     m_connectionProfile.clear();
     m_reconnectTimer.stop();
     m_reconnectOptions.reset();
-    m_reconnectDelayMs = 1000;
+    m_reconnectDelayMs = kReconnectBaseDelayMs;
     clearConnection();
     emit manuallyDisconnected();
 }
@@ -168,13 +168,13 @@ void ConnectionController::handleConnectionError(const QString& error, bool retr
             resetClient();
             m_reconnectOptions = opts;
             const int delay = m_reconnectDelayMs;
-            m_reconnectDelayMs = std::min(delay * 2, 60000);
+            m_reconnectDelayMs = std::min(delay * 2, kReconnectMaxDelayMs);
             m_reconnectTimer.start(delay);
             emit retryScheduled(delay, error);
             return;
         }
         clearConnection();
-        m_reconnectDelayMs = 1000;
+        m_reconnectDelayMs = kReconnectBaseDelayMs;
         emit failed();
         QMessageBox::critical(&m_window, QCoreApplication::translate("MainWindow", "Connection failed"),
                               QCoreApplication::translate("MainWindow", "Address: %1\n\nReason: %2").arg(opts.url.toDisplayString(QUrl::RemoveUserInfo), error));

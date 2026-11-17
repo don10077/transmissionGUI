@@ -120,10 +120,10 @@ std::string GeoIpDb::countryNameFor(const std::string& code) {
   static const char * const kNames[] = {
       "", "Asia/Pacific Region", "Europe", "Andorra", "United Arab Emirates",
       "Afghanistan", "Antigua & Barbuda", "Anguilla", "Albania", "Armenia",
-      "N. America & Carib.", "Angola", "Antarctica", "Argentina", "American Samoa",
+      "Netherlands Antilles", "Angola", "Antarctica", "Argentina", "American Samoa",
       "Austria", "Australia", "Aruba", "Azerbaijan", "Bosnia & Herzegovina",
       "Barbados", "Bangladesh", "Belgium", "Burkina Faso", "Bulgaria",
-      "Bahrain", "Burundi", "Benin", "St. Barthelemy", "Brunei",
+      "Bahrain", "Burundi", "Benin", "Bermuda", "Brunei",
       "Bolivia", "Brazil", "Bahamas", "Bhutan", "Bouvet Island",
       "Botswana", "Belarus", "Belize", "Canada", "Cocos & Keeling Is.",
       "Congo (Kinshasa)", "Central African Rep.", "Congo (Brazzaville)",

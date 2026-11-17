@@ -308,12 +308,12 @@ OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion, tgui::RpcClient* r
     sequentialLayout->addWidget(m_autoSequential);
     sequentialLayout->addWidget(hint);
     sequentialLayout->addWidget(m_sequentialExtensions, 1);
-    if (rpcVersion < 18) {
+    if (rpcVersion < tgui::kRpcSequential) {
         sequentialLayout->addWidget(noteLabel(
             tr("Requires Transmission 4.1 or newer (RPC 18) to edit this setting."), sequentialPage));
         m_autoSequential->setEnabled(false);
     }
-    m_sequentialExtensions->setEnabled(rpcVersion >= 18 && m_autoSequential->isChecked());
+    m_sequentialExtensions->setEnabled(rpcVersion >= tgui::kRpcSequential && m_autoSequential->isChecked());
     connect(m_autoSequential, &QCheckBox::toggled, m_sequentialExtensions, &QWidget::setEnabled);
 
     // --- Метки -----------------------------------------------------------
@@ -669,7 +669,7 @@ void OptionsDialog::renameLabel(tgui::RpcClient& rpc)
     if (index < 0)
         return;
 
-    if (!rpc.supports(16)) {
+    if (!rpc.supports(tgui::kRpcLabels)) {
         bool accepted = false;
         const auto to = QInputDialog::getText(this, tr("Rename label"), tr("New name:"),
                                               QLineEdit::Normal, from, &accepted).trimmed();

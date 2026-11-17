@@ -134,22 +134,21 @@ int TorrentModel::columnCount(const QModelIndex& parent) const
 QString TorrentModel::statusText(int status, bool finished)
 {
     // Текст статуса — 1:1 с GetTorrentStatus референса (main.pas).
-    if (finished && status == 0)
+    using tgui::TorrentStatus;
+    if (finished && status == static_cast<int>(TorrentStatus::Stopped))
         return tr("Finished");
-    switch (status) {
-        case 0:
+    switch (static_cast<TorrentStatus>(status)) {
+        case TorrentStatus::Stopped:
             return tr("Paused");
-        case 1:
+        case TorrentStatus::CheckWait:
+        case TorrentStatus::DownloadWait:
+        case TorrentStatus::SeedWait:
             return tr("Waiting");
-        case 2:
+        case TorrentStatus::Check:
             return tr("Verifying");
-        case 3:
-            return tr("Waiting");
-        case 4:
+        case TorrentStatus::Download:
             return tr("Downloading");
-        case 5:
-            return tr("Waiting");
-        case 6:
+        case TorrentStatus::Seed:
             return tr("Seeding");
     }
     return tr("Unknown");
@@ -165,14 +164,14 @@ bool TorrentModel::matchesGroup(const tgui::Torrent& t, int group)
     const bool active = (t.rateDownload.value_or(0) != 0) ||
                         (t.rateUpload.value_or(0) != 0);
     const bool error = !tgui::torrentError(t).isEmpty();
-    const bool stopped = status == 0 && !error;
+    const bool stopped = status == static_cast<int>(tgui::TorrentStatus::Stopped) && !error;
     switch (group) {
         case GroupAll:
             return true;
         case GroupDownloading:
-            return status == 4;
+            return status == static_cast<int>(tgui::TorrentStatus::Download);
         case GroupCompleted:
-            return (status == 6) || (finished && !error);
+            return (status == static_cast<int>(tgui::TorrentStatus::Seed)) || (finished && !error);
         case GroupActive:
             return active;
         case GroupInactive:
@@ -182,7 +181,9 @@ bool TorrentModel::matchesGroup(const tgui::Torrent& t, int group)
         case GroupError:
             return error;
         case GroupWaiting:
-            return status == 1 || status == 2 || status == 3;
+            return status == static_cast<int>(tgui::TorrentStatus::CheckWait) ||
+                   status == static_cast<int>(tgui::TorrentStatus::Check) ||
+                   status == static_cast<int>(tgui::TorrentStatus::DownloadWait);
     }
     return true;
 }
@@ -190,7 +191,7 @@ bool TorrentModel::matchesGroup(const tgui::Torrent& t, int group)
 namespace {
 
 // Короткий формат даты и времени по текущей локали; <= 0 — «—» (I18N-03).
-QString fmtTime(int unix)
+QString fmtTime(qint64 unix)
 {
     if (unix <= 0)
         return QStringLiteral("—");

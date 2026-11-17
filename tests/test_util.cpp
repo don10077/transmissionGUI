@@ -92,6 +92,9 @@ TEST(UtilFormatSize, Behavior)
     EXPECT_EQ(formatSize(1.23 * 1024 * 1024 * 1024), "1.23 GB");
     // TB → 3 знака: 1.234 TB
     EXPECT_EQ(formatSize(1.234 * 1024.0 * 1024 * 1024 * 1024), "1.234 TB");
+    // PB → 4 знака (ARCH-08)
+    EXPECT_EQ(formatSize(1024.0 * 1024 * 1024 * 1024 * 1024), "1.0000 PB");
+    EXPECT_EQ(formatSize(1.5 * 1024.0 * 1024 * 1024 * 1024 * 1024), "1.5000 PB");
     // Отрицательное → "-" (EmptyStr)
     EXPECT_EQ(formatSize(-1), "-");
 }
@@ -168,4 +171,6 @@ TEST(UtilPercentComplete, Behavior)
     EXPECT_DOUBLE_EQ(percentComplete(0, 0), 0.0);
     // left > size (не должно быть; результат жмём на 0)
     EXPECT_DOUBLE_EQ(percentComplete(100, 500), 0.0);
+    // left ушёл в минус из-за округления демона — жмём на 100 (ARCH-08)
+    EXPECT_DOUBLE_EQ(percentComplete(1000, -50), 100.0);
 }

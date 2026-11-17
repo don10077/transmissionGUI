@@ -38,6 +38,10 @@
 #include "torrentlabels.h"
 #include "tgui/util.h"
 
+namespace {
+constexpr int kFilterPanelWidth = 215; // ширина панели фильтров
+}
+
 TorrentListController::TorrentListController(QMainWindow& window, const ConnectionController& connection,
                                              const QStringList& labels)
     : m_window(window), m_connection(connection), m_labels(labels)
@@ -95,10 +99,8 @@ QWidget* TorrentListController::createPanel()
         if (index.isValid()) onTorrentsDoubleClicked();
     });
     m_view->header()->setObjectName(QStringLiteral("torrentHeader"));
-    m_view->header()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    m_view->header()->setStretchLastSection(false);
+    ColumnLayout::configureHeader(m_view->header());
     m_view->header()->setSectionResizeMode(QHeaderView::Interactive);
-    m_view->header()->setHighlightSections(false);
     m_view->header()->setMinimumSectionSize(30);
     // Сохранённые порядок, видимость и ширины имеют приоритет над макетом.
     ColumnLayout::fromSettings(TorrentModel::ColumnCount).applyToView(m_view);
@@ -130,7 +132,7 @@ QWidget* TorrentListController::createPanel()
     topPanel->addWidget(m_filterPanel);
     topPanel->addWidget(m_view);
     topPanel->setStretchFactor(1, 1);
-    topPanel->setSizes({215, m_window.width() - 215 - topPanel->handleWidth()});
+    topPanel->setSizes({kFilterPanelWidth, m_window.width() - kFilterPanelWidth - topPanel->handleWidth()});
 
     if (m_view->selectionModel()) {
         connect(m_view->selectionModel(), &QItemSelectionModel::selectionChanged,
@@ -173,7 +175,7 @@ TorrentListController::Selection TorrentListController::applySnapshot(const QVec
         QStringList completed;
         for (const auto& torrent : torrents) {
             const auto* old = m_model.torrentById(torrent.id);
-            if (old && old->status.value_or(-1) == 4 && old->leftUntilDone.value_or(0) > 0 &&
+            if (old && old->status.value_or(-1) == static_cast<int>(tgui::TorrentStatus::Download) && old->leftUntilDone.value_or(0) > 0 &&
                 torrent.leftUntilDone && *torrent.leftUntilDone == 0 &&
                 torrent.sizeWhenDone.value_or(0) > 0 && torrent.status.value_or(-1) != 2) {
                 completed.append(torrent.name.value_or(QString::number(torrent.id)));

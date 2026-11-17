@@ -34,7 +34,7 @@
 
 namespace {
 
-QString fmtUnixTime(int unix)
+QString fmtUnixTime(qint64 unix)
 {
     if (unix <= 0)
         return QStringLiteral("—");

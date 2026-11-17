@@ -31,6 +31,8 @@
 
 namespace {
 constexpr int kRefreshIntervalMs = 2000;
+constexpr int kDetailsPanelHeight = 280; // высота панели деталей
+constexpr int kMainTopMinHeight = 60;    // минимальная высота области списка
 
 } // namespace
 
@@ -151,7 +153,8 @@ void MainWindow::createUi()
     splitter->addWidget(&m_details);
     splitter->setStretchFactor(0, 1);
     splitter->setStretchFactor(1, 0);
-    splitter->setSizes({qMax(60, height() - 284), 280});
+    splitter->setSizes({qMax(kMainTopMinHeight, height() - kDetailsPanelHeight - splitter->handleWidth()),
+                        kDetailsPanelHeight});
     setCentralWidget(splitter);
 
     m_status.initialize(*m_list.view());
@@ -211,7 +214,7 @@ void MainWindow::updateSelectionActions(qsizetype count)
     m_details.updateInfoTitleWithCount(count);
     m_actions.updateSelection(count);
     if (m_actQueue) m_actQueue->setEnabled(hasSel);
-    m_actChooseLabel->setEnabled(hasSel && m_connection.client() && m_connection.client()->supports(16));
+    m_actChooseLabel->setEnabled(hasSel && m_connection.client() && m_connection.client()->supports(tgui::kRpcLabels));
 }
 
 /** Синхронизирует пункты меню и правую панель со списком меток. */

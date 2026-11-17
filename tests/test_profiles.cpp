@@ -120,6 +120,7 @@ TEST(ProfileStore, AddSaveReadRoundTrip)
     EXPECT_TRUE(r.toOptions().clientCertificatePath.isEmpty());
     EXPECT_TRUE(r.toOptions().clientKeyPath.isEmpty());
     EXPECT_EQ(store.currentProfile().host, "10.0.0.5");
+    clearStore(); // Не оставляем «текущий профиль»: он меняет авто-соединение MainWindow в других тестах.
 }
 
 TEST(ProfileStore, LegacyPreferencesMigrateAndStayIndependentAfterRename)
@@ -195,6 +196,7 @@ TEST(ProfileStore, AddDuplicateIgnored)
     EXPECT_EQ(names.size(), 2);
     EXPECT_TRUE(names.contains("home"));
     EXPECT_TRUE(names.contains("work"));
+    clearStore(); // Не оставляем «текущий профиль» для последующих тестов.
 }
 
 TEST(ProfileStore, ConnectionDialogOnlyPersistsOptedInPasswords)
@@ -270,6 +272,7 @@ TEST(ProfileStore, RefusesNamesThatOverlapSettings)
     }
     EXPECT_EQ(store.names(), QStringList{"home"});
     EXPECT_EQ(store.currentName(), QStringLiteral("home"));
+    clearStore(); // Не оставляем «текущий профиль» для последующих тестов.
 }
 
 TEST(ProfileStore, RemoveSwitchesCurrent)
@@ -284,6 +287,7 @@ TEST(ProfileStore, RemoveSwitchesCurrent)
     EXPECT_FALSE(store.exists("work"));
     EXPECT_TRUE(store.hasCurrent());
     EXPECT_NE(store.currentName(), "work");
+    clearStore(); // Не оставляем «текущий профиль» для последующих тестов.
 }
 
 TEST(ProfileStore, RenameKeepsDataAndCurrent)
@@ -304,4 +308,5 @@ TEST(ProfileStore, RenameKeepsDataAndCurrent)
     EXPECT_EQ(r.host, "x");
     EXPECT_EQ(r.username, "user");
     EXPECT_EQ(store.currentName(), "b");
+    clearStore(); // Не оставляем «текущий профиль» для последующих тестов.
 }

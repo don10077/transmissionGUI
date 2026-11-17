@@ -11,12 +11,17 @@
 
 #include "optionsdialog.h"
 
+namespace {
+constexpr int kDebounceMs = 500;          // дебаунс событий файловой системы
+constexpr int kFallbackRetryMs = 30000;   // резервный период сканирования
+}
+
 WatchFolderService::WatchFolderService()
 {
     connect(this, &WatchFolderService::snapshotReady, this, &WatchFolderService::applyWatchSnapshot);
-    m_debounce.setInterval(500);
+    m_debounce.setInterval(kDebounceMs);
     m_debounce.setSingleShot(true);
-    m_fallback.setInterval(30000);
+    m_fallback.setInterval(kFallbackRetryMs);
     connect(&m_debounce, &QTimer::timeout, this, &WatchFolderService::scan);
     connect(&m_fallback, &QTimer::timeout, this, &WatchFolderService::scheduleScan);
     connect(&m_events, &QFileSystemWatcher::directoryChanged, this, &WatchFolderService::scheduleScan);

@@ -133,6 +133,14 @@ public:
     void addTracker(int id, const QString& url, RequestCallback callback = {});
     void removeTracker(int id, int trackerId, RequestCallback callback = {});
     void replaceTracker(int id, int trackerId, const QString& newUrl, RequestCallback callback = {});
+    /** Базовые параметры torrent-add из сессии демона (downloadDir, start). */
+    static AddTorrent makeAddParams(const SessionInfo& session)
+    {
+        AddTorrent params;
+        params.downloadDir = session.downloadDir;
+        params.start = session.startAddedTorrents;
+        return params;
+    }
     void addTorrent(const AddTorrent& params, AddCallback callback = {});
     void updateDuplicateTrackers(int id, const QString& magnet, const QByteArray& metainfo,
                                  TrackerUpdateCallback callback, const QString& expectedHash = {});

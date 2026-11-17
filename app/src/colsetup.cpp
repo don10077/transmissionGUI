@@ -126,6 +126,13 @@ void ColumnLayout::saveToSettings(const QString& ns) const
     s.sync();
 }
 
+void ColumnLayout::configureHeader(QHeaderView* header)
+{
+    header->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    header->setStretchLastSection(false);
+    header->setHighlightSections(false);
+}
+
 void ColumnLayout::applyToView(QTreeView* view) const
 {
     if (!view)

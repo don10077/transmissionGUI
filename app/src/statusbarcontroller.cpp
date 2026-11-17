@@ -21,6 +21,13 @@
 #include "torrentmodel.h"
 #include "tgui/util.h"
 
+namespace {
+constexpr int kToastShowMs = 2700;       // время показа уведомления
+constexpr int kToastFadeInMs = 120;      // плавное появление
+constexpr int kToastFadeOutMs = 180;     // плавное исчезновение
+constexpr int kToastBottomOffset = 60;   // отступ от нижнего края рабочей области
+}
+
 StatusBarController::StatusBarController(QMainWindow& window, const TorrentModel& model,
                                          const tgui::SessionInfo& session, Client client, Profile profile)
     : m_window(window), m_model(model), m_sessionInfo(session),
@@ -45,7 +52,7 @@ void StatusBarController::initialize(QTreeView& view)
             return;
         auto* effect = static_cast<QGraphicsOpacityEffect*>(m_toast->graphicsEffect());
         auto* fade = new QPropertyAnimation(effect, "opacity", effect);
-        fade->setDuration(180);
+        fade->setDuration(kToastFadeOutMs);
         fade->setStartValue(effect->opacity());
         fade->setEndValue(0.0);
         connect(fade, &QPropertyAnimation::finished, m_toast, &QWidget::hide);
@@ -174,11 +181,11 @@ void StatusBarController::showToast(const QString& message)
     positionToast();
     m_toast->raise();
     auto* fade = new QPropertyAnimation(effect, "opacity", effect);
-    fade->setDuration(120);
+    fade->setDuration(kToastFadeInMs);
     fade->setStartValue(0.0);
     fade->setEndValue(1.0);
     fade->start(QAbstractAnimation::DeleteWhenStopped);
-    m_toastTimer.start(2700);
+    m_toastTimer.start(kToastShowMs);
 }
 
 /** Центрирует уведомление в рабочей области над строкой состояния. */
@@ -191,7 +198,7 @@ void StatusBarController::positionToast()
     const int height = m_toast->heightForWidth(width);
     m_toast->resize(width, height > 0 ? height : m_toast->sizeHint().height());
     m_toast->move(area.left() + (area.width() - width) / 2,
-                  qMax(area.top(), area.bottom() + 1 - 60 - m_toast->height()));
+                  qMax(area.top(), area.bottom() + 1 - kToastBottomOffset - m_toast->height()));
 }
 
 /** Считает скорости, свободное место и число торрентов для строки состояния. */

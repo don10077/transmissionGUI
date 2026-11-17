@@ -125,7 +125,7 @@ TEST(ModelPeers, Parse)
     peers.append(QJsonObject{
         {"address", "192.168.1.10"}, {"port", 6891},
         {"clientName", "transmission/4.1.0"}, {"flagStr", "EFH"},
-        {"progress", 66.7}, {"rateToClient", 1000}, {"rateToPeer", 0},
+        {"progress", 0.667}, {"rateToClient", 1000}, {"rateToPeer", 0},
     });
     peers.append(QJsonObject{{"address", "10.0.0.2"}});
     const QVector<Peer> list = parsePeers(peers);
@@ -167,7 +167,7 @@ TEST(ModelPeers, ParseKebabCase)
     peers.append(QJsonObject{
         {"ip", "10.1.2.3"}, {"port", 51413},
         {"client-name", "transmission/4.2.0"}, {"flag-str", "EFH"},
-        {"progress", 12.5}, {"rate-to-client", 2048}, {"rate-to-peer", 4096},
+        {"progress", 0.125}, {"rate-to-client", 2048}, {"rate-to-peer", 4096},
     });
     const QVector<Peer> list = parsePeers(peers);
     ASSERT_EQ(list.size(), 1);
@@ -178,6 +178,18 @@ TEST(ModelPeers, ParseKebabCase)
     EXPECT_DOUBLE_EQ(list.first().progress, 12.5);
     EXPECT_EQ(list.first().rateToClient, 2048);
     EXPECT_EQ(list.first().rateToPeer, 4096);
+}
+
+TEST(ModelPeers, ProgressTreatedAsFractionAndClamped)
+{
+    // Прогресс пира — доля 0..1 (ARCH-08): значения вне диапазона жмём к 0..100.
+    QJsonArray peers;
+    peers.append(QJsonObject{{"address", "10.0.0.9"}, {"progress", 1.5}});
+    peers.append(QJsonObject{{"address", "10.0.0.8"}, {"progress", -0.5}});
+    const QVector<Peer> list = parsePeers(peers);
+    ASSERT_EQ(list.size(), 2);
+    EXPECT_DOUBLE_EQ(list.first().progress, 100.0);
+    EXPECT_DOUBLE_EQ(list.last().progress, 0.0);
 }
 
 TEST(ModelFiles, ParseCompletion)

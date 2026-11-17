@@ -71,4 +71,11 @@ TEST(GeoIpDb, RejectsInvalidRootPointer) {
   EXPECT_FALSE(db.load({2, 0, 0, 0, 0, 0}));
 }
 
+TEST(GeoIpDb, CountryNamesMatchCodes) {
+  // Раньше BM назывался «St. Barthelemy», а AN — «N. America & Carib.» (ARCH-08).
+  EXPECT_EQ(GeoIpDb::countryNameFor("BM"), "Bermuda");
+  EXPECT_EQ(GeoIpDb::countryNameFor("AN"), "Netherlands Antilles");
+  EXPECT_EQ(GeoIpDb::countryNameFor("ZZ"), "");
+}
+
 } // namespace

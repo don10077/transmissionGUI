@@ -45,12 +45,14 @@ std::string encode(const Value& value);
 
 // Декодирование с проверкой границ. При ошибке возвращает false и (если error
 // не null) текстовую причину. Требует: уникальные ключи, отсортированные по
-// возрастанию, отсутствие лишних байт в конце.
+// возрастанию, отсутствие лишних байт в конце. @p requireSortedKeys=false —
+// нестрогое чтение (например, трекеры в .torrent с несортированными ключами).
 struct InfoSpan {
   std::size_t begin = 0;
   std::size_t end = 0;
 };
-bool decode(std::string_view input, Value& out, std::string* error = nullptr, InfoSpan* info = nullptr);
+bool decode(std::string_view input, Value& out, std::string* error = nullptr, InfoSpan* info = nullptr,
+            bool requireSortedKeys = true);
 bool findInfoSpan(std::string_view input, std::size_t& begin, std::size_t& end);
 
 // --- Ремонт повреждённых .torrent ---

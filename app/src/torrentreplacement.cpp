@@ -137,9 +137,9 @@ public:
         m_startNew = options.start;
         if (options.peerLimit > 0)
             m_settings.insert("peer-limit", options.peerLimit);
-        if (m_rpc->supports(16))
+        if (m_rpc->supports(tgui::kRpcLabels))
             m_settings.insert("labels", QJsonArray::fromStringList(options.labels));
-        if (m_rpc->supports(18))
+        if (m_rpc->supports(tgui::kRpcSequential))
             m_settings.insert("sequential_download", options.sequential);
         const auto preview = previewTorrentMetainfo(m_bytes);
         if (!preview) {
@@ -191,6 +191,7 @@ private:
         m_restartOld = old.status != static_cast<int>(TorrentStatus::Stopped);
         m_directory = old.downloadDir;
         m_name = old.name;
+        carryOverSettings(old);
 
         m_progress->setLabelText(tr("Pausing the old torrent…"));
         m_rpc->torrentActionByHash("torrent-stop", m_oldHash, {}, [this](const JsonRpcResult& result) {
@@ -200,6 +201,46 @@ private:
             }
             waitForOldToStop();
         });
+    }
+
+    /** Переносит настройки старой раздачи на будущую torrent-set (ARCH-08).
+        Явно заданные пользователем значения (m_settings) имеют приоритет.
+        Приоритеты файлов применят в review() по совпадающим путям. */
+    void carryOverSettings(const TorrentDetails& old)
+    {
+        const auto insert = [this](const char* key, int value) {
+            if (!m_settings.contains(key))
+                m_settings.insert(key, value);
+        };
+        if (old.bandwidthPriority)
+            insert("bandwidthpriority", *old.bandwidthPriority);
+        if (old.queuePosition && *old.queuePosition >= 0)
+            insert("position", *old.queuePosition);
+        if (old.downloadLimited) {
+            insert("download-limited", *old.downloadLimited);
+            if (old.downloadLimit)
+                insert("download-limit", *old.downloadLimit);
+        }
+        if (old.uploadLimited) {
+            insert("upload-limited", *old.uploadLimited);
+            if (old.uploadLimit)
+                insert("upload-limit", *old.uploadLimit);
+        }
+        if (old.seedRatioMode) {
+            insert("seed-ratio-mode", *old.seedRatioMode);
+            if (old.seedRatioLimit)
+                insert("seed-ratio-limit", *old.seedRatioLimit);
+        }
+        if (old.seedIdleMode) {
+            insert("seed-idle-mode", *old.seedIdleMode);
+            if (old.seedIdleLimit)
+                insert("seed-idle-limit", *old.seedIdleLimit);
+        }
+        if (old.peerLimit > 0)
+            insert("peer-limit", old.peerLimit);
+        for (const auto& file : old.files)
+            if (file.priority != 0)
+                m_oldPriorities.insert(file.name, file.priority);
     }
 
     /** Дожидается остановки демона, прежде чем новая запись сможет проверить те же данные. */
@@ -296,6 +337,7 @@ private:
     void review(const TorrentDetails& details)
     {
         QJsonArray skipped, selected;
+        QJsonObject priorities;
         double reused = 0, remaining = 0;
         int newFiles = 0, recoveredFiles = 0;
         for (const auto& file : details.files) {
@@ -305,6 +347,8 @@ private:
                 return;
             }
             const auto old = m_oldFiles.constFind(file.name);
+            if (old != m_oldFiles.cend() && old->priority != 0)
+                priorities.insert(QString::number(file.index), old->priority);
             const double verified = file.size * std::clamp(file.completion, 0.0, 1.0);
             if (m_skippedPaths.contains(file.name)) {
                 skipped.append(file.index);
@@ -332,12 +376,14 @@ private:
             m_settings.insert("files-unwanted", skipped);
         if (!selected.isEmpty())
             m_settings.insert("files-wanted", selected);
+        if (!priorities.isEmpty())
+            m_settings.insert("file-priorities", priorities);
         m_newId = details.id;
         m_verifiedFiles = details.files;
         m_progress->hide();
         const auto format = [](double bytes) { return QString::fromStdString(tgui::formatSize(bytes)); };
         auto* box = new QMessageBox(QMessageBox::Question, tr("Replace torrent"),
-            tr("Old torrent: %1\nNew torrent: %2\nFolder: %3\n\nVerified data from %4 existing files: %5\nNew files: %6\nRemaining to download: %7\n\nReplace the old entry and keep its files?")
+            tr("Old torrent: %1\nNew torrent: %2\nFolder: %3\n\nVerified data from %4 existing files: %5\nNew files: %6\nRemaining to download: %7\n\nNote: upload statistics and ratio from the old torrent are NOT carried over.\n\nReplace the old entry and keep its files?")
                 .arg(m_name, details.name, m_directory, QString::number(recoveredFiles), format(reused),
                      QString::number(newFiles), format(remaining)),
             QMessageBox::Yes | QMessageBox::Cancel, m_window);
@@ -491,6 +537,7 @@ private:
     QHash<QString, double> m_files;
     QSet<QString> m_skippedPaths;
     QHash<QString, tgui::FileStat> m_oldFiles;
+    QHash<QString, int> m_oldPriorities;
     QVector<tgui::FileStat> m_verifiedFiles;
     QJsonObject m_settings;
     std::function<void(int)> m_callback;

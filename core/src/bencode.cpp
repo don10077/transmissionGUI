@@ -93,6 +93,7 @@ struct Parser {
     size_t depth = 0;
     size_t nodes = 0;
     InfoSpan info{};
+    bool checkKeyOrder = true;
 
     bool fail(const std::string& message)
     {
@@ -213,7 +214,7 @@ struct Parser {
             std::string key;
             if (!parseString(key))
                 return false;
-            if (!items.empty() && !(lastKey < key))
+            if (checkKeyOrder && !items.empty() && !(lastKey < key))
                 return fail("dictionary keys must be unique and sorted");
             Value value;
             const auto begin = pos;
@@ -229,9 +230,10 @@ struct Parser {
 
 } // namespace
 
-bool decode(std::string_view input, Value& out, std::string* error, InfoSpan* info)
+bool decode(std::string_view input, Value& out, std::string* error, InfoSpan* info, bool requireSortedKeys)
 {
     Parser p{input.data(), input.size(), 0, "", 0, 0, {}};
+    p.checkKeyOrder = requireSortedKeys;
     bool ok = p.parse(out) && p.pos == p.size;
     if (!ok && p.pos != p.size && p.error.empty())
         p.fail("trailing data after bencode value");

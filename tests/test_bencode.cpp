@@ -334,6 +334,19 @@ TEST(Bencode, RepairPreservesHybridInfoAndPieceLayers)
     EXPECT_EQ(decoded.find("created by")->toString(), "Creator - //example.org");
 }
 
+TEST(Bencode, LenientDecodeAcceptsUnsortedKeys)
+{
+    // «info» стоит раньше «announce» — ключи не по возрастанию: строгий
+    // decode отклоняет, нестрогое чтение принимает (ARCH-08).
+    const std::string input = "d4:infod4:name4:filee8:announce29:http://fresh.example/announcee";
+    Value strict;
+    EXPECT_FALSE(decode(input, strict));
+    Value lenient;
+    ASSERT_TRUE(decode(input, lenient, nullptr, nullptr, false));
+    EXPECT_EQ(lenient.find("announce")->toString(), "http://fresh.example/announce");
+    EXPECT_NE(lenient.find("info"), nullptr);
+}
+
 TEST(Bencode, RepairRefusesBrokenBinaryPayloadAfterMetadata)
 {
     std::string corrupt = replaceAll(makeSampleTorrent(), "http://", "//", 2);

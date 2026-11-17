@@ -112,7 +112,6 @@ struct Palette {
     // Акцент
     QColor accent;
     QColor accentDark;
-    QColor accentHover;
     // Статусы
     QColor green;
     QColor greenLight;
@@ -264,5 +263,13 @@ QIcon fileIcon(const QString& fileName);
  * @param dpr Масштаб экрана.
  */
 QPixmap statusDotPixmap(const QColor& color, int size, qreal dpr);
+
+/**
+ * Ставит цветное состояние метки (QSS: QLabel[statusState="ok" | "error"]).
+ * Палитрой не пользоваться: QSS `QWidget { color: ... }` её перебивает.
+ * @param widget Метка.
+ * @param state "ok", "error" или пустая строка — без цвета.
+ */
+void setStatusState(QWidget* widget, const QString& state);
 
 } // namespace tgui::theme
