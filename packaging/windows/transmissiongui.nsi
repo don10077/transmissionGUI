@@ -1,5 +1,6 @@
 Unicode true
 !include "MUI2.nsh"
+!include "LogicLib.nsh"
 !include "x64.nsh"
 
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\transmissionGUI"
@@ -12,6 +13,7 @@ OutFile "${OUTPUT}"
 InstallDir "$LOCALAPPDATA\Programs\transmissionGUI"
 InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"
 RequestExecutionLevel user
+ManifestDPIAware true
 SetCompressor /SOLID lzma
 
 VIProductVersion "${VERSION}.0"
@@ -28,6 +30,7 @@ VIAddVersionKey /LANG=0 "LegalCopyright" "transmissionGUI contributors"
 !define MUI_FINISHPAGE_RUN_NOTCHECKED
 
 !insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
@@ -52,19 +55,35 @@ Function .onInit
 FunctionEnd
 
 Section "transmissionGUI" MainSection
-    ; Use the previous manifest on upgrade so renamed DLLs do not accumulate.
+    ; Run the previous uninstaller before copying files, so renamed DLLs do not
+    ; accumulate. When the user picked another directory, remove the old one too.
     ReadRegStr $0 HKCU "${UNINSTALL_KEY}" "InstallLocation"
     ${If} $0 != ""
-    ${AndIf} $0 == $INSTDIR
-    ${AndIf} ${FileExists} "$INSTDIR\uninstall.exe"
+    ${AndIf} ${FileExists} "$0\uninstall.exe"
         ClearErrors
-        ExecWait '"$INSTDIR\uninstall.exe" /S _?=$INSTDIR' $1
+        ExecWait '"$0\uninstall.exe" /S _?=$0' $1
         ${If} ${Errors}
         ${OrIf} $1 != 0
             MessageBox MB_ICONSTOP "$(UpgradeFailed)" /SD IDOK
             SetErrorLevel 1
             Abort
         ${EndIf}
+        ${If} $0 != $INSTDIR
+            Delete "$0\uninstall.exe"
+            RMDir "$0"
+        ${EndIf}
+    ${EndIf}
+
+    ; A running copy keeps its executable locked; ask the user to close it first.
+    ${If} ${FileExists} "$INSTDIR\transmissiongui.exe"
+        ClearErrors
+        FileOpen $9 "$INSTDIR\transmissiongui.exe" a
+        ${If} ${Errors}
+            MessageBox MB_ICONSTOP "$(CloseApp)" /SD IDOK
+            SetErrorLevel 1
+            Abort
+        ${EndIf}
+        FileClose $9
     ${EndIf}
 
     SetOutPath "$INSTDIR"
