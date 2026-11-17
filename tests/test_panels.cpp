@@ -1432,13 +1432,8 @@ TEST_F(AutomaticAddSources, ExternalOpenForwardsUnicodeFileAndMagnetBeforeConnec
     ASSERT_NO_FATAL_FAILURE(connectWindow(window));
     QMessageBox* confirm = nullptr;
     ASSERT_TRUE(waitForSettings([&] {
-        for (auto* box : window.findChildren<QMessageBox*>()) {
-            if (box->isVisible() && box->windowTitle() == QStringLiteral("Add pending torrents")) {
-                confirm = box;
-                return true;
-            }
-        }
-        return false;
+        confirm = window.findChild<QMessageBox*>(QStringLiteral("pendingExternalTorrentsConfirmation"));
+        return confirm && confirm->isVisible();
     }));
     EXPECT_TRUE(additions().isEmpty());
     ASSERT_NE(confirm->button(QMessageBox::Yes), nullptr);

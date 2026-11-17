@@ -5,10 +5,9 @@
 #include <QEventLoop>
 #include <QImage>
 #include <QScopeGuard>
+#include <QSettings>
 #include <QTimer>
 #include <QUrl>
-
-#include <cstdlib>
 
 #include "aboutdialog.h"
 #include "connectdialog.h"
@@ -30,17 +29,6 @@ void ensureTheme()
         return;
     g_themeApplied = true;
     tgui::theme::apply(*qApp);
-}
-
-// Страховка от зависания прогона (модалка): watchdog-таймер, останавливается в конце теста.
-QTimer* startWatchdog()
-{
-    auto* watchdog = new QTimer(qApp);
-    watchdog->setSingleShot(true);
-    watchdog->setInterval(45000);
-    QObject::connect(watchdog, &QTimer::timeout, [] { std::_Exit(3); });
-    watchdog->start();
-    return watchdog;
 }
 
 void spinEvents(int ms = 300)
@@ -65,9 +53,27 @@ QImage grabWidget(QWidget& w)
 TEST(ThemeRendering, MainWindow)
 {
     ensureTheme();
+    // Предыдущие тесты могут оставить выбранный профиль с уже остановленным мок-сервером.
+    // Снимок интерфейса делаем в отключённом состоянии.
+    QSettings settings;
+    const QStringList keys{"daemons/current", "peers/showFlag", "ui/trayIcon", "ui/updateCheckEnabled"};
+    QVariantMap saved;
+    for (const auto& key : keys)
+        saved.insert(key, settings.value(key));
+    const bool quitOnClose = QApplication::quitOnLastWindowClosed();
+    const auto restore = qScopeGuard([&] {
+        for (auto it = saved.cbegin(); it != saved.cend(); ++it) {
+            if (it.value().isValid())
+                settings.setValue(it.key(), it.value());
+            else
+                settings.remove(it.key());
+        }
+        QApplication::setQuitOnLastWindowClosed(quitOnClose);
+    });
+    settings.remove(keys.first());
+    for (qsizetype i = 1; i < keys.size(); ++i)
+        settings.setValue(keys.at(i), false);
     QApplication::setQuitOnLastWindowClosed(false);
-    auto* watchdog = startWatchdog();
-    const auto stopWatchdog = qScopeGuard([watchdog] { watchdog->stop(); });
     MainWindow w;
     w.resize(1280, 800);
     EXPECT_FALSE(grabWidget(w).isNull());

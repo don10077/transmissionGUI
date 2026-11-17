@@ -1176,6 +1176,7 @@ void MainWindow::confirmPendingExternalTorrents()
     auto* confirm = new QMessageBox(QMessageBox::Question, tr("Add pending torrents"),
         tr("Add the pending torrents (%1) to %2?").arg(m_pendingExternalTorrents.size()).arg(destination),
         QMessageBox::Yes | QMessageBox::No, this);
+    confirm->setObjectName(QStringLiteral("pendingExternalTorrentsConfirmation"));
     confirm->setTextFormat(Qt::PlainText);
     confirm->setDefaultButton(QMessageBox::No);
     confirm->setAttribute(Qt::WA_DeleteOnClose);
