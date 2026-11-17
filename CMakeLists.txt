@@ -21,6 +21,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # compile_commands.json нужен clangd и IDE для подсказок.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Проект не использует C++-модули: отключаем сканирование зависимостей,
+# иначе Ninja запускает для каждого файла лишний проход компилятора.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
 # Qt MOC
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)

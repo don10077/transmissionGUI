@@ -44,21 +44,21 @@ set "PATH=%BUILD_BIN%;%PATH%"
 pushd "%~dp0"
 if errorlevel 1 goto finish
 echo Configuring %BUILD_KIND% with MSYS2 %BUILD_PROFILE%...
-"%BUILD_BIN%\cmake.exe" -S . -B "build/%BUILD_DIR%" -G Ninja -DCMAKE_BUILD_TYPE=%BUILD_KIND% -DCMAKE_C_COMPILER="%BUILD_BIN%/gcc.exe" -DCMAKE_CXX_COMPILER="%BUILD_BIN%/g++.exe" -DCMAKE_MAKE_PROGRAM="%BUILD_BIN%/ninja.exe" -DCMAKE_CXX_SCAN_FOR_MODULES=OFF
+"%BUILD_BIN%\cmake.exe" -S . -B "build/%BUILD_DIR%" -G Ninja -DCMAKE_BUILD_TYPE=%BUILD_KIND% -DCMAKE_C_COMPILER="%BUILD_BIN%/gcc.exe" -DCMAKE_CXX_COMPILER="%BUILD_BIN%/g++.exe" -DCMAKE_MAKE_PROGRAM="%BUILD_BIN%/ninja.exe"
 if errorlevel 1 goto failed
-rem Close any running instance: a live exe locks the output file and breaks the link.
-taskkill /IM transmissiongui.exe /F >nul 2>&1
-taskkill /IM tgui_tests.exe /F >nul 2>&1
+rem Close only our own executables from this build directory: a live exe locks the
+rem output file and breaks the link. Other copies (installed/portable) stay untouched.
+powershell -NoProfile -Command "Get-Process transmissiongui,tgui_tests -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith('%~dp0build\%BUILD_DIR%', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force" >nul 2>&1
 echo Building transmissiongui...
 "%BUILD_BIN%\cmake.exe" --build "build/%BUILD_DIR%" --target transmissiongui --parallel
 if errorlevel 1 goto failed
-echo Building tests...
-"%BUILD_BIN%\cmake.exe" --build "build/%BUILD_DIR%" --target tgui_tests --parallel
-if errorlevel 1 goto failed
 if "%BUILD_TESTS%"=="1" (
+    echo Building tests...
+    "%BUILD_BIN%\cmake.exe" --build "build/%BUILD_DIR%" --target tgui_tests --parallel
+    if errorlevel 1 goto failed
     echo Running tests...
     set "QT_QPA_PLATFORM=offscreen"
-    "build\%BUILD_DIR%\tests\tgui_tests.exe"
+    "%BUILD_BIN%\ctest.exe" --test-dir "build/%BUILD_DIR%" --output-on-failure
     if errorlevel 1 (
         echo.
         echo ERROR: Tests failed. See output above.
