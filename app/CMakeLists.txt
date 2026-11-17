@@ -1,8 +1,9 @@
 # app: графическое приложение (Qt 6 Widgets).
-add_executable(transmissiongui WIN32
-    src/main.cpp
+#
+# Вся логика UI вынесена в статическую библиотеку tgui_app_lib: её же
+# переиспользуют тесты, поэтому исходники приложения не компилируются дважды.
+add_library(tgui_app_lib STATIC
     src/externalopen.cpp
-    icons/icons.qrc
     src/theme.cpp
     src/connectbutton.cpp
     src/watchfolderservice.cpp
@@ -49,10 +50,21 @@ add_executable(transmissiongui WIN32
     src/colsetup.h
     src/aboutdialog.h
 )
-target_include_directories(transmissiongui PRIVATE src)
-target_compile_definitions(transmissiongui PRIVATE TGUI_VERSION="${PROJECT_VERSION}")
-target_link_libraries(transmissiongui PRIVATE tgui_core Qt6::Widgets Qt6::Network Qt6::Svg
+target_include_directories(tgui_app_lib PUBLIC src)
+target_compile_definitions(tgui_app_lib PUBLIC TGUI_VERSION="${PROJECT_VERSION}")
+target_link_libraries(tgui_app_lib PUBLIC tgui_core Qt6::Widgets Qt6::Network Qt6::Svg
     Qt6::Concurrent ZLIB::ZLIB LibArchive::LibArchive)
+if(WIN32)
+    target_link_libraries(tgui_app_lib PUBLIC shell32 crypt32)
+endif()
+tgui_set_warnings(tgui_app_lib)
+
+# Исполняемый файл: только точка входа, ресурсы и иконка (RC-файл).
+add_executable(transmissiongui WIN32
+    src/main.cpp
+    icons/icons.qrc
+)
+target_link_libraries(transmissiongui PRIVATE tgui_app_lib)
 if(WIN32)
     enable_language(RC)
     target_sources(transmissiongui PRIVATE icons/transmissiongui.rc)
@@ -60,13 +72,12 @@ if(WIN32)
         "$<$<COMPILE_LANGUAGE:RC>:${CMAKE_CURRENT_SOURCE_DIR}/icons>")
     set_property(SOURCE icons/transmissiongui.rc APPEND PROPERTY OBJECT_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/icons/transmission-upstream.ico")
-    target_link_libraries(transmissiongui PRIVATE shell32 crypt32)
 endif()
 tgui_set_warnings(transmissiongui)
 
 # i18n (W06): компилируем tgui_ru.ts -> tgui_ru.qm рядом с exe (<build>/app/translations/).
 # Переводчик загружается в main.cpp; по умолчанию русский, fallback на английский, если .qm нет.
-set(TGUI_I18N_TS ${CMAKE_SOURCE_DIR}/translations/tgui_ru.ts)
+set(TGUI_I18N_TS ${PROJECT_SOURCE_DIR}/translations/tgui_ru.ts)
 set(TGUI_I18N_QM ${CMAKE_CURRENT_BINARY_DIR}/translations/tgui_ru.qm)
 add_custom_command(
     OUTPUT ${TGUI_I18N_QM}
@@ -95,11 +106,11 @@ install(TARGETS transmissiongui
     BUNDLE DESTINATION .
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 if(APPLE)
-    install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" DESTINATION "transmissiongui.app/Contents/Resources")
+    install(FILES "${PROJECT_SOURCE_DIR}/LICENSE" DESTINATION "transmissiongui.app/Contents/Resources")
     qt_generate_deploy_app_script(TARGET transmissiongui OUTPUT_SCRIPT deploy_script)
     install(SCRIPT "${deploy_script}")
 elseif(UNIX)
-    install(FILES "${CMAKE_SOURCE_DIR}/LICENSE"
+    install(FILES "${PROJECT_SOURCE_DIR}/LICENSE"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/${PROJECT_NAME}")
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/transmissiongui.desktop"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")

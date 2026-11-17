@@ -25,64 +25,17 @@ add_executable(tgui_tests
     test_about.cpp
     tst_pathmap.cpp
     tst_geoip.cpp
-    # Скриншот-тесты темы (DESIGN_PLAN.md Фаза 0). Последний: apply() меняет глобальный стиль.
+    # Скриншот-тесты темы (последними: apply() меняет глобальный стиль).
     test_theme.cpp
-    # GUI-модели списка (regress: пустая таблица после подключения).
-    ${CMAKE_SOURCE_DIR}/app/src/torrentmodel.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/groupedproxy.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/delegates.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/filterpanel.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/detailmodels.cpp
-    # MainWindow + диалоги — нужны для E2E-теста вкладок.
-    ${CMAKE_SOURCE_DIR}/app/src/theme.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/connectbutton.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/watchfolderservice.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/mainwindow.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/externalopen.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/propsform.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/statsform.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/addlinkdialog.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/connectdialog.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/fileselectdialog.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/torrentreplacement.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/propsdialog.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/movedialog.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/optionsdialog.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/daemonprofile.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/secretstore.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/connoptionsdialog.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/daemonoptionsdialog.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/colsetup.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/aboutdialog.cpp
-    ${CMAKE_SOURCE_DIR}/app/src/mainwindow.h
-    ${CMAKE_SOURCE_DIR}/app/src/theme.h
-    ${CMAKE_SOURCE_DIR}/app/src/addlinkdialog.h
-    ${CMAKE_SOURCE_DIR}/app/src/connectdialog.h
-    ${CMAKE_SOURCE_DIR}/app/src/fileselectdialog.h
-    ${CMAKE_SOURCE_DIR}/app/src/propsdialog.h
-    ${CMAKE_SOURCE_DIR}/app/src/propsform.h
-    ${CMAKE_SOURCE_DIR}/app/src/statsform.h
-    ${CMAKE_SOURCE_DIR}/app/src/optionsdialog.h
-    ${CMAKE_SOURCE_DIR}/app/src/daemonprofile.h
-    ${CMAKE_SOURCE_DIR}/app/src/connoptionsdialog.h
-    ${CMAKE_SOURCE_DIR}/app/src/daemonoptionsdialog.h
-    ${CMAKE_SOURCE_DIR}/app/src/colsetup.h
-    ${CMAKE_SOURCE_DIR}/app/src/aboutdialog.h
-    ${CMAKE_SOURCE_DIR}/app/src/delegates.h
-    ${CMAKE_SOURCE_DIR}/app/src/filterpanel.h
-    ${CMAKE_SOURCE_DIR}/app/src/movedialog.h
 )
-target_include_directories(tgui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/app/src)
-target_link_libraries(tgui_tests PRIVATE tgui_core Qt6::Widgets Qt6::Network Qt6::Svg Qt6::Test
-    Qt6::Concurrent GTest::gtest ZLIB::ZLIB LibArchive::LibArchive)
-if(WIN32)
-    target_link_libraries(tgui_tests PRIVATE shell32 crypt32)
-endif()
+target_include_directories(tgui_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+# tgui_app_lib отдаёт исходники приложения, зависимости и TGUI_VERSION через PUBLIC.
+target_link_libraries(tgui_tests PRIVATE tgui_app_lib Qt6::Test GTest::gtest)
 tgui_set_warnings(tgui_tests)
 
 # W06: путь к скомпилированному .qm (проверка конвейера переводов без «железного» русского).
 target_compile_definitions(tgui_tests PRIVATE
-    TGUI_QM_PATH="${CMAKE_BINARY_DIR}/app/translations/tgui_ru.qm")
+    TGUI_QM_PATH="${PROJECT_BINARY_DIR}/app/translations/tgui_ru.qm")
 
 add_dependencies(tgui_tests tgui_translations)
 
