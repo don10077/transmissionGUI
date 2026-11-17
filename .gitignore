@@ -6,6 +6,7 @@ CMakeUserPresets.json
 compile_commands.json
 Release/
 _deps/
+.vscode/
 
 # Объекты и артефакты
 *.o

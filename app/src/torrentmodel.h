@@ -8,7 +8,7 @@
 
 #include "tgui/models.h"
 
-// Модель списка торрентов (torrent-get). Строки UI — английский (см. WORKFLOW.md 0.3).
+// Модель списка торрентов (torrent-get). Строки UI — английский (перевод — в tgui_ru.ts).
 /** Данные строки, нужные для отрисовки значка и полосы прогресса. */
 struct TorrentVisualState {
     double progress = -1.0;
@@ -21,7 +21,7 @@ Q_DECLARE_METATYPE(TorrentVisualState)
 class TorrentModel : public QAbstractTableModel {
     Q_OBJECT
 public:
-    // 26 колонок — порядок и семантика — по референсу (см. WORKFLOW.md).
+    // 26 колонок — порядок и семантика — по образцу Transmission.
     enum Column {
         ColName = 0,
         ColSize,           // totalSize

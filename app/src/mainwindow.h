@@ -62,8 +62,8 @@ public:
     const PeerListModel& peerModel() const { return m_peerModel; }
     const TrackerListModel& trackerModel() const { return m_trackerModel; }
     QTreeView* torrentView() const { return m_view; }
-    // Двухуровневое окно: грид сверху, вкладки снизу (раскладка — по референсу,
-    // см. WORKFLOW.md). «General» = содержимое диалога «Свойства».
+    // Двухуровневое окно: грид сверху, вкладки снизу (как в Transmission).
+    // «General» = содержимое диалога «Свойства».
     PropsForm* generalForm() const { return m_general; }
     StatsForm* statsForm() const { return m_statsForm; }
     FilterPanel* filterPanel() const { return m_filterPanel; }

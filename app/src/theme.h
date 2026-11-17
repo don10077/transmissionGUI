@@ -15,9 +15,9 @@ class QSettings;
 class QWidget;
 
 // Единая тема приложения: палитра, QSS и векторные иконки.
-// Ориентир — DESIGN_PLAN.md (design/) + design/mockup.html.
+// Ориентир — макет интерфейса (design/mockup.html).
 //
-// Правила (DESIGN_PLAN, Раздел A / Фаза 0):
+// Правила (раздел A макета):
 // - Все цвета — токены Palette; hex-литералы в QSS запрещены (CI-grep),
 //   значения живут только в определениях палитр.
 namespace tgui::theme {

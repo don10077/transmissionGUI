@@ -1,6 +1,6 @@
 // GeoIP Country Edition database reader.
 //
-// Faithful port of the reference GeoIP reader (see WORKFLOW.md): a fixed-size
+// Faithful port of the reference GeoIP reader: a fixed-size
 // pointer tree maps an IPv4 address to an offset into a country segment; that
 // offset minus COUNTRY_BEGIN is the index into the standard 253-entry
 // country-code list. Only the Country Edition is supported (the reference's

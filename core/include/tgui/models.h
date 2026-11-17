@@ -82,7 +82,7 @@ struct Torrent {
     std::optional<QStringList> labels;
     std::optional<QString> downloadDir;
 
-    // Детали «General»/«Свойства» (референс — tabGeneral, см. WORKFLOW.md).
+    // Детали «General»/«Свойства» (эталон — вкладка General диалога свойств).
     std::optional<QString> hashString;
     std::optional<QString> comment;
     std::optional<QString> creator;

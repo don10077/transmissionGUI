@@ -313,7 +313,7 @@ QColor progressColor(ProgressState state)
 const Palette& palette()
 {
     // Светлая палитра нового дизайна — значения из design/mockup.html
-    // (таблицы DESIGN_PLAN 0.1/0.2; расхождения с макетом зафиксированы там же).
+    // (таблицы макета 0.1/0.2; расхождения с макетом зафиксированы там же).
     static const Palette p{
         // Поверхности
         QColor(0xF0, 0xF0, 0xF0), // window
@@ -536,7 +536,7 @@ QPixmap statusDotPixmap(const QColor& color, int size, qreal dpr)
     return pixmap;
 }
 
-// DESIGN_PLAN 0.2: QSS генерируется из токенов палитры — без hex-литералов.
+// QSS генерируется из токенов палитры — без hex-литералов.
 // Порядок правок не важен: имя каждого токена уникально (скобки %…% не пересекаются).
 QString buildQss(const Palette& p)
 {

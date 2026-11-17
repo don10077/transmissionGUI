@@ -10,7 +10,7 @@ constexpr std::size_t kRecordLength = 3;   // bytes per pointer (24 bits)
 constexpr std::size_t kRecordSize = 2 * kRecordLength; // 6 bytes per tree record
 
 // Standard GeoIP country-code list (index -> 2-letter code), same order as the
-// reference database (see WORKFLOW.md). Index 0 ("--") means "no country".
+// reference database. Index 0 ("--") means "no country".
 const char * const kCountryCodes[] = {
     "--", "AP", "EU", "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AN", "AO", "AQ",
     "AR", "AS", "AT", "AU", "AW", "AZ", "BA", "BB", "BD", "BE", "BF", "BG", "BH",
