@@ -1,4 +1,5 @@
 #include <climits>
+#include <locale>
 
 #include <gtest/gtest.h>
 #include <QJsonObject>
@@ -104,14 +105,12 @@ TEST(UtilFormatSize, RateMode)
 
 TEST(UtilFormatSize, LocaleIndependentDotSeparator)
 {
-    // TST-03: под de_DE (LC_NUMERIC) разделитель остаётся точкой, а не запятой.
-    std::locale de;
-    try {
-        de = std::locale("de_DE");
-    } catch (const std::exception&) {
-        GTEST_SKIP() << "локаль de_DE недоступна на этой системе";
-    }
-    const std::locale classic = std::locale::global(de);
+    // Устанавливаем локаль с запятой независимо от её наличия в ОС.
+    class CommaDecimalPoint final : public std::numpunct<char> {
+        char do_decimal_point() const override { return ','; }
+    };
+    const std::locale comma(std::locale::classic(), new CommaDecimalPoint);
+    const std::locale classic = std::locale::global(comma);
     const auto restore = qScopeGuard([&] { std::locale::global(classic); });
     EXPECT_EQ(formatSize(1.23 * 1024 * 1024 * 1024), "1.23 GB");
     EXPECT_EQ(formatSize(500, 1), "0.5 KB");

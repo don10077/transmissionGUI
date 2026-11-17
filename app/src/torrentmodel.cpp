@@ -115,6 +115,12 @@ int TorrentModel::rowForId(int id) const
     return m_rowById.value(id, -1);
 }
 
+const tgui::Torrent* TorrentModel::torrentById(int id) const
+{
+    const int row = rowForId(id);
+    return row < 0 ? nullptr : &torrents().at(row);
+}
+
 int TorrentModel::rowCount(const QModelIndex& parent) const
 {
     return parent.isValid() ? 0 : static_cast<int>(m_torrents.size());

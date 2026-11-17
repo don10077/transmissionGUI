@@ -257,8 +257,8 @@ TEST_F(RpcClientTest, DelayedListCannotOverwriteNewerSnapshot)
 {
     // TST-02: задержка первого (старшего) ответа — ручная holdNext()/release()
     // вместо 180 мс; ожидания — предикаты waitUntil() вместо singleShot(500).
-    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[{"id":1,"name":"old"}]}})"});
-    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[{"id":1,"name":"new"}]}})"});
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[{"id":1,"name":"old"}]}})", {}});
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[{"id":1,"name":"new"}]}})", {}});
     server.holdNext(); // первый ответ не уйдёт до release()
 
     QStringList names;

@@ -8,6 +8,29 @@ add_library(tgui_app_lib STATIC
     src/connectbutton.cpp
     src/watchfolderservice.cpp
     src/mainwindow.cpp
+    src/mainwindowui.cpp
+    src/torrentlistcontroller.cpp
+    src/torrentlistcontroller.h
+    src/detailspanel.cpp
+    src/detailspanel.h
+    src/torrentactions.cpp
+    src/torrentactions.h
+    src/addtorrentcoordinator.cpp
+    src/addtorrentcoordinator.h
+    src/traycontroller.cpp
+    src/traycontroller.h
+    src/connectioncontroller.cpp
+    src/connectioncontroller.h
+    src/statusbarcontroller.cpp
+    src/statusbarcontroller.h
+    src/geoipupdater.cpp
+    src/geoipupdater.h
+    src/flagimageloader.cpp
+    src/flagimageloader.h
+    src/clipboardmonitor.cpp
+    src/clipboardmonitor.h
+    src/updatechecker.cpp
+    src/updatechecker.h
     src/torrentmodel.cpp
     src/addlinkdialog.cpp
     src/connectdialog.cpp

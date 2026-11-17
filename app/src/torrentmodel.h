@@ -81,6 +81,8 @@ public:
 
     bool setTorrents(const QVector<tgui::Torrent>& torrents);
     int rowForId(int id) const;
+    /** Возвращает торрент по ID, пока модель не изменена. */
+    const tgui::Torrent* torrentById(int id) const;
     void setSmoothRates(bool enabled);
     QPair<double, double> displayedRates(const tgui::Torrent& torrent) const;
     const QVector<tgui::Torrent>& torrents() const { return m_torrents; }

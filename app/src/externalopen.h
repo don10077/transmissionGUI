@@ -5,10 +5,15 @@
 #include <QStringList>
 #include <functional>
 
+class QUrl;
+
 /** Нормализует путь к локальному .torrent или magnet из аргумента ОС. */
 QString externalTorrentInput(const QString& input);
 /** Возвращает корректную magnet/HTTP(S)-ссылку или пустую строку. */
 QString torrentLinkInput(const QString& input);
+
+/** Возвращает идентификатор magnet для сравнения ссылок. */
+QString magnetIdentifier(const QUrl& url);
 
 /** Передаёт запросы открытия первому экземпляру приложения текущего пользователя. */
 class ExternalOpen {

@@ -578,7 +578,9 @@ TEST(InfoPanel, RendersAllReferenceTabs)
     ASSERT_NE(tabs, nullptr);
     ASSERT_EQ(tabs->count(), 5);
     // Separate from the main splitter so every tab is checked at reference size.
+    auto* parent = tabs->parentWidget();
     tabs->setParent(nullptr);
+    const auto restoreParent = qScopeGuard([tabs, parent] { tabs->setParent(parent); });
     tabs->resize(984, 326);
     tabs->show();
     auto* tree = tabs->findChild<QTreeView*>(QStringLiteral("filesView"));
@@ -596,7 +598,6 @@ TEST(InfoPanel, RendersAllReferenceTabs)
             EXPECT_TRUE(tabs->grab().save(output + QStringLiteral("/panel-%1.png").arg(i)));
         }
     }
-    delete tabs;
 }
 
 

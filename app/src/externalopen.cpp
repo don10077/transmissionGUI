@@ -1,4 +1,5 @@
 #include "externalopen.h"
+#include <QRegularExpression>
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -17,6 +18,20 @@
 namespace {
 constexpr int maxFrameSize = 1024 * 1024;
 constexpr int timeoutMs = 2500;
+}
+
+/** Идентификатор magnet для отсева повторов с другими dn/tr. */
+QString magnetIdentifier(const QUrl& url)
+{
+    if (url.scheme() != QLatin1String("magnet"))
+        return {};
+    static const QRegularExpression identifier(
+        QStringLiteral("^(urn:btih:(?:[a-f0-9]{40}|[a-z2-7]{32})|urn:btmh:1220[a-f0-9]{64})$"),
+        QRegularExpression::CaseInsensitiveOption);
+    for (const auto& value : QUrlQuery(url).allQueryItemValues("xt", QUrl::FullyDecoded))
+        if (identifier.match(value).hasMatch())
+            return value.toLower();
+    return {};
 }
 
 QString torrentLinkInput(const QString& input)

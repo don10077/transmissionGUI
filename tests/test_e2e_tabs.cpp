@@ -4,8 +4,10 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
-#include <QEventLoop>
+#include <QItemSelectionModel>
 #include <QModelIndex>
+#include <QTabWidget>
+#include <QTableView>
 #include <QTimer>
 #include <QTreeView>
 
@@ -13,16 +15,7 @@
 
 #include "mainwindow.h"
 
-namespace {
-
-void spinEvents(int ms)
-{
-    QEventLoop loop;
-    QTimer::singleShot(ms, &loop, &QEventLoop::quit);
-    loop.exec();
-}
-
-} // namespace
+#include "testwait.h"
 
 TEST(E2ETabs, SelectionLoadsDetails)
 {
@@ -53,35 +46,36 @@ TEST(E2ETabs, SelectionLoadsDetails)
     o.password = pass;
     w.setAutoConnect(o);
 
-    // Ждём подключение и список торрентов.
-    for (int i = 0;
-         i < 60 && !(w.isConnectedNow() && !w.torrentModel().torrents().isEmpty());
-         ++i)
-        spinEvents(250);
-    ASSERT_TRUE(w.isConnectedNow());
-    ASSERT_FALSE(w.torrentModel().torrents().isEmpty());
+    ASSERT_TRUE(waitUntil([&] { return w.isConnectedNow() && !w.torrentModel().torrents().isEmpty(); }, 15000));
     w.show();
 
-    // Выбираем торренты, пока не найдём с непустыми трекерами (не у каждого
-    // торрента есть трекеры — например, magnet без announce).
+    auto* tabs = w.findChild<QTabWidget*>("infoPanel");
+    ASSERT_NE(tabs, nullptr);
+    auto* trackers = tabs->findChild<QTableView*>("trackersView");
+    auto* files = tabs->findChild<QTreeView*>("filesView");
+    auto* peers = tabs->findChild<QTableView*>("peersView");
+    ASSERT_NE(trackers, nullptr);
+    ASSERT_NE(files, nullptr);
+    ASSERT_NE(peers, nullptr);
+
+    // MainWindow запрашивает детали только для видимой вкладки. Ищем торрент
+    // с трекерами, так как в списке могут быть magnet-ссылки без announce.
+    tabs->setCurrentWidget(trackers);
     bool trackersLoaded = false;
     for (int row = 0; row < 6 && !trackersLoaded; ++row) {
-        const QModelIndex idx = w.torrentView()->model()->index(row, 0);
-        if (!idx.isValid())
+        const auto index = w.torrentView()->model()->index(row, 0);
+        if (!index.isValid())
             break;
-        w.torrentView()->setCurrentIndex(idx);
-        for (int i = 0; i < 20; ++i) {
-            spinEvents(250);
-            if (w.fileModel().rowCount() > 0 || w.trackerModel().rowCount() > 0)
-                break;
-        }
-        trackersLoaded = w.trackerModel().rowCount() > 0;
+        w.torrentView()->selectionModel()->setCurrentIndex(
+            index, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        trackersLoaded = waitUntil([&] { return w.trackerModel().rowCount() > 0; }, 3000);
     }
 
-    EXPECT_GT(w.currentId(), 0);
-    EXPECT_GT(w.fileModel().rowCount(), 0);
-    EXPECT_TRUE(trackersLoaded);
-    // «Пиры» может быть пустым — все торренты остановлены; проверяем лишь
-    // корректность модели (0 строк — допустимо).
-    EXPECT_GE(w.peerModel().rowCount(), 0);
+    ASSERT_TRUE(trackersLoaded);
+    ASSERT_GT(w.currentId(), 0);
+    tabs->setCurrentWidget(files);
+    EXPECT_TRUE(waitUntil([&] { return w.fileModel().rowCount() > 0; }));
+    // На остановленных раздачах список пиров может быть пустым.
+    tabs->setCurrentWidget(peers);
+    EXPECT_EQ(peers->model(), &w.peerModel());
 }
