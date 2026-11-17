@@ -1738,21 +1738,29 @@ TEST(InfoPanel, PeersTabRequestsRefresh)
     settings.remove("daemons/current"); // иначе конструктор уйдёт на профиль из настроек
     const QVariant oldAutoRefresh = settings.value("ui/autoRefresh");
     settings.setValue("ui/autoRefresh", false);
+    const auto restoreSettings = qScopeGuard([&] {
+        if (oldAutoRefresh.isValid())
+            settings.setValue("ui/autoRefresh", oldAutoRefresh);
+        else
+            settings.remove("ui/autoRefresh");
+        if (oldProfile.isValid())
+            settings.setValue("daemons/current", oldProfile);
+        else
+            settings.remove("daemons/current");
+    });
     MockRpcServer server;
     ASSERT_NE(server.start(), 0);
+    // Начальный getTorrents() может завершиться уже после подключения.
+    // Каждый снимок должен сохранять выбранный торрент, иначе пустой ответ
+    // удаляет выбор между первым запросом пиров и onRefresh().
     server.setDefault({200,
-        R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","torrents":[]}})",
+        R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","torrents":[{"id":902,"name":"peers-refresh","status":4,"peers":[]}]}})",
         {}});
     MainWindow window;
     tgui::RpcClient::Options options;
     options.url = server.url();
     window.setAutoConnect(options);
-    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow(); }));
-    Torrent torrent;
-    torrent.id = 902;
-    torrent.name = QStringLiteral("peers-refresh");
-    torrent.status = static_cast<int>(TorrentStatus::Download);
-    window.applyTorrentsUpdate({torrent});
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow() && window.currentId() == 902; }));
 
     auto peersRequests = [&] {
         int count = 0;
@@ -1771,14 +1779,6 @@ TEST(InfoPanel, PeersTabRequestsRefresh)
     const int before = peersRequests();
     ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRefresh", Qt::DirectConnection));
     EXPECT_TRUE(waitForSettings([&] { return peersRequests() > before; }));
-    if (oldAutoRefresh.isValid())
-        settings.setValue("ui/autoRefresh", oldAutoRefresh);
-    else
-        settings.remove("ui/autoRefresh");
-    if (oldProfile.isValid())
-        settings.setValue("daemons/current", oldProfile);
-    else
-        settings.remove("daemons/current");
 }
 
 
