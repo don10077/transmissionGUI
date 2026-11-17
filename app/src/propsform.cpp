@@ -12,6 +12,7 @@
 #include <QHBoxLayout>
 #include <QImage>
 #include <QLabel>
+#include <QStyle>
 #include <QLineEdit>
 #include <QMenu>
 #include <QPainter>
@@ -201,9 +202,18 @@ private:
         m_map.fill(tgui::theme::palette().pieceEmpty);
         auto* pixels = reinterpret_cast<QRgb*>(m_map.scanLine(0));
         const QRgb filled = m_color.rgb();
-        for (int piece = 0; piece < m_pieceCount && piece / 8 < bits.size(); ++piece) {
-            if (static_cast<unsigned char>(bits.at(piece / 8)) & (0x80u >> (piece % 8)))
-                pixels[int(qint64(piece) * samples / m_pieceCount)] = filled;
+        int begin = 0;
+        const auto available = qMin(qint64(m_pieceCount), qint64(bits.size()) * 8);
+        for (int sample = 0; sample < samples; ++sample) {
+            const int end = int((qint64(sample + 1) * m_pieceCount + samples - 1) / samples);
+            int complete = 0;
+            for (int piece = begin; piece < end && piece < available; ++piece) {
+                if (static_cast<unsigned char>(bits.at(piece / 8)) & (0x80u >> (piece % 8)))
+                    ++complete;
+            }
+            if (qint64(complete) * 2 >= end - begin)
+                pixels[sample] = filled;
+            begin = end;
         }
     }
 
@@ -232,6 +242,8 @@ PropsForm::PropsForm(QWidget* parent) : QWidget(parent)
 
 void PropsForm::setTorrent(const tgui::Torrent& t)
 {
+    if (m_torrent && *m_torrent == t)
+        return;
     m_torrent = t;
     rebuild();
 }
@@ -262,7 +274,6 @@ void PropsForm::clear()
 
 QMenu* PropsForm::createCopyMenu(const QString& value, const QUrl& link)
 {
-    // Поля пересоздаются при обновлении RPC. Меню и его команды живут в PropsForm.
     auto* menu = new QMenu(this);
     menu->setObjectName(QStringLiteral("copyFieldMenu"));
     connect(menu, &QMenu::aboutToHide, menu, &QObject::deleteLater);
@@ -279,59 +290,60 @@ QMenu* PropsForm::createCopyMenu(const QString& value, const QUrl& link)
 
 void PropsForm::enableFieldMenu(QWidget* widget, const QString& value, const QUrl& link)
 {
-    widget->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(widget, &QWidget::customContextMenuRequested, this, [this, widget, value, link](const QPoint& point) {
-        createCopyMenu(value, link)->popup(widget->mapToGlobal(point));
-    });
+    if (!widget->property("fieldCopyValue").isValid()) {
+        widget->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(widget, &QWidget::customContextMenuRequested, this, [this, widget](const QPoint& point) {
+            createCopyMenu(widget->property("fieldCopyValue").toString(), widget->property("fieldCopyLink").toUrl())
+                ->popup(widget->mapToGlobal(point));
+        });
+    }
+    if (widget->property("fieldCopyValue").toString() != value || !widget->property("fieldCopyValue").isValid())
+        widget->setProperty("fieldCopyValue", value);
+    if (widget->property("fieldCopyLink").toUrl() != link)
+        widget->setProperty("fieldCopyLink", link);
 }
 
 void PropsForm::rebuild()
 {
-    const int rebuildSerial = ++m_rebuildSerial;
-    // Контент целиком пересоздаётся в scroll-контейнере: никакого ручного
-    // обхода findChildren (см. комментарий в истории проекта).
-    // Позицию прокрутки сохраняем только при обновлении того же торрента:
-    // при выборе другого — показываем панель с начала.
-    const int torrentId = m_torrent.has_value() ? m_torrent->id : -1;
+    const int torrentId = m_torrent ? m_torrent->id : -1;
+    const bool hasLabels = m_torrent && m_torrent->labels && !m_torrent->labels->isEmpty();
     const bool sameTorrent = torrentId >= 0 && torrentId == m_builtTorrentId;
-    if (!sameTorrent)
-        m_pendingScroll = -1;
-    else if (m_pendingScroll < 0)
-        m_pendingScroll = m_scroll->verticalScrollBar()->value();
-    m_builtTorrentId = torrentId;
+    const bool build = !m_content || torrentId != m_builtTorrentId || hasLabels != m_builtWithLabels;
+    QVBoxLayout* contentLayout = nullptr;
+    if (build) {
+        ++m_rebuildSerial;
+        if (!sameTorrent)
+            m_pendingScroll = -1;
+        else if (m_pendingScroll < 0)
+            m_pendingScroll = m_scroll->verticalScrollBar()->value();
+        m_builtTorrentId = torrentId;
+        m_builtWithLabels = hasLabels;
+        m_values.clear();
+        m_renderedLabels.clear();
 
-    if (!m_torrent) {
-        delete m_progressRow;
-        m_progressRow = nullptr;
-        m_pieceBar = nullptr;
-        m_progressPercent = nullptr;
+        if (!m_torrent) {
+            delete m_progressRow;
+            m_progressRow = nullptr;
+            m_pieceBar = nullptr;
+            m_progressPercent = nullptr;
+        }
+        delete m_scroll->takeWidget();
+        m_content = new QWidget;
+        contentLayout = new QVBoxLayout(m_content);
+        contentLayout->setContentsMargins(0, 0, 0, 0);
+        contentLayout->setSpacing(0);
+        contentLayout->setSizeConstraint(QLayout::SetMinimumSize);
+        if (!m_torrent) {
+            auto* placeholder = new QLabel(tr("Torrent not selected"), m_content);
+            placeholder->setObjectName(QStringLiteral("fieldLabel"));
+            contentLayout->addWidget(placeholder);
+            contentLayout->addStretch(1);
+            m_scroll->setWidget(m_content);
+            return;
+        }
     }
-
-    if (m_content) {
-        m_scroll->takeWidget();
-        delete m_content;
-        m_content = nullptr;
-    }
-
-    m_content = new QWidget;
-    // QScrollArea::setWidget() требует, чтобы layout уже был у виджета.
-    auto* contentLayout = new QVBoxLayout(m_content);
-    contentLayout->setContentsMargins(0, 0, 0, 0);
-    contentLayout->setSpacing(0);
-    // Let the scroll area use the content's real minimum height, including
-    // labels whose height changes when the panel is resized.
-    contentLayout->setSizeConstraint(QLayout::SetMinimumSize);
-
-    if (!m_torrent.has_value()) {
-        auto* placeholder = new QLabel(tr("Torrent not selected"), m_content);
-        placeholder->setObjectName(QStringLiteral("fieldLabel"));
-        contentLayout->addWidget(placeholder);
-        contentLayout->addStretch(1);
-        m_scroll->setWidget(m_content);
-        m_pendingScroll = -1;
-        m_scroll->verticalScrollBar()->setValue(0);
+    if (!m_torrent)
         return;
-    }
 
     const auto& t = *m_torrent;
     const double swd = t.sizeWhenDone.value_or(0.0);
@@ -382,7 +394,9 @@ void PropsForm::rebuild()
     const auto pieceState = tgui::theme::torrentProgressState(
         progressStatus, progressFinished, !tgui::torrentError(t).isEmpty());
     m_pieceBar->setData(percent, t.pieces, t.pieceCount.value_or(0), pieceState);
-    m_progressPercent->setText(QStringLiteral("%1%").arg(percent, 0, 'f', 1));
+    const auto progressText = QStringLiteral("%1%").arg(percent, 0, 'f', 1);
+    if (m_progressPercent->text() != progressText)
+        m_progressPercent->setText(progressText);
 
     auto makeCard = [this, contentLayout](const QString& title, int pairs) {
         auto* card = new QFrame(m_content);
@@ -424,40 +438,53 @@ void PropsForm::rebuild()
 
     auto makeCell = [this](const QList<QGridLayout*>& grids, int row, int col, const QString& label,
                            const QString& value, const QColor& valueColor = QColor()) -> PropertyValueLabel* {
-        auto* grid = grids.at(col / 2);
         const QUrl link = fieldLink(value);
-        auto* l = new QLabel(label + ":", m_content);
-        l->setObjectName(QStringLiteral("fieldLabel"));
-        enableFieldMenu(l, value, link);
-        grid->addWidget(l, row, 0);
-
-        auto* v = new PropertyValueLabel(value, m_content);
-        v->setObjectName(QStringLiteral("fieldValue"));
-        v->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
-        v->setWordWrap(false);
-        v->setTextFormat(Qt::PlainText);
-        enableFieldMenu(v, value, link);
-        if (!link.isEmpty()) {
-            v->setTextFormat(Qt::RichText);
-            v->setText(QStringLiteral("<a href=\"%1\">%2</a>")
-                           .arg(link.toString(QUrl::FullyEncoded).toHtmlEscaped(),
-                                value.toHtmlEscaped()));
-            v->setTextInteractionFlags(v->textInteractionFlags() |
-                                      Qt::LinksAccessibleByMouse | Qt::LinksAccessibleByKeyboard);
-            v->setOpenExternalLinks(true);
+        const auto key = QStringLiteral("%1/%2/%3").arg(&grids == &m_transferGrids).arg(row).arg(col);
+        auto cells = m_values.value(key);
+        if (!cells.second) {
+            auto* grid = grids.at(col / 2);
+            auto* caption = new QLabel(label + ":", m_content);
+            caption->setObjectName(QStringLiteral("fieldLabel"));
+            auto* field = new PropertyValueLabel(QString{}, m_content);
+            field->setObjectName(QStringLiteral("fieldValue"));
+            field->setWordWrap(false);
+            field->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+            field->setMinimumWidth(0);
+            grid->addWidget(caption, row, 0);
+            grid->addWidget(field, row, 1);
+            cells = {caption, field};
+            m_values.insert(key, cells);
         }
-        // Ignored по горизонтали: длинные неразрывные значения (magnet, hash)
-        // не должны распирать карточку шире панели.
-        v->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-        v->setMinimumWidth(0);
-        if (valueColor.isValid())
-            v->setStyleSheet(QStringLiteral("color: %1;").arg(valueColor.name()));
-        grid->addWidget(v, row, 1);
+        auto* v = static_cast<PropertyValueLabel*>(cells.second);
+        const auto oldValue = v->property("fieldCopyValue");
+        if (!oldValue.isValid() || oldValue.toString() != value) {
+            const auto selectable = Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard;
+            v->setTextInteractionFlags(link.isEmpty() ? selectable :
+                selectable | Qt::LinksAccessibleByMouse | Qt::LinksAccessibleByKeyboard);
+            v->setOpenExternalLinks(!link.isEmpty());
+            v->setTextFormat(link.isEmpty() ? Qt::PlainText : Qt::RichText);
+            v->setText(link.isEmpty() ? value : QStringLiteral("<a href=\"%1\">%2</a>")
+                .arg(link.toString(QUrl::FullyEncoded).toHtmlEscaped(), value.toHtmlEscaped()));
+        }
+        const bool error = valueColor.isValid();
+        if (v->property("error").toBool() != error) {
+            v->setProperty("error", error);
+            if (v->styleSheet().isEmpty())
+                v->setStyleSheet(QStringLiteral("QLabel[error=\"true\"] { color: %1; }").arg(valueColor.name()));
+            else {
+                v->style()->unpolish(v);
+                v->style()->polish(v);
+            }
+        }
+        enableFieldMenu(cells.first, value, link);
+        enableFieldMenu(v, value, link);
         return v;
     };
 
     // Секция «Transfer» (panTransfer) — три пары label/value на строку.
-    const auto grid = makeCard(tr("Transfer"), 3);
+    if (build)
+        m_transferGrids = makeCard(tr("Transfer"), 3);
+    const auto& grid = m_transferGrids;
 
     const bool finished = tgui::statusIsFinished(
         t.status.value_or(-1), t.sizeWhenDone.value_or(0.0), t.leftUntilDone.value_or(0.0));
@@ -569,7 +596,9 @@ void PropsForm::rebuild()
              priority > 0 ? QObject::tr("High") : priority < 0 ? QObject::tr("Low") : QObject::tr("Normal"));
 
     // Секция «Torrent» (panGeneralInfo) — две пары label/value на строку.
-    const auto tgrid = makeCard(tr("Torrent"), 2);
+    if (build)
+        m_torrentGrids = makeCard(tr("Torrent"), 2);
+    const auto& tgrid = m_torrentGrids;
 
     QString name = t.name.value_or(dash());
     if (t.downloadDir.has_value() && !t.downloadDir->isEmpty())
@@ -612,54 +641,62 @@ void PropsForm::rebuild()
     const QUrl magnetUrl(magnetText, QUrl::StrictMode);
     const QUrl openMagnet = magnetUrl.isValid() && magnetUrl.scheme() == QStringLiteral("magnet")
         ? magnetUrl : QUrl{};
-    auto* magnetLabel = new QLabel(tr("Magnet Link") + ":", m_content);
-    magnetLabel->setObjectName(QStringLiteral("fieldLabel"));
-    enableFieldMenu(magnetLabel, magnetText, openMagnet);
-    tgrid.at(0)->addWidget(magnetLabel, 4, 0);
-    // Like txMagnetLink: a single read-only line, selectable without wrapping.
-    auto* magnet = new QLineEdit(magnetText, m_content);
-    magnet->setObjectName(QStringLiteral("magnetLink"));
-    magnet->setReadOnly(true);
-    magnet->setFrame(false);
-    magnet->setMinimumWidth(0);
-    magnet->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-    magnet->setStyleSheet(QStringLiteral("border: none; padding: 0; background: transparent;"));
-    magnet->setCursorPosition(0);
-    enableFieldMenu(magnet, magnetText, openMagnet);
-    if (!openMagnet.isEmpty()) {
-        connect(magnet, &QLineEdit::returnPressed, this, [openMagnet] {
-            QDesktopServices::openUrl(openMagnet);
+    if (build) {
+        m_magnetLabel = new QLabel(tr("Magnet Link") + ":", m_content);
+        m_magnetLabel->setObjectName(QStringLiteral("fieldLabel"));
+        tgrid.at(0)->addWidget(m_magnetLabel, 4, 0);
+        m_magnet = new QLineEdit(m_content);
+        m_magnet->setObjectName(QStringLiteral("magnetLink"));
+        m_magnet->setReadOnly(true);
+        m_magnet->setFrame(false);
+        m_magnet->setMinimumWidth(0);
+        m_magnet->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        m_magnet->setStyleSheet(QStringLiteral("border: none; padding: 0; background: transparent;"));
+        connect(m_magnet, &QLineEdit::returnPressed, this, [this] {
+            const auto link = m_magnet->property("fieldCopyLink").toUrl();
+            if (!link.isEmpty())
+                QDesktopServices::openUrl(link);
         });
+        tgrid.at(0)->addWidget(m_magnet, 4, 1);
+        m_labelEdit = nullptr;
     }
-    tgrid.at(0)->addWidget(magnet, 4, 1);
-    const bool hasLabels = t.labels && !t.labels->isEmpty();
+    if (m_magnet->text() != magnetText) {
+        m_magnet->setText(magnetText);
+        m_magnet->setCursorPosition(0);
+    }
+    enableFieldMenu(m_magnetLabel, magnetText, openMagnet);
+    enableFieldMenu(m_magnet, magnetText, openMagnet);
     const QString labelsText = hasLabels ? t.labels->join(QStringLiteral(", ")) : dash();
     auto* labelValue = makeCell(tgrid, 4, 2, tr("Labels"), labelsText);
-    if (hasLabels)
+    if (hasLabels && m_renderedLabels != *t.labels) {
+        m_renderedLabels = *t.labels;
         labelValue->setLabels(*t.labels);
-    if (auto* action = m_editLabels.data()) {
+    }
+    if (auto* action = m_editLabels.data(); build && action) {
         auto* row = new QWidget(m_content);
         auto* layout = new QHBoxLayout(row);
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(6);
-        auto* edit = new QPushButton(hasLabels ? tr("Edit") : tr("Set…"), row);
-        edit->setObjectName(QStringLiteral("propertyLink"));
-        enableFieldMenu(row, labelsText);
-        enableFieldMenu(edit, labelsText);
-        const auto syncAction = [action, edit, labelValue, hasLabels] {
+        m_labelEdit = new QPushButton(hasLabels ? tr("Edit") : tr("Set…"), row);
+        m_labelEdit->setObjectName(QStringLiteral("propertyLink"));
+        const auto syncAction = [action, edit = m_labelEdit, labelValue, hasLabels] {
             edit->setVisible(action->isVisible());
             edit->setEnabled(action->isEnabled());
             labelValue->setVisible(hasLabels || !action->isVisible());
         };
-        connect(action, &QAction::changed, edit, syncAction);
-        connect(edit, &QPushButton::clicked, action, &QAction::trigger);
+        connect(action, &QAction::changed, m_labelEdit, syncAction);
+        connect(m_labelEdit, &QPushButton::clicked, action, &QAction::trigger);
         tgrid.at(1)->removeWidget(labelValue);
         labelValue->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
         layout->addWidget(labelValue);
-        layout->addWidget(edit);
+        layout->addWidget(m_labelEdit);
         layout->addStretch(1);
         tgrid.at(1)->addWidget(row, 4, 1);
         syncAction();
+    }
+    if (m_labelEdit) {
+        enableFieldMenu(m_labelEdit, labelsText);
+        enableFieldMenu(m_labelEdit->parentWidget(), labelsText);
     }
 
     makeCell(tgrid, 5, 2, tr("Sequential download"),
@@ -667,6 +704,9 @@ void PropsForm::rebuild()
     makeCell(tgrid, 6, 2, tr("Private"),
              t.isPrivate ? (*t.isPrivate ? QObject::tr("yes") : QObject::tr("no")) : dash());
 
+    if (!build)
+        return;
+    const int rebuildSerial = m_rebuildSerial;
     contentLayout->addStretch(1);
     contentLayout->activate();
     m_scroll->setWidget(m_content);

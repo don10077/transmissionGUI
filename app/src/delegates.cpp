@@ -15,15 +15,26 @@
 #include "torrentmodel.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace {
 
-/** Выбирает цвет полосы. Ошибка и проверка важнее процента загрузки. */
-QColor progressColor(const QModelIndex& index)
+/** Масштабирует шрифт в тех же единицах, которые задаёт стиль. */
+QFont scaledFont(const QFont& font, qreal scale)
 {
-    const auto state = tgui::theme::torrentProgressState(index.data(TorrentModel::StatusRole).toInt(),
-        index.data(TorrentModel::FinishedRole).toBool(), index.data(TorrentModel::ErrorRole).toBool());
-    return tgui::theme::progressColor(state);
+    QFont result = font;
+    if (font.pointSizeF() > 0)
+        result.setPointSizeF(font.pointSizeF() * scale);
+    else
+        result.setPixelSize(std::max(1, qRound(font.pixelSize() * scale)));
+    return result;
+}
+
+/** Минимальная высота полосы с учётом глифов процентов. */
+int progressHeight(const QFont& font)
+{
+    return std::max(15, QFontMetrics(font)
+        .tightBoundingRect(QStringLiteral("0123456789.%")).height() + 2);
 }
 
 tgui::theme::Icon torrentStatusIcon(int status, bool finished, bool error)
@@ -60,18 +71,9 @@ void TorrentDelegate::updateFonts(const QFont& font) const
 
     m_fontsReady = true;
     m_baseFont = font;
-    const auto scaledFont = [&font](qreal scale) {
-        QFont result = font;
-        if (font.pointSizeF() > 0)
-            result.setPointSizeF(font.pointSizeF() * scale);
-        else
-            result.setPixelSize(std::max(1, qRound(font.pixelSize() * scale)));
-        return result;
-    };
-    m_progressFont = scaledFont(11.0 / 12.0);
-    m_labelFont = scaledFont(10.5 / 12.0);
-    const auto digits = QStringLiteral("0123456789.%");
-    m_progressHeight = std::max(15, QFontMetrics(m_progressFont).tightBoundingRect(digits).height() + 2);
+    m_progressFont = scaledFont(font, 11.0 / 12.0);
+    m_labelFont = scaledFont(font, 10.5 / 12.0);
+    m_progressHeight = progressHeight(m_progressFont);
     m_labelWidths.clear();
 }
 
@@ -130,13 +132,16 @@ void drawDetailCell(QPainter& painter, const QStyleOptionViewItem& option)
 
 void TorrentDelegate::paintProgress(QPainter& painter, const QRect& cell, const QModelIndex& index) const
 {
-    const double progress = index.data(TorrentModel::ProgressRole).toDouble();
+    const auto visual = index.data(TorrentModel::VisualStateRole).value<TorrentVisualState>();
+    const double progress = visual.progress;
     if (!(progress >= 0.0)) {
         painter.setPen(tgui::theme::palette().textMuted);
         painter.drawText(cell, Qt::AlignCenter, QStringLiteral("—"));
         return;
     }
-    drawProgressBar(painter, cell, progress, progressColor(index), m_progressFont, m_progressHeight);
+    using namespace tgui::theme;
+    const auto state = torrentProgressState(visual.status, visual.finished, visual.error);
+    drawProgressBar(painter, cell, progress, progressColor(state), m_progressFont, m_progressHeight);
 }
 
 /** Раскладывает метки в одну строку и показывает число не поместившихся. */
@@ -264,10 +269,8 @@ void TorrentDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
             paintLabels(*painter, content, labels);
     } else {
         if (column == TorrentModel::ColName) {
-            const bool error = index.data(TorrentModel::ErrorRole).toBool();
-            const auto iconId = torrentStatusIcon(index.data(TorrentModel::StatusRole).toInt(),
-                                                  !error && index.data(TorrentModel::FinishedRole).toBool(),
-                                                  error);
+            const auto visual = index.data(TorrentModel::VisualStateRole).value<TorrentVisualState>();
+            const auto iconId = torrentStatusIcon(visual.status, visual.finished, visual.error);
             const QRect iconRect(content.left(), content.top() + (content.height() - 16) / 2, 16, 16);
             icon(iconId).paint(painter, iconRect);
             content.adjust(22, 0, 0, 0);
@@ -310,17 +313,17 @@ void ProgressDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     painter->save();
     drawDetailCell(*painter, option);
     if (ok && progress >= 0.0) {
-        QFont font = option.font;
-        if (font.pointSizeF() > 0)
-            font.setPointSizeF(font.pointSizeF() * 11.0 / 12.0);
-        else
-            font.setPixelSize(std::max(1, qRound(font.pixelSize() * 11.0 / 12.0)));
-        const int textHeight = QFontMetrics(font).tightBoundingRect(QStringLiteral("0123456789.%")).height();
-        const int barHeight = std::min(option.rect.height() - 1, std::max(15, textHeight + 2));
+        if (!m_fontReady || m_baseFont != option.font) {
+            m_fontReady = true;
+            m_baseFont = option.font;
+            m_progressFont = scaledFont(option.font, 11.0 / 12.0);
+            m_progressHeight = progressHeight(m_progressFont);
+        }
+        const int barHeight = std::min(option.rect.height() - 1, m_progressHeight);
         using tgui::theme::ProgressState;
         const auto state = progress >= 100.0 ? ProgressState::Finished : ProgressState::Downloading;
         drawProgressBar(*painter, option.rect.adjusted(8, 0, -8, -1), progress,
-                        tgui::theme::progressColor(state), font, barHeight);
+                        tgui::theme::progressColor(state), m_progressFont, barHeight);
     } else {
         painter->setPen(tgui::theme::palette().textMuted);
         painter->drawText(option.rect, Qt::AlignCenter, QStringLiteral("—"));
@@ -353,8 +356,14 @@ void NameCheckDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opt
 }
 
 // --- WantCheckDelegate ---
-// Клик по чекбоксу Want (файл/папка) → эмитит wantToggled без изменения
-// локального состояния. Состояние обновится после ответа демона (getTorrentDetails).
+/** Возвращает общий прямоугольник для отрисовки и попадания мыши. */
+static QRect wantCheckRect(const QRect& cell)
+{
+    constexpr int size = 14;
+    return QRect(cell.left() + (cell.width() - size) / 2,
+                 cell.top() + (cell.height() - size) / 2, size, size);
+}
+
 void WantCheckDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
                               const QModelIndex& index) const
 {
@@ -365,10 +374,8 @@ void WantCheckDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opt
     painter->save();
 
     drawDetailCell(*painter, option);
-    const int size = 14;
     QStyleOptionButton check;
-    check.rect = QRect(r.left() + (r.width() - size) / 2,
-                       r.top() + (r.height() - size) / 2, size, size);
+    check.rect = wantCheckRect(r);
     check.palette = option.palette;
     check.state = option.state & (QStyle::State_Enabled | QStyle::State_MouseOver);
     switch (static_cast<Qt::CheckState>(index.data(Qt::CheckStateRole).toInt())) {
@@ -391,14 +398,23 @@ bool WantCheckDelegate::editorEvent(QEvent* event, QAbstractItemModel* model,
     if (!(index.flags() & Qt::ItemIsEnabled))
         return false;
 
+    const auto hitsCheckbox = [&] {
+        const auto* mouse = static_cast<QMouseEvent*>(event);
+        return mouse->button() == Qt::LeftButton && wantCheckRect(option.rect).contains(mouse->position().toPoint());
+    };
     switch (event->type()) {
         case QEvent::MouseButtonPress:
+            m_pressed = hitsCheckbox() ? QPersistentModelIndex(index) : QPersistentModelIndex();
+            return m_pressed.isValid();
         case QEvent::MouseButtonDblClick:
-            return static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton;
-        case QEvent::MouseButtonRelease:
-            if (static_cast<QMouseEvent*>(event)->button() != Qt::LeftButton)
+            m_pressed = QPersistentModelIndex();
+            return hitsCheckbox();
+        case QEvent::MouseButtonRelease: {
+            const auto pressed = std::exchange(m_pressed, QPersistentModelIndex());
+            if (pressed != index || !hitsCheckbox())
                 return false;
             break;
+        }
         case QEvent::KeyPress: {
             const auto* key = static_cast<QKeyEvent*>(event);
             if (key->key() != Qt::Key_Space && key->key() != Qt::Key_Select)

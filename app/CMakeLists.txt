@@ -5,6 +5,7 @@ add_executable(transmissiongui WIN32
     icons/icons.qrc
     src/theme.cpp
     src/connectbutton.cpp
+    src/watchfolderservice.cpp
     src/mainwindow.cpp
     src/torrentmodel.cpp
     src/addlinkdialog.cpp

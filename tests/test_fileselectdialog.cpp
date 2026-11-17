@@ -78,6 +78,19 @@ TEST(FileSelectDialog, BuildsFolderTreeWithSizes)
     EXPECT_EQ(sub->child(0)->text(0), QStringLiteral("b.bin"));
 }
 
+TEST(FileSelectDialog, TemplateMatchesExtensionAndBasenameWildcards)
+{
+    auto details = makeDetails();
+    details.files.append(makeFile(3, QStringLiteral("top/abc.MKV"), 20.0));
+    details.files.append(makeFile(4, QStringLiteral("top/def.mkv"), 30.0));
+    FileSelectDialog dlg(details, true, 18);
+    auto* field = dlg.findChild<QLineEdit*>(QStringLiteral("destinationTemplate"));
+    ASSERT_NE(field, nullptr);
+    emit field->textEdited(QStringLiteral("*.mkv b*.bin"));
+    EXPECT_EQ(dlg.wanted(), (QVector<int>{1, 3, 4}));
+    EXPECT_EQ(dlg.unwanted(), (QVector<int>{0, 2}));
+}
+
 TEST(FileSelectDialog, FolderCheckCascadesToFiles)
 {
     FileSelectDialog dlg(makeDetails(), true, 18);

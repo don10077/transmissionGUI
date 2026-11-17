@@ -8,6 +8,7 @@
 
 class QVBoxLayout;
 class QScrollArea;
+class QTableWidget;
 
 // Панель «Statistics»: session-stats демона (current / cumulative).
 class StatsForm : public QWidget {
@@ -27,6 +28,6 @@ private:
 
     QVBoxLayout* m_layout = nullptr;
     QScrollArea* m_scroll = nullptr;
-    QWidget* m_content = nullptr;
+    QTableWidget* m_table = nullptr;
     std::optional<tgui::SessionStats> m_stats;
 };

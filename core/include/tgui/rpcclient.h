@@ -79,6 +79,8 @@ public:
     void getTorrentMagnets(std::function<void(const QVector<Torrent>&)> callback);
     void getTorrentLocations(const QVector<int>& ids, RequestCallback callback);
     void getTorrentDetails(int id, DetailsCallback callback = {});
+    /** Запрашивает прогресс и настройки файлов без имён и размеров. */
+    void getFileStats(int id, std::function<void(std::optional<QVector<FileProgress>>)> callback);
     void getTorrentDetailsByHash(const QString& hash, DetailsCallback callback);
     void getPeers(int id);
     void getTrackers(int id);

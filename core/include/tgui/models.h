@@ -113,7 +113,15 @@ struct Peer {
 };
 
 // Файл торрента (torrent-get files + priorities + wanted).
+struct FileProgress {
+    double bytesCompleted = 0;
+    int priority = 0;
+    bool wanted = true;
+};
+
 struct FileStat {
+    bool operator==(const FileStat&) const = default;
+
     int index = 0;
     QString name;
     double size = 0.0; // байты

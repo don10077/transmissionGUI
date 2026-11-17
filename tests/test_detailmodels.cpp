@@ -475,6 +475,18 @@ TEST(FileTree, WantClickWaitsForServerState)
                       Qt::LeftButton, Qt::NoModifier);
     QMouseEvent release(QEvent::MouseButtonRelease, pos, global, Qt::LeftButton,
                         Qt::NoButton, Qt::NoModifier);
+    const QPoint outside(cell.left() + 1, pos.y());
+    const QPoint outsideGlobal = view.viewport()->mapToGlobal(outside);
+    QMouseEvent outsidePress(QEvent::MouseButtonPress, outside, outsideGlobal, Qt::LeftButton,
+                             Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent outsideRelease(QEvent::MouseButtonRelease, outside, outsideGlobal, Qt::LeftButton,
+                               Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(view.viewport(), &outsidePress);
+    QApplication::sendEvent(view.viewport(), &release);
+    QApplication::sendEvent(view.viewport(), &press);
+    QApplication::sendEvent(view.viewport(), &outsideRelease);
+    EXPECT_EQ(requests, 0);
+
     QApplication::sendEvent(view.viewport(), &press);
     EXPECT_EQ(requests, 0);
     QApplication::sendEvent(view.viewport(), &release);

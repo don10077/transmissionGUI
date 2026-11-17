@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QMainWindow>
+#include "watchfolderservice.h"
+#include <QElapsedTimer>
 #include <QDeadlineTimer>
 #include <QHash>
 #include <QPointer>
@@ -79,7 +81,7 @@ private slots:
     void onConnect();
     void onDisconnect();
     void onAddTorrent();
-    void scanWatchFolder();
+
     void onRefresh();
     void onConnected(const tgui::SessionInfo& info);
     void onConnectionFailed(const QString& error);
@@ -210,6 +212,8 @@ private:
     QMenu* createSpeedLimitMenu(QWidget* parent, bool download);
     void updateRefreshSchedule();
     void saveWindowLayout();
+    /** Сохраняет последние ширины изменённых колонок одним пакетом. */
+    void saveColumnWidths();
     void updateFilterPanel(const QVector<tgui::Torrent>& torrents);
     void updateSelectionActions(qsizetype count = -1);
     void updateInfoTitle();
@@ -220,6 +224,10 @@ private:
     // одного запроса при выборе мало (в старом transgui детали
     // перезапрашивались каждый цикл обновления).
     void refreshFilesDetails();
+    /** Обновляет данные выбранного торрента, запрашивая пути только при необходимости. */
+    void requestFiles(bool forceFull = false);
+    /** Сбрасывает запросы и кэш вкладки при смене выбора или соединения. */
+    void resetFiles();
     void refreshGeneralDetails();
     void updateGeneralTorrent(const tgui::Torrent& torrent);
     void exportTorrentLinks(const QVector<tgui::Torrent>& torrents);
@@ -243,6 +251,7 @@ private:
                        std::optional<AddChoices> choices = {});
     void onClipboardChanged();
     void updateWatchFolder();
+    void applyWatchSnapshot(const WatchFolderService::Snapshot& files);
     void offerDuplicateUpdate(const tgui::RpcClient::AddTorrent& source,
                               const QJsonObject& duplicate, const QByteArray& metainfo);
     void finishAdd(const QPointer<tgui::RpcClient>& rpc, int selectedId = -1);
@@ -284,7 +293,7 @@ private:
         QDeadlineTimer due;
     };
     QHash<QString, WatchRetry> m_watchRetries;
-    QTimer m_watchTimer;
+    WatchFolderService m_watchService;
 
     TorrentModel m_model;
     TorrentFilterProxy m_proxy;
@@ -293,6 +302,8 @@ private:
     TrackerListModel m_trackerModel;
     tgui::GeoIpDb m_geoip; // GeoIP Country Edition (W11b)
     QTimer m_refreshTimer;
+    QTimer m_columnWidthTimer;
+    QHash<int, int> m_pendingColumnWidths;
     QSplitter* m_mainSplitter = nullptr;
     bool m_settingsImported = false;
     bool m_loadingFlags = false;
@@ -326,6 +337,9 @@ private:
     // ID торрента, для которого загружаются вкладки Файлы/Пиры/Трекеры.
     int m_currentId = -1;
     int m_filePieceCount = 0;
+    QElapsedTimer m_filesSnapshot;
+    quint64 m_filesRequest = 0;
+    bool m_filesLoading = false;
     quint64 m_generalRequest = 0;
     bool m_generalLoading = false;
     std::optional<tgui::Torrent> m_generalDetails;

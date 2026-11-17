@@ -9,6 +9,15 @@
 #include "tgui/models.h"
 
 // Модель списка торрентов (torrent-get). Строки UI — английский (см. WORKFLOW.md 0.3).
+/** Данные строки, нужные для отрисовки значка и полосы прогресса. */
+struct TorrentVisualState {
+    double progress = -1.0;
+    int status = -1;
+    bool finished = false;
+    bool error = false;
+};
+Q_DECLARE_METATYPE(TorrentVisualState)
+
 class TorrentModel : public QAbstractTableModel {
     Q_OBJECT
 public:
@@ -64,6 +73,7 @@ public:
         RateDownRole,                    // double, байт/с
         RateUpRole,                      // double, байт/с
         LabelListRole,                    // QStringList, без склейки имён
+        VisualStateRole,                  // TorrentVisualState
         SortRole,                         // исходное значение для сортировки
     };
 

@@ -452,6 +452,35 @@ void RpcClient::getTorrentDetailsByHash(const QString& hash, DetailsCallback cal
     getTorrentDetails(QJsonValue(hash), std::move(callback));
 }
 
+void RpcClient::getFileStats(int id, std::function<void(std::optional<QVector<FileProgress>>)> callback)
+{
+    call("torrent-get", {{"ids", QJsonArray{id}}, {"fields", QJsonArray{"id", "fileStats"}}},
+         [id, callback = std::move(callback)](const JsonRpcResult& result) {
+        const auto torrents = result.arguments.value("torrents").toArray();
+        const auto torrent = torrents.isEmpty() ? QJsonObject{} : torrents.first().toObject();
+        const auto stats = torrent.value("fileStats");
+        if (!result.ok || torrent.value("id").toInt(-1) != id || !stats.isArray()) {
+            callback(std::nullopt);
+            return;
+        }
+        const auto entries = stats.toArray();
+        QVector<FileProgress> files;
+        files.reserve(entries.size());
+        for (const auto& entry : entries) {
+            const auto file = entry.toObject();
+            const auto bytes = file.value("bytesCompleted");
+            if (!bytes.isDouble() || !file.value("priority").isDouble() || !file.contains("wanted")) {
+                callback(std::nullopt);
+                return;
+            }
+            const auto wanted = file.value("wanted");
+            files.append({bytes.toDouble(), file.value("priority").toInt(),
+                          wanted.isBool() ? wanted.toBool() : wanted.toInt() != 0});
+        }
+        callback(std::move(files));
+    });
+}
+
 void RpcClient::getTorrentDetails(const QJsonValue& identifier, DetailsCallback callback)
 {
     // torrent-get: файлы + приоритеты + wanted + downloadDir + состояние

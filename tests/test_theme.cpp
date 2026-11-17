@@ -50,6 +50,30 @@ QImage grabWidget(QWidget& w)
 
 } // namespace
 
+TEST(ThemeRendering, IconRasterUsesRequestedSizeAndDisabledOpacity)
+{
+    const auto icon = tgui::theme::icon(tgui::theme::Icon::Folder);
+    const QSize size(19, 19);
+    const qreal scale = 1.5;
+    const auto normal = icon.pixmap(size, scale, QIcon::Normal);
+    const auto disabled = icon.pixmap(size, scale, QIcon::Disabled);
+    ASSERT_FALSE(normal.isNull());
+    ASSERT_FALSE(disabled.isNull());
+    EXPECT_EQ(normal.size(), size * scale);
+    EXPECT_EQ(normal.devicePixelRatio(), scale);
+    EXPECT_EQ(disabled.size(), normal.size());
+    const auto maxAlpha = [](const QPixmap& pixmap) {
+        int alpha = 0;
+        const QImage image = pixmap.toImage();
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                alpha = qMax(alpha, qAlpha(image.pixel(x, y)));
+        return alpha;
+    };
+    EXPECT_GT(maxAlpha(disabled), 0);
+    EXPECT_LT(maxAlpha(disabled), maxAlpha(normal));
+}
+
 TEST(ThemeRendering, MainWindow)
 {
     ensureTheme();

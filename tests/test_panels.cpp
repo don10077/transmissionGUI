@@ -131,6 +131,7 @@ TEST(PropsForm, RendersTorrent)
     t.addedDate = 1700000000;
     t.isPrivate = true;
     t.labels = {"hd", "video"};
+    t.hashString = QString(40, QChar('a'));
     f.setTorrent(t);
     ASSERT_NE(f.torrent(), nullptr);
     EXPECT_EQ(f.torrent()->id, 42);
@@ -150,6 +151,17 @@ TEST(PropsForm, RendersTorrent)
     ASSERT_TRUE(resource);
     EXPECT_FALSE(resource(QUrl(QStringLiteral("tgui-label:/0"))).value<QImage>().isNull());
     EXPECT_FALSE(resource(QUrl(QStringLiteral("tgui-label:/1"))).value<QImage>().isNull());
+    QLabel* hash = nullptr;
+    for (auto* field : f.findChildren<QLabel*>())
+        if (field->text() == *t.hashString)
+            hash = field;
+    ASSERT_NE(hash, nullptr);
+    const auto widgetCount = f.findChildren<QWidget*>().size();
+    hash->setSelection(0, 4);
+    t.rateDownload = 10000;
+    f.setTorrent(t);
+    EXPECT_EQ(hash->selectedText(), QStringLiteral("aaaa"));
+    EXPECT_EQ(f.findChildren<QWidget*>().size(), widgetCount);
     // Раздел «Downloaded:» + одна шкала (карта кусков) + процент справа —
     // как в старом transgui (panProgress: метка, pbDownloaded, «100.0%»).
     EXPECT_FALSE(labelContaining(&f, "Downloaded:").isEmpty());
@@ -229,7 +241,14 @@ TEST(StatsForm, RendersStats)
     EXPECT_EQ(table->item(0, 2)->text(), QStringLiteral("2.00 GB"));
     EXPECT_EQ(table->item(2, 0)->text(), QStringLiteral("Ratio"));
     EXPECT_EQ(table->item(3, 1)->text(), QStringLiteral("3"));
-    EXPECT_TRUE(table->item(4, 1)->text().contains(QStringLiteral("01:01:01")));
+    auto* elapsed = table->item(4, 1);
+    EXPECT_TRUE(elapsed->text().contains(QStringLiteral("01:01:01")));
+    table->setCurrentItem(elapsed);
+    ++st.current.secondsActive;
+    s.setStats(st);
+    EXPECT_EQ(s.findChild<QTableWidget*>(), table);
+    EXPECT_EQ(table->currentItem(), elapsed);
+    EXPECT_TRUE(elapsed->text().contains(QStringLiteral("01:01:02")));
 
     s.clear();
     EXPECT_EQ(s.stats(), nullptr);
@@ -470,7 +489,8 @@ TEST(PropsForm, CopyFromCaptionAndValueIncludesClippedText)
     const QString oldHash = *torrent.hashString;
     torrent.hashString = QString(200, QChar('b'));
     form.setTorrent(torrent);
-    EXPECT_TRUE(oldField.isNull());
+    ASSERT_EQ(oldField.data(), value);
+    EXPECT_EQ(value->text(), *torrent.hashString);
     ASSERT_FALSE(menu.isNull());
     auto* copy = menu->findChild<QAction*>(QStringLiteral("copyFieldValue"));
     ASSERT_NE(copy, nullptr);
@@ -715,6 +735,7 @@ TEST(DialogAppearance, AllPagesFitAndDaemonPreservesZero)
 #include <functional>
 #include <QThread>
 #include <QSettings>
+#include <QSaveFile>
 
 namespace {
 bool waitForSettings(const std::function<bool()>& predicate, int timeoutMs = 10000)
@@ -1327,72 +1348,64 @@ TEST_F(AutomaticAddSources, WatchFolderPersistsConfirmedAddAndRetriesUnconfirmed
     ASSERT_TRUE(directory.isValid());
     settings.setValue(OptionsDialog::watchFolderKey, directory.path());
     settings.setValue(OptionsDialog::watchDestinationKey, "/watched");
-    settings.setValue(OptionsDialog::skipAddDialogKey, true);
+    settings.setValue(OptionsDialog::skipAddDialogKey, false);
     const auto historyKey = QStringLiteral("downloads/watchHistory/") +
         QString::fromLatin1(QUrl::toPercentEncoding(QDir(directory.path()).absolutePath()));
     const auto cleanup = qScopeGuard([&] { settings.remove(historyKey); });
     const auto path = directory.filePath("example.TORRENT");
     const auto writeSource = [&](const QByteArray& bytes) {
-        QFile source(path);
+        QSaveFile source(path);
         ASSERT_TRUE(source.open(QIODevice::WriteOnly | QIODevice::Truncate));
         ASSERT_EQ(source.write(bytes), bytes.size());
+        ASSERT_TRUE(source.commit());
     };
     ASSERT_NO_FATAL_FAILURE(writeSource("de"));
-    const auto scan = [](MainWindow& window) {
-        EXPECT_TRUE(QMetaObject::invokeMethod(&window, "scanWatchFolder", Qt::DirectConnection));
-    };
     {
         MainWindow window;
         ASSERT_NO_FATAL_FAILURE(connectWindow(window));
-        scan(window);
         ASSERT_NO_FATAL_FAILURE(writeSource("d1:ai1ee"));
-        scan(window);
         EXPECT_TRUE(settings.value(historyKey).toMap().isEmpty());
         server.enqueue({429, "Try again later", {}});
-        scan(window);
         ASSERT_TRUE(waitForSettings([&] { return additions().size() == 1 && server.requestCount() >= 5; }));
         EXPECT_EQ(additions().first().value("download-dir").toString(), "/watched");
         EXPECT_EQ(additions().first().value("metainfo").toString(), QString::fromLatin1(QByteArray("d1:ai1ee").toBase64()));
         EXPECT_TRUE(QFile::exists(path));
         EXPECT_TRUE(settings.value(historyKey).toMap().isEmpty());
-        scan(window);
         EXPECT_EQ(additions().size(), 1);
+        EXPECT_EQ(window.findChild<FileSelectDialog*>(), nullptr);
     }
     {
         MainWindow reopened;
         ASSERT_NO_FATAL_FAILURE(connectWindow(reopened));
         server.enqueue({200, R"({"result":"success","arguments":{"torrent-added":{"id":2,"name":"New"}}})", {}});
         server.enqueue({200, R"({"result":"success","arguments":{"torrents":[{"id":2,"downloadDir":"/watched"}]}})", {}});
-        scan(reopened);
-        scan(reopened);
         ASSERT_TRUE(waitForSettings([&] { return !settings.value(historyKey).toMap().isEmpty(); }));
         ASSERT_EQ(additions().size(), 2);
+        EXPECT_EQ(reopened.findChild<FileSelectDialog*>(), nullptr);
         EXPECT_EQ(additions().last().value("metainfo").toString(), additions().first().value("metainfo").toString());
     }
     MainWindow confirmed;
     ASSERT_NO_FATAL_FAILURE(connectWindow(confirmed));
-    scan(confirmed);
-    scan(confirmed);
     QEventLoop events;
-    QTimer::singleShot(50, &events, &QEventLoop::quit);
+    QTimer::singleShot(650, &events, &QEventLoop::quit);
     events.exec();
     EXPECT_EQ(additions().size(), 2);
 
     // A rejected version is skipped while an updated version is still picked up.
     ASSERT_NO_FATAL_FAILURE(writeSource("corrupt"));
-    scan(confirmed);
     const auto beforeCorrupt = server.requestCount();
     server.enqueue({200, R"({"result":"unrecognized info"})", {}});
-    scan(confirmed);
     ASSERT_TRUE(waitForSettings([&] { return server.requestCount() >= beforeCorrupt + 2; }));
-    scan(confirmed);
     QTimer::singleShot(50, &events, &QEventLoop::quit);
     events.exec();
     EXPECT_EQ(additions().size(), 3);
+    server.enqueue({200, R"({"result":"success","arguments":{"torrent-duplicate":{"id":2,"name":"New"}}})", {}});
     ASSERT_NO_FATAL_FAILURE(writeSource("d1:ai123ee"));
-    scan(confirmed);
-    scan(confirmed);
-    ASSERT_TRUE(waitForSettings([&] { return additions().size() == 4; }));
+    ASSERT_TRUE(waitForSettings([&] {
+        return additions().size() == 4 && confirmed.statusBar()->currentMessage().contains("already exists");
+    }));
+    EXPECT_NE(settings.value(historyKey).toMap().value("example.TORRENT").toString(), QString());
+    EXPECT_EQ(confirmed.findChild<FileSelectDialog*>(), nullptr);
 }
 
 TEST_F(AutomaticAddSources, ExternalOpenForwardsUnicodeFileAndMagnetBeforeConnection)
@@ -1652,7 +1665,7 @@ TEST(InfoPanel, FilesTabRequestsProgressRefresh)
     MockRpcServer server;
     ASSERT_NE(server.start(), 0);
     server.setDefault({200,
-        R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","torrents":[]}})",
+        R"({"result":"success","arguments":{"rpc-version":14,"version":"4.0","torrents":[{"id":900,"name":"checking","files":[{"name":"video.mkv","length":100,"bytesCompleted":25}]}]}})",
         {}});
     MainWindow window;
     tgui::RpcClient::Options options;
@@ -1681,13 +1694,22 @@ TEST(InfoPanel, FilesTabRequestsProgressRefresh)
         }
         return count;
     };
-    ASSERT_TRUE(waitForSettings([&] { return filesRequests() > 0; }));
+    ASSERT_TRUE(waitForSettings([&] { return filesRequests() > 0 && window.fileModel().rowCount() == 1; }));
+    const QPersistentModelIndex file(window.fileModel().index(0, FileListModel::ColName));
+    EXPECT_EQ(window.fileModel().files().first().completion, 0.25);
+    server.setDefault({200,
+        R"({"result":"success","arguments":{"torrents":[{"id":900,"name":"checking","fileStats":[{"bytesCompleted":50,"priority":1,"wanted":true}]}]}})", {}});
     const int before = filesRequests();
     auto* tabs = window.findChild<QTabWidget*>(QStringLiteral("infoPanel"));
     ASSERT_NE(tabs, nullptr);
     tabs->setCurrentIndex(3); // Files
     ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRefresh", Qt::DirectConnection));
-    EXPECT_TRUE(waitForSettings([&] { return filesRequests() > before; }));
+    EXPECT_TRUE(waitForSettings([&] { return file.isValid() && window.fileModel().files().first().completion == 0.5; }));
+    EXPECT_EQ(filesRequests(), before);
+    EXPECT_EQ(file.data().toString(), QStringLiteral("video.mkv"));
+    EXPECT_TRUE(std::ranges::any_of(server.requests(), [](const auto& request) {
+        return request.arguments.value("fields").toArray() == QJsonArray{"id", "fileStats"};
+    }));
     if (oldAutoRefresh.isValid())
         settings.setValue("ui/autoRefresh", oldAutoRefresh);
     else

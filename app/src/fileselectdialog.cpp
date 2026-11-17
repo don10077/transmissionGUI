@@ -43,17 +43,51 @@ namespace {
 constexpr int kFileIndexRole = Qt::UserRole;
 constexpr int kFileSizeRole = Qt::UserRole + 1;
 
-/** Compile the filename wildcards saved for a destination folder. */
-QList<QRegularExpression> destinationPatterns(const QString& text)
-{
-    QList<QRegularExpression> patterns;
-    const auto masks = text.split(QRegularExpression("[\\s,;]+"), Qt::SkipEmptyParts);
-    for (const auto& mask : masks) {
-        patterns.append(QRegularExpression(QRegularExpression::wildcardToRegularExpression(mask),
-                                           QRegularExpression::CaseInsensitiveOption));
+/** Кэширует совпадения простых масок расширений, остальные проверяет по имени. */
+class DestinationPatterns {
+public:
+    explicit DestinationPatterns(const QString& text)
+    {
+        const auto masks = text.split(QRegularExpression("[\\s,;]+"), Qt::SkipEmptyParts);
+        for (const auto& mask : masks) {
+            const QRegularExpression pattern(QRegularExpression::wildcardToRegularExpression(mask),
+                                             QRegularExpression::CaseInsensitiveOption);
+            const bool suffixOnly = mask.startsWith("*.") &&
+                !mask.sliced(2).contains(QRegularExpression(R"([.*?\[\]\\/])"));
+            (suffixOnly ? m_suffixPatterns : m_namePatterns).append(pattern);
+        }
     }
-    return patterns;
-}
+
+    bool isEmpty() const { return m_suffixPatterns.isEmpty() && m_namePatterns.isEmpty(); }
+
+    bool matches(const QString& name)
+    {
+        if (!m_suffixPatterns.isEmpty()) {
+            const auto dot = name.lastIndexOf('.');
+            if (dot >= 0) {
+                const auto suffix = name.sliced(dot);
+                auto match = m_suffixMatches.constFind(suffix);
+                if (match == m_suffixMatches.cend())
+                    match = m_suffixMatches.insert(suffix, anyMatch(m_suffixPatterns, suffix));
+                if (*match)
+                    return true;
+            }
+        }
+        return anyMatch(m_namePatterns, name);
+    }
+
+private:
+    static bool anyMatch(const QList<QRegularExpression>& patterns, const QString& name)
+    {
+        return std::ranges::any_of(patterns, [&name](const auto& pattern) {
+            return pattern.match(name).hasMatch();
+        });
+    }
+
+    QList<QRegularExpression> m_suffixPatterns;
+    QList<QRegularExpression> m_namePatterns;
+    QHash<QString, bool> m_suffixMatches;
+};
 
 // Обойти листья дерева (у них есть индекс файла).
 void forEachFile(QTreeWidgetItem* item, const std::function<void(QTreeWidgetItem*)>& fn)
@@ -140,16 +174,20 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
 
     QString initialPath = details.downloadDir;
     double bestSize = 0.0;
+    QList<QString> names;
+    if (useDestinationTemplates && !m_history.isEmpty()) {
+        names.reserve(details.files.size());
+        for (const auto& file : details.files)
+            names.append(QFileInfo(file.name).fileName());
+    }
     for (auto it = m_history.cbegin(); useDestinationTemplates && it != m_history.cend(); ++it) {
-        const auto patterns = destinationPatterns(it.value().toString());
+        DestinationPatterns patterns(it.value().toString());
+        if (patterns.isEmpty())
+            continue;
         double matchedSize = 0.0;
-        for (const auto& file : details.files) {
-            const auto name = QFileInfo(file.name).fileName();
-            if (std::any_of(patterns.cbegin(), patterns.cend(), [&name](const auto& pattern) {
-                    return pattern.match(name).hasMatch();
-                }))
-                matchedSize += file.size;
-        }
+        for (qsizetype row = 0; row < details.files.size(); ++row)
+            if (patterns.matches(names.at(row)))
+                matchedSize += details.files.at(row).size;
         if (matchedSize > bestSize) {
             bestSize = matchedSize;
             initialPath = it.key();
@@ -207,6 +245,7 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
     m_tree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
 
     // Дерево папок/файлов: полная иерархия, как в списке файлов.
+    QList<QTreeWidgetItem*> topLevelItems;
     QHash<QString, QTreeWidgetItem*> nodes;
     QHash<QString, double> folderSizes;
     const QString root = details.name + '/';
@@ -224,8 +263,11 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
             path += parts.at(i);
             QTreeWidgetItem* item = nodes.value(path);
             if (!item) {
-                item = parentItem ? new QTreeWidgetItem(parentItem)
-                                  : new QTreeWidgetItem(m_tree);
+                item = new QTreeWidgetItem;
+                if (parentItem)
+                    parentItem->addChild(item);
+                else
+                    topLevelItems.append(item);
                 item->setText(0, parts.at(i));
                 item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
                 item->setCheckState(0, Qt::Checked);
@@ -252,6 +294,7 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
         item->setText(1, QString::fromStdString(tgui::formatSize(it.value())));
         item->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
     }
+    m_tree->addTopLevelItems(topLevelItems);
     m_tree->collapseAll();
     if (sharedRoot && m_tree->topLevelItemCount() == 1)
         m_tree->topLevelItem(0)->setExpanded(true);
@@ -601,15 +644,13 @@ void FileSelectDialog::updateAncestors(QTreeWidgetItem* item)
 /** Отмечает подходящие файлы и пересчитывает папки одним обходом дерева. */
 void FileSelectDialog::applyTemplate(const QString& text)
 {
-    const auto patterns = destinationPatterns(text);
+    DestinationPatterns patterns(text);
     if (patterns.isEmpty())
         return;
     const auto apply = [&patterns](auto&& self, QTreeWidgetItem* item) -> Qt::CheckState {
         const auto count = item->childCount();
         if (count == 0) {
-            const auto match = std::ranges::any_of(patterns, [item](const auto& pattern) {
-                return pattern.match(item->text(0)).hasMatch();
-            });
+            const bool match = patterns.matches(item->text(0));
             const auto state = match ? Qt::Checked : Qt::Unchecked;
             item->setCheckState(0, state);
             return state;

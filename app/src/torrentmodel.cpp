@@ -330,17 +330,26 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
         return error.isEmpty() ? QVariant{} : QVariant(error);
     }
 
+    const auto progress = [&]() -> double {
+        if (isVerifying(t))
+            return verifyingPercent(t);
+        if (t.sizeWhenDone && t.sizeWhenDone.value() > 0.0)
+            return tgui::percentComplete(t.sizeWhenDone.value(),
+                                         t.leftUntilDone.value_or(0.0));
+        if (t.metadataPercentComplete)
+            return t.metadataPercentComplete.value() * 100.0;
+        return -1.0;
+    };
+
     // Числовые роли — для кастомного делегата (не зависят от текста ячейки).
     switch (role) {
         case ProgressRole:
-            if (isVerifying(t))
-                return verifyingPercent(t);
-            if (t.sizeWhenDone && t.sizeWhenDone.value() > 0.0)
-                return tgui::percentComplete(t.sizeWhenDone.value(),
-                                             t.leftUntilDone.value_or(0.0));
-            if (t.metadataPercentComplete)
-                return t.metadataPercentComplete.value() * 100.0;
-            return -1.0;
+            return progress();
+        case VisualStateRole: {
+            const bool error = hasError();
+            return QVariant::fromValue(TorrentVisualState{
+                col == ColDone ? progress() : -1.0, status, !error && isFinished(), error});
+        }
         case StatusRole:
             return status;
         case FinishedRole:

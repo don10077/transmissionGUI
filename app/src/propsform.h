@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QPointer>
+#include <QHash>
 #include <QUrl>
 #include <QWidget>
 
@@ -13,11 +14,14 @@ class QScrollArea;
 class QLabel;
 class QAction;
 class QMenu;
+class QGridLayout;
+class QLineEdit;
+class QPushButton;
 class PieceMapBar;
 
 // Панель «General» (содержимое диалога «Свойства»): раскладка по референсу
 // (tabGeneral: общий прогресс + секции «Передача»/«Торрент»), только чтение.
-// Форма пересоздаётся в setTorrent()/clear().
+// Повторные обновления выбранного торрента сохраняют виджеты и выделение текста.
 class PropsForm : public QWidget {
     Q_OBJECT
 public:
@@ -47,11 +51,19 @@ private:
     QWidget* m_progressRow = nullptr;
     PieceMapBar* m_pieceBar = nullptr;
     QLabel* m_progressPercent = nullptr;
+    QLabel* m_magnetLabel = nullptr;
+    QLineEdit* m_magnet = nullptr;
+    QPushButton* m_labelEdit = nullptr;
+    QHash<QString, QPair<QLabel*, QLabel*>> m_values;
+    QList<QGridLayout*> m_transferGrids;
+    QList<QGridLayout*> m_torrentGrids;
+    QStringList m_renderedLabels;
     QPointer<QAction> m_editLabels;
     std::optional<tgui::Torrent> m_torrent;
     std::optional<tgui::SessionInfo> m_session;
     // Сохранение прокрутки между пересборками (автообновление раз в 2 с).
     int m_builtTorrentId = -1;
+    bool m_builtWithLabels = false;
     int m_pendingScroll = -1;
     int m_rebuildSerial = 0;
 };

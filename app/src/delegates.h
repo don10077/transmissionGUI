@@ -2,6 +2,7 @@
 
 #include <QFont>
 #include <QHash>
+#include <QPersistentModelIndex>
 #include <QStringList>
 #include <QStyledItemDelegate>
 
@@ -36,6 +37,12 @@ public:
     using QStyledItemDelegate::QStyledItemDelegate;
     void paint(QPainter* painter, const QStyleOptionViewItem& option,
                const QModelIndex& index) const override;
+
+private:
+    mutable bool m_fontReady = false;
+    mutable QFont m_baseFont;
+    mutable QFont m_progressFont;
+    mutable int m_progressHeight = 15;
 };
 
 // Колонка «Name»: чекбокс выделения строки (референс — чекбоксы TVarGrid).
@@ -62,4 +69,7 @@ public:
     bool editorEvent(QEvent* event, QAbstractItemModel* model,
                      const QStyleOptionViewItem& option,
                      const QModelIndex& index) override;
+
+private:
+    QPersistentModelIndex m_pressed;
 };

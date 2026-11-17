@@ -10,6 +10,9 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QHash>
+#include <QIconEngine>
+#include <QPixmapCache>
+#include <QPointer>
 #include <QLabel>
 #include <QLayoutItem>
 #include <QMouseEvent>
@@ -146,13 +149,12 @@ QString iconPath(Icon id)
 /**
  * Рендерит SVG в физическом разрешении экрана.
  * @param renderer Загруженный SVG.
- * @param size Размер в логических пикселях.
+ * @param size Размер в физических пикселях.
  * @param dpr Масштаб экрана.
  */
-QPixmap renderIcon(QSvgRenderer& renderer, int size, qreal dpr)
+QPixmap renderIcon(QSvgRenderer& renderer, const QSize& size, qreal dpr)
 {
-    const int pixels = qRound(size * dpr);
-    QPixmap pixmap(pixels, pixels);
+    QPixmap pixmap(size);
     pixmap.fill(Qt::transparent);
     {
         QPainter painter(&pixmap);
@@ -179,6 +181,68 @@ QPixmap disabledIcon(const QPixmap& normal)
     }
     return disabled;
 }
+
+/** Растеризует SVG только при отрисовке, для запрошенных размера и DPR. */
+class ThemeIconEngine final : public QIconEngine {
+public:
+    explicit ThemeIconEngine(const QString& path) : m_path(path) {}
+
+    QIconEngine* clone() const override { return new ThemeIconEngine(m_path); }
+
+    void paint(QPainter* painter, const QRect& rect, QIcon::Mode mode, QIcon::State state) override
+    {
+        const qreal dpr = painter->device()->devicePixelRatioF();
+        const int side = qMin(rect.width(), rect.height());
+        QRect target(0, 0, side, side);
+        target.moveCenter(rect.center());
+        painter->drawPixmap(target, raster(target.size() * dpr, mode, state, dpr));
+    }
+
+    QPixmap pixmap(const QSize& size, QIcon::Mode mode, QIcon::State state) override
+    {
+        return raster(size, mode, state, 1.0);
+    }
+
+    QPixmap scaledPixmap(const QSize& size, QIcon::Mode mode, QIcon::State state, qreal scale) override
+    {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+        return raster(size * scale, mode, state, scale);
+#else
+        return raster(size, mode, state, scale);
+#endif
+    }
+
+private:
+    QPixmap raster(const QSize& size, QIcon::Mode mode, QIcon::State state, qreal dpr)
+    {
+        if (size.isEmpty())
+            return {};
+        const auto key = QStringLiteral("tgui:%1:%2x%3:%4:%5:%6")
+            .arg(m_path).arg(size.width()).arg(size.height()).arg(mode).arg(state).arg(dpr, 0, 'g', 16);
+        QPixmap image;
+        if (QPixmapCache::find(key, &image))
+            return image;
+
+        if (mode == QIcon::Disabled) {
+            image = disabledIcon(raster(size, QIcon::Normal, state, dpr));
+        } else {
+            QSvgRenderer renderer(m_path);
+            if (!renderer.isValid())
+                return {};
+            renderer.setAspectRatioMode(Qt::KeepAspectRatio);
+            image = renderIcon(renderer, size, dpr);
+        }
+        QPixmapCache::insert(key, image);
+        return image;
+    }
+
+    QString m_path;
+};
+
+struct IconCache : QObject {
+    using QObject::QObject;
+    QHash<QString, QIcon> icons;
+};
 
 } // namespace
 
@@ -429,34 +493,21 @@ void addFullRow(QGridLayout* grid, QLayout* field, int row)
 
 QIcon icon(Icon id)
 {
-    if (id == Icon::App) {
-        static const QIcon appIcon(iconPath(Icon::App));
-        return appIcon;
-    }
-
-    // Роли с одинаковым рисунком используют один набор пиксмапов.
-    static QHash<QString, QIcon> cache;
     const QString path = iconPath(id);
-    const auto found = cache.constFind(path);
-    if (found != cache.cend())
-        return *found;
-
-    QSvgRenderer renderer(path);
-    if (!renderer.isValid())
-        return {};
-
-    QIcon result;
-    const auto addSize = [&](int size) {
-        for (qreal dpr : {1.0, 1.25, 1.5, 2.0}) {
-            const QPixmap normal = renderIcon(renderer, size, dpr);
-            result.addPixmap(normal, QIcon::Normal);
-            result.addPixmap(disabledIcon(normal), QIcon::Disabled);
-        }
-    };
-    for (int size : {14, 16, 18, 20, 22, 24, 32})
-        addSize(size);
-    cache.insert(path, result);
-    return result;
+    static QPointer<IconCache> cache;
+    if (!cache) {
+        cache = new IconCache(qApp);
+        QObject::connect(qApp, &QCoreApplication::aboutToQuit, cache, [icons = cache.data()] {
+            icons->icons.clear();
+            QPixmapCache::clear();
+        });
+    }
+    auto found = cache->icons.constFind(path);
+    if (found == cache->icons.cend()) {
+        found = cache->icons.insert(path, id == Icon::App ? QIcon(path)
+                                                         : QIcon(new ThemeIconEngine(path)));
+    }
+    return *found;
 }
 
 QIcon fileIcon(const QString& fileName)

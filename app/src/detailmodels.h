@@ -2,6 +2,7 @@
 
 #include <QAbstractTableModel>
 #include <QStandardItemModel>
+#include <QIcon>
 #include <QHash>
 #include <QSet>
 
@@ -91,6 +92,7 @@ private:
     const tgui::GeoIpDb* m_geoip = nullptr;
     bool m_showFlags = false;
     QString m_flagsDirectory;
+    mutable QHash<QString, QIcon> m_flagCache;
     bool m_resolveHost = false;
     QHash<QString, QString> m_hostCache;   // ip → hostname ("" — ошибка/отсутствие); кеш результатов
     QSet<QString> m_pendingLookups;        // ip, по которым reverse-DNS ещё выполняется
@@ -149,6 +151,27 @@ signals:
 private:
     void setDescendants(QStandardItem* node, Qt::CheckState state);
     void refreshAncestors(QStandardItem* node);
+    struct Aggregate {
+        double size = 0;
+        double done = 0;
+        double checkDone = 0;
+        double checkSize = 0;
+        int wanted = 0;
+        int count = 0;
+        int minPriority = 1;
+        int maxPriority = -2;
+        bool operator==(const Aggregate&) const = default;
+        void add(const Aggregate& other);
+    };
+    struct Node {
+        QStandardItem* item;
+        int parent;
+        QVector<int> rows;
+        Aggregate previous;
+    };
+    /** Собирает исходные строки только по запросу для выбранного узла. */
+    void collectRows(const QStandardItem* item, QVector<int>& rows) const;
     QStringList m_paths;
-    QHash<QString, QStandardItem*> m_nodes;
+    QVector<Node> m_nodes;
+    QVector<int> m_fileNodes;
 };

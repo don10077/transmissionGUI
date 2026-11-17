@@ -224,8 +224,7 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
             startConnect(*std::exchange(m_reconnectOptions, std::nullopt), true);
     });
     connect(QApplication::clipboard(), &QClipboard::dataChanged, this, &MainWindow::onClipboardChanged);
-    m_watchTimer.setInterval(1000);
-    connect(&m_watchTimer, &QTimer::timeout, this, &MainWindow::scanWatchFolder);
+    connect(&m_watchService, &WatchFolderService::snapshotReady, this, &MainWindow::applyWatchSnapshot);
 
     m_updateCheckTimer.setParent(this);
     m_updateCheckTimer.setObjectName(QStringLiteral("updateCheckTimer"));
@@ -291,10 +290,13 @@ void MainWindow::createUi()
     m_view->header()->setMinimumSectionSize(30);
     // Сохранённые порядок, видимость и ширины имеют приоритет над макетом.
     ColumnLayout::fromSettings(TorrentModel::ColumnCount).applyToView(m_view);
-    // W10: сохраняем ширину при ресайзе, чтобы она восстанавливалась при старте.
+    m_columnWidthTimer.setSingleShot(true);
+    m_columnWidthTimer.setInterval(500);
+    connect(&m_columnWidthTimer, &QTimer::timeout, this, &MainWindow::saveColumnWidths);
     connect(m_view->header(), &QHeaderView::sectionResized, this,
-            [](int logical, int, int newWidth) {
-                QSettings().setValue(QStringLiteral("columns/width_%1").arg(logical), newWidth);
+            [this](int logical, int, int newWidth) {
+                m_pendingColumnWidths.insert(logical, newWidth);
+                m_columnWidthTimer.start();
             });
     // Единый делегат: выделение строки, статус, прогресс и метки.
     m_view->setItemDelegate(new TorrentDelegate(this));
@@ -404,6 +406,9 @@ void MainWindow::createUi()
             }
             m_filesView->expandToDepth(0);
         }
+    });
+    connect(&m_fileModel, &QAbstractItemModel::dataChanged, this, [this] {
+        m_fileTree->setFiles(m_fileModel.files());
     });
     connect(&m_fileModel, &FileListModel::wantChanged, this, &MainWindow::onFileWantToggled);
     // Чекбокс Want: модель эмитит wantToggled(rows, wanted) → единый RPC.
@@ -1065,7 +1070,7 @@ void MainWindow::startConnect(const tgui::RpcClient::Options& opts, bool retry)
     m_reconnecting = retry;
     if (!retry)
         m_reconnectDelayMs = 1000;
-    m_watchTimer.stop();
+    m_watchService.setDirectory({});
     m_watchCandidates.clear();
     m_rpc = std::make_unique<tgui::RpcClient>(opts, this);
     connect(m_rpc.get(), &tgui::RpcClient::connected, this, &MainWindow::onConnected);
@@ -1231,11 +1236,14 @@ void MainWindow::onDisconnect()
 void MainWindow::suspendConnection()
 {
     m_refreshTimer.stop();
-    m_watchTimer.stop();
+    m_watchService.setDirectory({});
     m_moveVerifyTimer.stop();
     m_connected = false;
     ++m_generalRequest;
     m_generalLoading = false;
+    ++m_filesRequest;
+    m_filesLoading = false;
+    m_filesSnapshot.invalidate();
     setConnectedUi(false);
 }
 
@@ -1257,14 +1265,13 @@ void MainWindow::clearConnection()
     m_rpc.reset();
     m_model.setTorrents({});
     updateFilterPanel(m_model.torrents());
-    m_fileModel.setFiles({});
+    resetFiles();
     m_peerModel.setPeers({});
     m_trackerModel.setTrackers({});
     m_general->clear();
     ++m_generalRequest;
     m_generalLoading = false;
     m_generalDetails.reset();
-    m_filePieceCount = 0;
     m_statsForm->clear();
     m_currentId = -1;
     setConnectedUi(false);
@@ -1450,7 +1457,7 @@ void MainWindow::refreshFilesDetails()
     if (m_tabs->currentWidget() == m_general)
         refreshGeneralDetails();
     if (m_filesView && m_tabs->currentWidget() == m_filesView)
-        m_rpc->getTorrentDetails(m_currentId);
+        requestFiles();
     if (m_peersView && m_tabs->currentWidget() == m_peersView)
         m_rpc->getPeers(m_currentId);
     if (m_trackersView && m_tabs->currentWidget() == m_trackersView)
@@ -1567,8 +1574,7 @@ void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
         ++m_generalRequest;
         m_generalLoading = false;
         m_generalDetails.reset();
-        m_filePieceCount = 0;
-        m_fileModel.setFiles({});
+        resetFiles();
         m_peerModel.setPeers({});
         m_trackerModel.setTrackers({});
     }
@@ -1757,13 +1763,16 @@ tgui::RpcClient::RequestCallback MainWindow::afterTorrentChange(const QString& m
             showToast(successMessage);
         else
             onRequestCompleted(method, result.ok, result.error, result.arguments);
-        if (!result.ok)
+        if (!result.ok) {
+            if (refresh == RefreshAfter::Files && id == m_currentId)
+                m_fileTree->setFiles(m_fileModel.files());
             return;
+        }
         rpc->getTorrents();
         if (id != m_currentId)
             return;
         if (refresh == RefreshAfter::Files)
-            rpc->getTorrentDetails(id);
+            requestFiles(true);
         if (refresh == RefreshAfter::Trackers)
             rpc->getTrackers(id);
         if (refresh == RefreshAfter::Properties)
@@ -2046,6 +2055,7 @@ void MainWindow::onColumns()
     if (auto* model = m_view->model())
         for (int i = 0; i < count; ++i)
             titles << model->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
+    saveColumnWidths();
     ColumnLayout cur = ColumnLayout::fromSettings(count);
     ColSetupDialog dlg(cur, titles, this);
     if (dlg.exec() != QDialog::Accepted)
@@ -2285,10 +2295,7 @@ void MainWindow::updateWatchFolder()
         m_watchCandidates.clear();
         m_watchRetries.clear();
     }
-    if (m_connected && !m_watchFolder.isEmpty())
-        m_watchTimer.start();
-    else
-        m_watchTimer.stop();
+    m_watchService.setDirectory(m_connected ? m_watchFolder : QString{});
 }
 
 /** Ключ журнала обработанных версий файлов в заданной папке. */
@@ -2299,39 +2306,33 @@ static QString watchCompletedKey(const QString& folder)
 }
 
 /** Передаёт в очередь один стабильный файл, ожидающий добавления. */
-void MainWindow::scanWatchFolder()
+void MainWindow::applyWatchSnapshot(const WatchFolderService::Snapshot& files)
 {
     if (!m_rpc || !m_connected || m_addingTorrent || !m_addQueue.isEmpty() || m_watchFolder.isEmpty())
         return;
-    const QDir directory(m_watchFolder);
-    if (!directory.exists() || !directory.isReadable()) {
-        m_watchCandidates.clear();
-        return;
-    }
-
     QSettings settings;
     const auto historyKey = watchCompletedKey(m_watchFolder);
     auto history = settings.value(historyKey).toMap();
     const auto previousHistory = history;
     QHash<QString, QString> candidates;
     QString selected;
-    for (const auto& file : directory.entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Name)) {
-        const auto name = file.fileName();
-        if (!name.endsWith(".torrent", Qt::CaseInsensitive))
-            continue;
-        const auto stamp = QString::number(file.size()) + '/' +
-            QString::number(file.lastModified().toMSecsSinceEpoch());
+    bool needsStableCheck = false;
+    for (const auto& file : files) {
+        const auto& name = file.name;
+        const auto& stamp = file.version;
         candidates.insert(name, stamp);
+        if (!file.readable || history.value(name).toString() == stamp)
+            continue;
         const auto retry = m_watchRetries.constFind(name);
         if (retry != m_watchRetries.constEnd() && retry->version == stamp && !retry->due.hasExpired())
             continue;
-        if (selected.isEmpty() && file.size() > 0 && m_watchCandidates.value(name) == stamp &&
-            history.value(name).toString() != stamp) {
-            QFile input(file.absoluteFilePath());
-            if (input.open(QIODevice::ReadOnly))
-                selected = name;
-        }
+        if (m_watchCandidates.value(name) != stamp)
+            needsStableCheck = true;
+        else if (selected.isEmpty())
+            selected = name;
     }
+    if (needsStableCheck)
+        m_watchService.scheduleScan();
     m_watchCandidates = std::move(candidates);
     for (auto it = m_watchRetries.begin(); it != m_watchRetries.end();) {
         if (m_watchCandidates.value(it.key()) != it->version)
@@ -2351,7 +2352,7 @@ void MainWindow::scanWatchFolder()
         return;
 
     tgui::RpcClient::AddTorrent params;
-    params.file = directory.absoluteFilePath(selected);
+    params.file = QDir(m_watchFolder).filePath(selected);
     params.downloadDir = settings.value(OptionsDialog::watchDestinationKey).toString();
     if (params.downloadDir.isEmpty())
         params.downloadDir = m_rpc->sessionInfo().downloadDir;
@@ -2437,7 +2438,8 @@ void MainWindow::submitTorrent(PendingAdd pending, QByteArray sourceBytes, std::
     params.start = false;
 
     const QSettings settings;
-    const bool skipDialog = !choices && settings.value(OptionsDialog::skipAddDialogKey, false).toBool();
+    const bool skipDialog = fromWatchFolder ||
+        (!choices && settings.value(OptionsDialog::skipAddDialogKey, false).toBool());
     auto request = params;
     if (choices)
         request.downloadDir = choices->options.downloadDir;
@@ -2495,7 +2497,12 @@ void MainWindow::submitTorrent(PendingAdd pending, QByteArray sourceBytes, std::
         if ((addedResult.ok && duplicate.isObject()) ||
             addedResult.status == "duplicate torrent" || addedResult.error == "duplicate torrent") {
             finishWatch(true);
-            offerDuplicateUpdate(params, duplicate.toObject(), metainfo);
+            if (fromWatchFolder) {
+                statusBar()->showMessage(tr("Torrent already exists: %1").arg(QFileInfo(params.file).fileName()), 5000);
+                finishAdd(rpc);
+            } else {
+                offerDuplicateUpdate(params, duplicate.toObject(), metainfo);
+            }
             return;
         }
         const auto added = addedResult.arguments.value("torrent-added").toObject();
@@ -3977,6 +3984,63 @@ void MainWindow::onToggleAltSpeed()
 {
 }
 
+void MainWindow::resetFiles()
+{
+    ++m_filesRequest;
+    m_filesLoading = false;
+    m_filesSnapshot.invalidate();
+    m_filePieceCount = 0;
+    m_fileModel.setFiles({});
+}
+
+void MainWindow::requestFiles(bool forceFull)
+{
+    if (!m_rpc || !m_connected || m_currentId < 0 || (m_filesLoading && !forceFull))
+        return;
+    m_filesLoading = true;
+    const auto request = ++m_filesRequest;
+    const auto id = m_currentId;
+    const QPointer rpc(m_rpc.get());
+    const auto current = [this, rpc, request, id] {
+        return rpc && rpc == m_rpc.get() && m_connected && request == m_filesRequest && id == m_currentId;
+    };
+
+    // Редкий полный снимок учитывает переименования, сделанные другим клиентом.
+    if (forceFull || !m_filesSnapshot.isValid() || m_filesSnapshot.hasExpired(30000)) {
+        m_rpc->getTorrentDetails(id, [this, current](const auto& details) {
+            if (!current())
+                return;
+            m_filesLoading = false;
+            if (!details)
+                return;
+            m_filesSnapshot.start();
+            onTorrentDetailsReceived(*details);
+        });
+        return;
+    }
+    m_rpc->getFileStats(id, [this, current, id](const auto& stats) {
+        if (!current())
+            return;
+        m_filesLoading = false;
+        auto files = m_fileModel.files();
+        if (!stats || stats->size() != files.size()) {
+            requestFiles(true);
+            return;
+        }
+        for (qsizetype row = 0; row < files.size(); ++row) {
+            auto& file = files[row];
+            const auto& progress = stats->at(row);
+            file.completion = file.size > 0.0 ? progress.bytesCompleted / file.size : 0.0;
+            file.priority = progress.priority;
+            file.wanted = progress.wanted;
+        }
+        if (const auto* torrent = torrentById(id))
+            tgui::applyCheckProgress(files, torrent->status.value_or(-1), torrent->recheckProgress,
+                                     torrent->pieceCount.value_or(m_filePieceCount));
+        m_fileModel.setFiles(files);
+    });
+}
+
 void MainWindow::onTorrentDetailsReceived(const tgui::TorrentDetails& details)
 {
     // Вкладка «Файлы» для выбранного торрента.
@@ -4038,8 +4102,7 @@ void MainWindow::onSelectionChanged()
     ++m_generalRequest;
     m_generalLoading = false;
     m_generalDetails.reset();
-    m_filePieceCount = 0;
-    m_fileModel.setFiles({});
+    resetFiles();
     m_peerModel.setPeers({});
     m_trackerModel.setTrackers({});
     // «General» обновляем из модели сразу — до ответа RPC.
@@ -4519,6 +4582,8 @@ void MainWindow::finishAdd(const QPointer<tgui::RpcClient>& rpc, int selectedId)
         m_addSelectionId = selectedId;
     rpc->getTorrents();
     addNextTorrent();
+    if (!m_addingTorrent)
+        m_watchService.scheduleScan();
 }
 
 /** Продолжает очередь после получения свежего списка от того же демона. */
@@ -4734,12 +4799,24 @@ void MainWindow::closeEvent(QCloseEvent* event)
     QMainWindow::closeEvent(event);
 }
 
+void MainWindow::saveColumnWidths()
+{
+    if (m_settingsImported || m_pendingColumnWidths.isEmpty())
+        return;
+    m_columnWidthTimer.stop();
+    QSettings settings;
+    for (auto it = m_pendingColumnWidths.cbegin(); it != m_pendingColumnWidths.cend(); ++it)
+        settings.setValue(QStringLiteral("columns/width_%1").arg(it.key()), it.value());
+    m_pendingColumnWidths.clear();
+}
+
 /** Сохраняет геометрию окна и пропорции основной панели. */
 void MainWindow::saveWindowLayout()
 {
     if (m_settingsImported)
         return;
     QSettings settings;
+    saveColumnWidths();
     settings.setValue("ui/windowGeometry", saveGeometry());
     settings.setValue("ui/mainSplitter", m_mainSplitter->saveState());
 }

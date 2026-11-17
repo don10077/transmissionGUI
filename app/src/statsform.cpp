@@ -43,9 +43,7 @@ StatsForm::StatsForm(QWidget* parent) : QWidget(parent)
 
 void StatsForm::setStats(const tgui::SessionStats& stats)
 {
-    // Автообновление приходит раз в 2 секунды: если данные не изменились,
-    // не пересобираем панель (без мерцания, сохраняем выделение текста
-    // и позицию прокрутки).
+    // При неизменной статистике не форматируем значения повторно.
     if (m_stats.has_value()) {
         const auto& a = *m_stats;
         const auto& b = stats;
@@ -71,43 +69,47 @@ void StatsForm::clear()
 
 void StatsForm::rebuild()
 {
-    // Контент живёт в отдельном контейнере; пересборка = заменить widget
-    // у QScrollArea (стандартный каскад деструктора QWidget).
-    if (m_content) {
-        m_scroll->takeWidget();
-        delete m_content;
-        m_content = nullptr;
+    if (!m_table) {
+        auto* content = new QWidget;
+        auto* contentLayout = new QVBoxLayout(content);
+        contentLayout->setContentsMargins(8, 6, 8, 6);
+        contentLayout->setSpacing(8);
+        m_scroll->setWidget(content);
+        auto* title = new QLabel(tr("Global statistics:"), content);
+        contentLayout->addWidget(title);
+        const QStringList names{tr("Downloaded"), tr("Uploaded"), tr("Ratio"), tr("Files added"), tr("Active for")};
+        auto* table = m_table = new QTableWidget(static_cast<int>(names.size()), 3, content);
+        table->setObjectName(QStringLiteral("statisticsTable"));
+        table->setHorizontalHeaderLabels({QString(), tr("Current"), tr("Cumulative")});
+        for (int column = 1; column < table->columnCount(); ++column)
+            table->horizontalHeaderItem(column)->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        table->verticalHeader()->hide();
+        const int rowHeight = qMax(21, table->fontMetrics().height() + 5);
+        table->verticalHeader()->setMinimumSectionSize(rowHeight);
+        table->verticalHeader()->setDefaultSectionSize(rowHeight);
+        table->setColumnWidth(0, 220);
+        table->setColumnWidth(1, 150);
+        table->setColumnWidth(2, 150);
+        table->setMaximumWidth(520);
+        table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+        table->horizontalHeader()->setStretchLastSection(false);
+        table->setSelectionBehavior(QAbstractItemView::SelectRows);
+        table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        table->setMouseTracking(true);
+        table->viewport()->setAttribute(Qt::WA_Hover);
+        table->setShowGrid(false);
+        table->setFrameShape(QFrame::NoFrame);
+        for (int row = 0; row < table->rowCount(); ++row) {
+            table->setItem(row, 0, new QTableWidgetItem(names.at(row)));
+            for (int column = 1; column < table->columnCount(); ++column) {
+                auto* item = new QTableWidgetItem;
+                item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                table->setItem(row, column, item);
+            }
+        }
+        contentLayout->addWidget(table, 1);
     }
 
-    m_content = new QWidget;
-    auto* contentLayout = new QVBoxLayout(m_content);
-    contentLayout->setContentsMargins(8, 6, 8, 6);
-    contentLayout->setSpacing(8);
-    m_scroll->setWidget(m_content);
-    auto* title = new QLabel(tr("Global statistics:"), m_content);
-    contentLayout->addWidget(title);
-    const QStringList names{tr("Downloaded"), tr("Uploaded"), tr("Ratio"), tr("Files added"), tr("Active for")};
-    auto* table = new QTableWidget(static_cast<int>(names.size()), 3, m_content);
-    table->setObjectName(QStringLiteral("statisticsTable"));
-    table->setHorizontalHeaderLabels({QString(), tr("Current"), tr("Cumulative")});
-    for (int column = 1; column < table->columnCount(); ++column)
-        table->horizontalHeaderItem(column)->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    table->verticalHeader()->hide();
-    const int rowHeight = qMax(21, table->fontMetrics().height() + 5);
-    table->verticalHeader()->setMinimumSectionSize(rowHeight);
-    table->verticalHeader()->setDefaultSectionSize(rowHeight);
-    table->setColumnWidth(0, 220);
-    table->setColumnWidth(1, 150);
-    table->setColumnWidth(2, 150);
-    table->setMaximumWidth(520);
-    table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    table->horizontalHeader()->setStretchLastSection(false);
-    table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    table->setMouseTracking(true);
-    table->viewport()->setAttribute(Qt::WA_Hover);
-    table->setShowGrid(false);
-    table->setFrameShape(QFrame::NoFrame);
     const tgui::SessionStats stats = m_stats.value_or(tgui::SessionStats{});
     auto values = [](const tgui::StatsBlock& block) {
         const QString ratio = block.downloadedBytes > 0.0
@@ -120,13 +122,12 @@ void StatsForm::rebuild()
     };
     const auto current = values(stats.current);
     const auto cumulative = values(stats.cumulative);
-    for (int row = 0; row < table->rowCount(); ++row)
-        for (int column = 0; column < 3; ++column) {
-            auto* item = new QTableWidgetItem(column == 0 ? names.at(row) :
-                !m_stats ? QString() : column == 1 ? current.at(row) : cumulative.at(row));
-            if (column > 0) item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            table->setItem(row, column, item);
+    for (int row = 0; row < m_table->rowCount(); ++row) {
+        for (int column = 1; column < m_table->columnCount(); ++column) {
+            auto* item = m_table->item(row, column);
+            const auto text = !m_stats ? QString{} : column == 1 ? current.at(row) : cumulative.at(row);
+            if (item->text() != text)
+                item->setText(text);
         }
-    contentLayout->addWidget(table, 1);
-
+    }
 }

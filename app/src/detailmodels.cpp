@@ -21,9 +21,30 @@ FileListModel::FileListModel(QObject* parent) : QAbstractTableModel(parent) {}
 
 void FileListModel::setFiles(const QVector<tgui::FileStat>& files)
 {
-    beginResetModel();
-    m_files = files;
-    endResetModel();
+    const bool sameRows = std::ranges::equal(m_files, files, [](const auto& a, const auto& b) {
+        return a.index == b.index && a.name == b.name;
+    });
+    if (!sameRows) {
+        beginResetModel();
+        m_files = files;
+        endResetModel();
+        return;
+    }
+
+    int first = -1;
+    int last = -1;
+    for (int row = 0; row < files.size(); ++row) {
+        if (m_files.at(row) != files.at(row)) {
+            if (first < 0)
+                first = row;
+            last = row;
+        }
+    }
+    if (first >= 0) {
+        m_files = files;
+        emit dataChanged(index(first, 0), index(last, ColumnCount - 1),
+                         {Qt::DisplayRole, Qt::CheckStateRole});
+    }
 }
 
 bool FileListModel::wantedAt(int row) const
@@ -157,9 +178,8 @@ void PeerListModel::setShowFlags(bool show)
 /** Обновляет флаги на уже показанных строках после фоновой распаковки. */
 void PeerListModel::setFlagsDirectory(const QString& directory)
 {
-    if (m_flagsDirectory == directory)
-        return;
     m_flagsDirectory = directory;
+    m_flagCache.clear();
     if (m_showFlags && !m_peers.isEmpty())
         emit dataChanged(index(0, ColCountry), index(m_peers.size() - 1, ColCountry),
                          {Qt::DecorationRole});
@@ -270,13 +290,17 @@ QVariant PeerListModel::data(const QModelIndex& index, int role) const
             if (role == Qt::DecorationRole) {
                 if (!m_showFlags)
                     return {};
-                const QString flagsDir = m_flagsDirectory.isEmpty()
-                    ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/flags"
-                    : m_flagsDirectory;
-                const QString flagPath = flagsDir + "/" +
-                                         QString::fromStdString(code).toLower() + ".png";
-                if (QFileInfo::exists(flagPath))
-                    return QIcon(flagPath);
+                const auto country = QString::fromStdString(code).toLower();
+                auto flag = m_flagCache.constFind(country);
+                if (flag == m_flagCache.cend()) {
+                    const QString directory = m_flagsDirectory.isEmpty()
+                        ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/flags"
+                        : m_flagsDirectory;
+                    const QString path = directory + '/' + country + ".png";
+                    flag = m_flagCache.insert(country, QFileInfo::exists(path) ? QIcon(path) : QIcon{});
+                }
+                if (!flag->isNull())
+                    return *flag;
                 return {};
             }
             // DisplayRole: full country name
@@ -415,129 +439,136 @@ QVariant TrackerListModel::headerData(int section, Qt::Orientation orientation, 
 }
 FileTreeModel::FileTreeModel(QObject* parent) : QStandardItemModel(parent) {}
 
+void FileTreeModel::Aggregate::add(const Aggregate& other)
+{
+    size += other.size;
+    done += other.done;
+    checkDone += other.checkDone;
+    checkSize += other.checkSize;
+    wanted += other.wanted;
+    count += other.count;
+    minPriority = qMin(minPriority, other.minPriority);
+    maxPriority = qMax(maxPriority, other.maxPriority);
+}
+
 void FileTreeModel::setFiles(const QVector<tgui::FileStat>& files)
 {
-    QStringList paths;
-    for (const auto& file : files)
-        paths.append(file.name);
-    if (paths != m_paths || columnCount() == 0) {
+    const bool rebuild = columnCount() == 0 || m_paths.size() != files.size() ||
+        !std::ranges::equal(m_paths, files, {}, std::identity{}, &tgui::FileStat::name);
+    if (rebuild) {
         clear();
+        m_paths.clear();
         m_nodes.clear();
-        m_paths = paths;
+        m_fileNodes.clear();
+        m_paths.reserve(files.size());
+        m_fileNodes.reserve(files.size());
         setHorizontalHeaderLabels({tr("Want"), tr("File name"), tr("Size"), tr("Done"),
                                    QStringLiteral("%"), tr("Priority")});
+        QHash<QString, int> nodesByPath;
         for (const auto& file : files) {
+            m_paths.append(file.name);
             QString path;
-            QStandardItem* parent = invisibleRootItem();
+            int parentNode = -1;
             const auto parts = file.name.split('/', Qt::SkipEmptyParts);
-            for (int i = 0; i < parts.size(); ++i) {
-                if (!path.isEmpty()) path += '/';
-                path += parts.at(i);
-                if (!m_nodes.contains(path)) {
+            for (int depth = 0; depth < parts.size(); ++depth) {
+                if (!path.isEmpty())
+                    path += '/';
+                path += parts.at(depth);
+                int node = nodesByPath.value(path, -1);
+                if (node < 0) {
                     QList<QStandardItem*> row;
                     for (int column = 0; column < ColumnCount; ++column) {
                         auto* item = new QStandardItem;
                         item->setEditable(false);
                         item->setData(path, PathRole);
+                        item->setToolTip(path);
                         row.append(item);
                     }
-                    // Want (чекбокс want/skip, референс — TFilesTree).
                     row[Want]->setFlags(row[Want]->flags() | Qt::ItemIsUserCheckable);
-                    row[Want]->setCheckState(file.wanted ? Qt::Checked : Qt::Unchecked);
-                    row[Name]->setText(parts.at(i));
-                    row[Name]->setIcon(i + 1 < parts.size()
+                    row[Name]->setText(parts.at(depth));
+                    row[Name]->setIcon(depth + 1 < parts.size()
                         ? tgui::theme::icon(tgui::theme::Icon::Folder)
-                        : tgui::theme::fileIcon(parts.at(i)));
+                        : tgui::theme::fileIcon(parts.at(depth)));
+                    row[Size]->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                    row[Done]->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                    auto* parent = parentNode < 0 ? invisibleRootItem() : m_nodes.at(parentNode).item;
                     parent->appendRow(row);
-                    // Якорь дерева — ячейка Want (колонка 0): QStandardItem хранит
-                    // children по ячейке, поэтому поддерево привязываем к ней.
-                    m_nodes.insert(path, row[Want]);
+                    node = static_cast<int>(m_nodes.size());
+                    row[Want]->setData(node, SourceRowsRole);
+                    m_nodes.append({row[Want], parentNode, {}, {}});
+                    nodesByPath.insert(path, node);
                 }
-                parent = m_nodes.value(path);
+                parentNode = node;
             }
+            if (parentNode >= 0)
+                m_nodes[parentNode].rows.append(static_cast<int>(m_fileNodes.size()));
+            m_fileNodes.append(parentNode);
         }
     }
-    struct Aggregate {
-        double size = 0, done = 0;
-        // Проверка: сумма size*checkProgress и суммарный размер файлов,
-        // для которых прогресс проверки известен.
-        double checkDone = 0, checkSize = 0;
-        QVariantList rows;
-        int priority = 0;
-        bool first = true, mixed = false, allSkipped = true;
-        // Агрегация Want (чекбоксы файлов): все/никакие/смешанное состояние папки.
-        bool firstWant = true, allWanted = true, mixedWant = false;
-    };
-    QHash<QString, Aggregate> totals;
-    for (int row = 0; row < files.size(); ++row) {
+
+    QVector<Aggregate> totals(m_nodes.size());
+    for (qsizetype row = 0; row < files.size(); ++row) {
+        const int node = m_fileNodes.at(row);
+        if (node < 0)
+            continue;
         const auto& file = files.at(row);
-        QString path;
-        for (const auto& part : file.name.split('/', Qt::SkipEmptyParts)) {
-            if (!path.isEmpty()) path += '/';
-            path += part;
-            auto& total = totals[path];
-            total.size += file.size;
-            total.done += file.size * file.completion;
-            if (file.checkProgress >= 0.0) {
-                const double weight = qMax(1.0, file.size);
-                total.checkDone += weight * file.checkProgress;
-                total.checkSize += weight;
-            }
-            total.rows.append(row);
-            const int priority = file.wanted ? file.priority : -2;
-            if (!total.first && total.priority != priority) total.mixed = true;
-            total.priority = priority;
-            total.first = false;
-            total.allSkipped &= !file.wanted;
-            if (!total.firstWant && total.allWanted != file.wanted) total.mixedWant = true;
-            total.allWanted &= file.wanted;
-            total.firstWant = false;
-        }
+        const double weight = file.checkProgress >= 0.0 ? qMax(1.0, file.size) : 0.0;
+        const int priority = file.wanted ? file.priority : -2;
+        totals[node].add({file.size, file.size * file.completion, weight * file.checkProgress,
+                          weight, file.wanted ? 1 : 0, 1, priority, priority});
     }
-    for (auto it = totals.cbegin(); it != totals.cend(); ++it) {
-        auto* name = m_nodes.value(it.key());
-        if (!name) continue;
-        auto* parent = name->parent() ? name->parent() : invisibleRootItem();
-        const auto& total = it.value();
-        for (int column = 0; column < ColumnCount; ++column) {
-            auto* item = parent->child(name->row(), column);
-            item->setData(total.rows, SourceRowsRole);
-            item->setToolTip(it.key());
-            item->setForeground(total.allSkipped ? QBrush(Qt::gray) : QBrush());
-            if (column == Want) {
-                // Папка: три состояния (все/ни одно/смешанное), переключение — каскад.
-                item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-                item->setCheckState(total.mixedWant ? Qt::PartiallyChecked :
-                                    total.allWanted ? Qt::Checked : Qt::Unchecked);
-            }
-            if (column == Size || column == Done)
-                item->setText(QString::fromStdString(tgui::formatSize(
-                    column == Size ? total.size : total.done)));
-            if (column == Progress) {
-                // Во время проверки процент — это прогресс проверки.
-                const auto& first = files.at(total.rows.first().toInt());
-                const double progress =
-                    total.rows.size() == 1 && first.checkProgress >= 0.0
-                        ? first.checkProgress * 100.0
-                        : total.checkSize > 0.0
-                        ? total.checkDone * 100.0 / total.checkSize
-                        : (total.size > 0 ? total.done * 100.0 / total.size : 100.0);
-                item->setData(progress, Qt::DisplayRole);
-            }
-            if (column == Priority)
-                item->setText(total.mixed ? tr("Mixed") : total.priority == -2 ?
-                              tr("Skip") : priorityText(total.priority));
-            if (column == Size || column == Done)
-                item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+    // Каждый родитель создан раньше своих детей. Обратный обход считает
+    // агрегаты папок за один проход, без повторного разбора путей.
+    for (qsizetype i = m_nodes.size(); i-- > 0;) {
+        auto& node = m_nodes[i];
+        const auto& total = totals.at(i);
+        if (node.parent >= 0)
+            totals[node.parent].add(total);
+        auto* want = node.item;
+        want->setCheckState(total.wanted == 0 ? Qt::Unchecked :
+                            total.wanted == total.count ? Qt::Checked : Qt::PartiallyChecked);
+        if (!rebuild && node.previous == total)
+            continue;
+        auto* parent = want->parent() ? want->parent() : invisibleRootItem();
+        const int row = want->row();
+        if (rebuild || (node.previous.wanted == 0) != (total.wanted == 0)) {
+            const auto foreground = total.wanted == 0 ? QBrush(Qt::gray) : QBrush();
+            for (int column = 0; column < ColumnCount; ++column)
+                parent->child(row, column)->setForeground(foreground);
         }
+        if (rebuild || node.previous.size != total.size)
+            parent->child(row, Size)->setText(QString::fromStdString(tgui::formatSize(total.size)));
+        if (rebuild || node.previous.done != total.done)
+            parent->child(row, Done)->setText(QString::fromStdString(tgui::formatSize(total.done)));
+        const double progress = total.checkSize > 0.0 ? total.checkDone * 100.0 / total.checkSize
+            : total.size > 0.0 ? total.done * 100.0 / total.size : 100.0;
+        parent->child(row, Progress)->setData(progress, Qt::DisplayRole);
+        if (rebuild || node.previous.minPriority != total.minPriority ||
+            node.previous.maxPriority != total.maxPriority) {
+            parent->child(row, Priority)->setText(total.minPriority != total.maxPriority ? tr("Mixed")
+                : total.minPriority == -2 ? tr("Skip") : priorityText(total.minPriority));
+        }
+        node.previous = total;
     }
+}
+
+void FileTreeModel::collectRows(const QStandardItem* item, QVector<int>& rows) const
+{
+    const auto& node = m_nodes.at(item->data(SourceRowsRole).toInt());
+    rows.append(node.rows);
+    for (int row = 0; row < item->rowCount(); ++row)
+        collectRows(item->child(row, Want), rows);
 }
 
 QVector<int> FileTreeModel::sourceRows(const QModelIndex& index) const
 {
     QVector<int> rows;
-    for (const auto& value : index.data(SourceRowsRole).toList())
-        rows.append(value.toInt());
+    const auto* item = itemFromIndex(index.siblingAtColumn(Want));
+    if (item) {
+        collectRows(item, rows);
+        std::ranges::sort(rows);
+    }
     return rows;
 }
 
