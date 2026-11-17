@@ -2,11 +2,11 @@
 
 **English** | [Русский](README.ru.md)
 
-**Download** · [Release v1.0.0](https://github.com/don10077/transmissionGUI/releases/tag/v1.0.0) · [All releases](https://github.com/don10077/transmissionGUI/releases)
+**Download** · [Release v1.0.1](https://github.com/don10077/transmissionGUI/releases/tag/v1.0.1) · [All releases](https://github.com/don10077/transmissionGUI/releases)
 
-- Windows x64 — [Installer (.exe)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.0/transmissiongui-1.0.0-windows-x64-setup.exe) · [Portable (.zip)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.0/transmissiongui-windows-x64.zip)
-- macOS — [Disk image (.dmg)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.0/transmissiongui-1.0.0-Darwin.dmg)
-- Debian / Ubuntu (amd64) — [Package (.deb)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.0/transmissiongui_1.0.0_amd64.deb)
+- Windows x64 — [Installer (.exe)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.1/transmissiongui-1.0.1-windows-x64-setup.exe) · [Portable (.zip)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.1/transmissiongui-windows-x64.zip)
+- macOS — [Disk image (.dmg)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.1/transmissiongui-1.0.1-Darwin.dmg)
+- Debian / Ubuntu (amd64) — [Package (.deb)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.1/transmissiongui_1.0.1_amd64.deb)
 
 A native desktop client and **Transmission GUI** for the **Transmission** BitTorrent daemon,
 written in **C++23 / Qt 6**. It talks to the daemon over its JSON-RPC API and gives you a
