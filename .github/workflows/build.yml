@@ -36,23 +36,24 @@ jobs:
             mingw-w64-ucrt-x86_64-qt6-base
             mingw-w64-ucrt-x86_64-qt6-svg
             mingw-w64-ucrt-x86_64-qt6-tools
+            mingw-w64-ucrt-x86_64-qt6-declarative
             mingw-w64-ucrt-x86_64-qt6-translations
             mingw-w64-ucrt-x86_64-openssl
             mingw-w64-ucrt-x86_64-zlib
             mingw-w64-ucrt-x86_64-libarchive
             mingw-w64-ucrt-x86_64-gtest
             mingw-w64-ucrt-x86_64-nsis
-      - name: Build and run tests
+      - name: Configure and check translations
         shell: msys2 {0}
         run: |
           cmake --preset ci
-          cmake --build --preset ci --parallel
-          ctest --preset ci
-      - name: Check translations are up to date
-        shell: msys2 {0}
-        run: |
           cmake --build build/ci --target update_translations
           git diff --exit-code -- translations/
+      - name: Build and run tests
+        shell: msys2 {0}
+        run: |
+          cmake --build --preset ci --parallel
+          ctest --preset ci
       - name: Package portable ZIP
         shell: pwsh
         env:

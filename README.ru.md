@@ -115,7 +115,7 @@ build.cmd debug --no-pause --no-tests
 указать другой путь. Установите пакеты из оболочки **MSYS2 UCRT64**:
 
 ```sh
-pacman -S --needed mingw-w64-ucrt-x86_64-{toolchain,cmake,ninja,qt6-base,qt6-svg,qt6-tools,openssl,zlib,libarchive,gtest}
+pacman -S --needed mingw-w64-ucrt-x86_64-{toolchain,cmake,ninja,qt6-base,qt6-svg,qt6-tools,qt6-declarative,qt6-translations,openssl,zlib,libarchive,gtest}
 ```
 
 Можно использовать CMake-пресеты. Скопируйте `CMakeUserPresets.json.example` в

@@ -113,7 +113,7 @@ By default the script uses MSYS2 from `D:\Install\MSYS2`; set `MSYS2_ROOT` to us
 installation. Install the packages from an **MSYS2 UCRT64** shell:
 
 ```sh
-pacman -S --needed mingw-w64-ucrt-x86_64-{toolchain,cmake,ninja,qt6-base,qt6-svg,qt6-tools,openssl,zlib,libarchive,gtest}
+pacman -S --needed mingw-w64-ucrt-x86_64-{toolchain,cmake,ninja,qt6-base,qt6-svg,qt6-tools,qt6-declarative,qt6-translations,openssl,zlib,libarchive,gtest}
 ```
 
 Alternatively, use the CMake presets. Copy `CMakeUserPresets.json.example` to
