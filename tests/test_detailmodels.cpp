@@ -10,6 +10,9 @@
 #include <QMouseEvent>
 #include <QTimer>
 #include <QTreeView>
+#include <QAbstractItemModelTester>
+
+#include <functional>
 
 #include "delegates.h"
 #include "detailmodels.h"
@@ -532,23 +535,55 @@ TEST(DetailPeerModel, ResolveHostOffKeepsIp)
               "1.2.3.4:5678");
 }
 
-// W12/G11 репро: уничтожение модели при незавершённом reverse DNS не должно
-// ронять процесс (Qt: QObject::connect(QHostInfoResult) → null receiver).
+// W12/G11 репро (TST-02): уничтожение модели при незавершённом reverse DNS не
+// должно ронять процесс. Резолвер — фейк: «ответ» приходит строго после
+// delete, без реального DNS и фиксированных ожиданий.
 TEST(DetailPeerModel, ResolveHostModelDestroyedWhileLookupPending)
 {
     QVector<Peer> peers;
     Peer p;
-    p.address = "192.0.2.1"; // TEST-NET: реальный lookup, завершится ошибкой
+    p.address = "192.0.2.1"; // TEST-NET; реального lookup не будет (резолвер — фейк)
     p.port = 6881;
     peers.push_back(p);
-    PeerListModel* m = new PeerListModel; // heap: уничтожаем, пока lookup pending
+    PeerListModel* m = new PeerListModel; // heap: уничтожаем, пока lookup «в работе»
+    std::function<void(QString)> lateCallback;
+    m->setResolver([&lateCallback](const QString&, std::function<void(QString)> done) {
+        lateCallback = std::move(done); // ответим только после уничтожения модели
+    });
     m->setPeers(peers);
     m->setResolveHost(true);
-    delete m; // lookup ещё pending
-    QEventLoop loop;
-    QTimer::singleShot(800, &loop, &QEventLoop::quit);
-    loop.exec(); // дай Qt обработать результат lookup'а на умершей модели
+    ASSERT_TRUE(static_cast<bool>(lateCallback));
+    delete m; // lookup ещё «pending»
+    lateCallback(QStringLiteral("late.example.net")); // колбэк на уничтоженной модели
+    QCoreApplication::processEvents();
     SUCCEED();
+}
+
+// TST-02: полный путь startReverseLookups → резолвер → кеш → колонка «Адрес»
+// с детерминированным внедрённым резолвером (без реальной сети).
+TEST(DetailPeerModel, ResolveHostUsesInjectedResolver)
+{
+    PeerListModel m;
+    QVector<Peer> peers;
+    Peer p;
+    p.address = "1.2.3.4";
+    p.port = 5678;
+    peers.push_back(p);
+    QStringList resolved;
+    m.setResolver([&resolved](const QString& ip, std::function<void(QString)> done) {
+        resolved.append(ip);
+        done(QStringLiteral("injected.example.net"));
+    });
+    m.setPeers(peers);
+    m.setResolveHost(true);
+    EXPECT_EQ(resolved, QStringList{"1.2.3.4"});
+    ASSERT_TRUE(m.hasHostLookupResult("1.2.3.4"));
+    EXPECT_EQ(m.data(m.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(),
+              "injected.example.net:5678");
+    // Повторное включение не дублирует запрос: результат уже в кеше.
+    m.setResolveHost(false);
+    m.setResolveHost(true);
+    EXPECT_EQ(resolved.size(), 1);
 }
 
 TEST(DetailPeerModel, ResolveHostFailedLookupKeepsIp)
@@ -567,4 +602,40 @@ TEST(DetailPeerModel, ResolveHostFailedLookupKeepsIp)
     m.setResolveHost(true);
     EXPECT_EQ(m.data(m.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(),
               "1.2.3.4");
+}
+
+// TST-03: QAbstractItemModelTester для моделей вкладок (Файлы/Пиры/Трекеры/Дерево).
+TEST(DetailModels, PassItemModelTester)
+{
+    FileListModel files;
+    files.setFiles(makeFiles());
+    {
+        QAbstractItemModelTester tester(&files, QAbstractItemModelTester::FailureReportingMode::Fatal);
+        (void) files.data(files.index(0, FileListModel::ColName), Qt::DisplayRole);
+    }
+    PeerListModel peers;
+    Peer peer;
+    peer.address = "1.2.3.4";
+    peer.port = 6881;
+    peers.setPeers({peer});
+    {
+        QAbstractItemModelTester tester(&peers, QAbstractItemModelTester::FailureReportingMode::Fatal);
+        (void) peers.data(peers.index(0, PeerListModel::ColAddress), Qt::DisplayRole);
+    }
+    TrackerListModel trackers;
+    tgui::TrackerStat stat;
+    stat.announce = "https://tracker.example/announce";
+    stat.seederCount = 3;
+    stat.leecherCount = 4;
+    trackers.setTrackers({stat});
+    {
+        QAbstractItemModelTester tester(&trackers, QAbstractItemModelTester::FailureReportingMode::Fatal);
+        (void) trackers.data(trackers.index(0, TrackerListModel::ColAnnounce), Qt::DisplayRole);
+    }
+    FileTreeModel tree;
+    tree.setFiles(makeFiles());
+    {
+        QAbstractItemModelTester tester(&tree, QAbstractItemModelTester::FailureReportingMode::Fatal);
+        (void) tree.data(tree.index(0, 0), Qt::DisplayRole);
+    }
 }

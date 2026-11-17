@@ -1169,33 +1169,6 @@ void MainWindow::openExternalTorrents(const QStringList& inputs)
     }
 }
 
-/** Запрашивает согласие на добавление отложенных файлов в текущее подключение. */
-void MainWindow::confirmPendingExternalTorrents()
-{
-    if (m_pendingExternalTorrents.isEmpty() || !m_rpc || !m_connected)
-        return;
-    const QPointer<tgui::RpcClient> rpc(m_rpc.get());
-    const auto profile = m_connectionProfile;
-    const auto destination = profile.isEmpty()
-        ? rpc->options().url.toDisplayString(QUrl::RemoveUserInfo) : profile;
-    auto* confirm = new QMessageBox(QMessageBox::Question, tr("Add pending torrents"),
-        tr("Add the pending torrents (%1) to %2?").arg(m_pendingExternalTorrents.size()).arg(destination),
-        QMessageBox::Yes | QMessageBox::No, this);
-    confirm->setObjectName(QStringLiteral("pendingExternalTorrentsConfirmation"));
-    confirm->setTextFormat(Qt::PlainText);
-    confirm->setDefaultButton(QMessageBox::No);
-    confirm->setAttribute(Qt::WA_DeleteOnClose);
-    connect(rpc.data(), &QObject::destroyed, confirm, &QDialog::reject);
-    connect(confirm, &QDialog::finished, this, [this, rpc, profile](int result) {
-        if (!rpc || rpc != m_rpc.get() || !m_connected || profile != m_connectionProfile)
-            return;
-        auto inputs = std::exchange(m_pendingExternalTorrents, {});
-        if (result == QMessageBox::Yes)
-            openExternalTorrents(inputs);
-    });
-    confirm->open();
-}
-
 void MainWindow::maybeAutoConnect()
 {
     // W08: приоритет — параметры из командной строки; иначе — текущий профиль (ConnOptions).
@@ -1296,7 +1269,7 @@ void MainWindow::onConnected(const tgui::SessionInfo& info)
     updateWatchFolder();
     checkPendingMove();
     statusBar()->showMessage(tr("Connected"), 3000);
-    confirmPendingExternalTorrents();
+    openExternalTorrents(std::exchange(m_pendingExternalTorrents, {}));
 }
 
 void MainWindow::onConnectionFailed(const QString& error)
@@ -3843,12 +3816,10 @@ void MainWindow::checkUpdate(bool requestedManually)
                 QMessageBox::warning(this, title, tr("Could not check for updates: %1").arg(reply->errorString()));
             return;
         }
-        const auto release = QJsonDocument::fromJson(reply->readAll()).object();
-        const auto tag = release.value("tag_name").toString();
-        const auto number = tag.startsWith('v', Qt::CaseInsensitive) ? tag.mid(1) : tag;
-        qsizetype suffix = 0;
-        const auto latest = QVersionNumber::fromString(number, &suffix);
-        if (latest.isNull() || suffix != number.size()) {
+        const auto document = QJsonDocument::fromJson(reply->readAll());
+        const auto tag = document.object().value("tag_name").toString();
+        const auto latest = tgui::parseLatestRelease(document);
+        if (!latest) {
             if (manual)
                 QMessageBox::warning(this, title, tr("Could not read the published version."));
             return;
@@ -3857,20 +3828,20 @@ void MainWindow::checkUpdate(bool requestedManually)
         settings.setValue("ui/lastUpdateCheck", QDateTime::currentDateTimeUtc());
         updateCheckSchedule();
         const auto current = QVersionNumber::fromString(QCoreApplication::applicationVersion());
-        if (latest.normalized() <= current.normalized()) {
+        if (latest->normalized() <= current.normalized()) {
             if (manual)
                 QMessageBox::information(this, title, tr("You have the latest version."));
             return;
         }
         if (!manual) {
-            const auto message = tr("Version %1 is available.").arg(number);
+            const auto message = tr("Version %1 is available.").arg(latest->toString());
             if (m_tray && m_tray->isVisible() && QSystemTrayIcon::supportsMessages())
                 m_tray->showMessage(title, message);
             else
                 showToast(message);
             return;
         }
-        QMessageBox box(QMessageBox::Information, title, tr("Version %1 is available.").arg(number),
+        QMessageBox box(QMessageBox::Information, title, tr("Version %1 is available.").arg(latest->toString()),
                         QMessageBox::Close, this);
         auto* open = box.addButton(tr("Open release"), QMessageBox::AcceptRole);
         box.exec();

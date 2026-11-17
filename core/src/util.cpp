@@ -139,4 +139,17 @@ double percentComplete(double sizeWhenDone, double leftUntilDone)
     return p;
 }
 
+std::optional<QVersionNumber> parseLatestRelease(const QJsonDocument& document)
+{
+    const auto tag = document.object().value("tag_name").toString();
+    if (tag.isEmpty())
+        return std::nullopt;
+    const auto number = tag.startsWith('v', Qt::CaseInsensitive) ? tag.mid(1) : tag;
+    qsizetype suffix = 0;
+    const auto version = QVersionNumber::fromString(number, &suffix);
+    if (version.isNull() || suffix != number.size())
+        return std::nullopt;
+    return version;
+}
+
 } // namespace tgui

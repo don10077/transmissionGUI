@@ -49,6 +49,31 @@ void MockRpcServer::requireAuthorization(const QByteArray& value)
     m_requiredAuthorization = value;
 }
 
+void MockRpcServer::holdNext()
+{
+    QMutexLocker locker(&m_mutex);
+    m_holdArmed = true;
+}
+
+void MockRpcServer::release()
+{
+    QList<HeldResponse> held;
+    {
+        QMutexLocker locker(&m_mutex);
+        held = m_held;
+        m_held.clear();
+    }
+    for (const auto& item : held)
+        if (item.socket)
+            sendResponse(item.socket, item.code, item.body, item.headers);
+}
+
+int MockRpcServer::heldCount() const
+{
+    QMutexLocker locker(&m_mutex);
+    return m_held.size();
+}
+
 QList<MockRpcServer::RecordedRequest> MockRpcServer::requests() const
 {
     QMutexLocker locker(&m_mutex);
@@ -162,6 +187,7 @@ void MockRpcServer::dispatch(QTcpSocket* socket,
 
     Response response;
     bool have = false;
+    bool hold = false;
     {
         QMutexLocker locker(&m_mutex);
         if (!m_queue.isEmpty()) {
@@ -171,10 +197,20 @@ void MockRpcServer::dispatch(QTcpSocket* socket,
             response = m_default;
             have = true;
         }
+        if (have && m_holdArmed) {
+            m_holdArmed = false;
+            hold = true;
+        }
     }
     if (!have)
         response = Response{500, "{\"result\": \"failure\", \"error\": \"no response queued\"}", {}};
 
+    if (hold) {
+        QMutexLocker locker(&m_mutex);
+        m_held.append(HeldResponse{QPointer<QTcpSocket>(socket), response.code, response.body,
+                                   response.headers});
+        return;
+    }
     if (response.delayMs > 0) {
         QTimer::singleShot(response.delayMs, this, [this, socket = QPointer(socket), response] {
             if (socket)

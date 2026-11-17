@@ -619,3 +619,76 @@ TEST(GuiListChain, PrivateColumnDistinguishesPublicAndUnknown)
     EXPECT_EQ(model.index(1, TorrentModel::ColPrivate).data().toString(), QStringLiteral("yes"));
     EXPECT_EQ(model.index(2, TorrentModel::ColPrivate).data().toString(), QStringLiteral("—"));
 }
+
+// TST-03: sortKey по всем колонкам — у «меньшего» торрента ключ строго меньше (регрессия BUG-04).
+TEST(TorrentModelSort, SortKeyOrdersEveryColumn)
+{
+    using tgui::Torrent;
+    Torrent small;
+    small.id = 1;
+    small.name = "a";
+    small.status = 4; // Downloading < Seeding
+    small.sizeWhenDone = 100.0;
+    small.totalSize = 100.0;
+    small.leftUntilDone = 99.0;
+    small.peersSendingToUs = 1;
+    small.peersGettingFromUs = 1;
+    small.rateDownload = 1;
+    small.rateUpload = 1;
+    small.eta = 45;
+    small.downloadedEver = 1.0;
+    small.uploadedEver = 1.0;
+    small.addedDate = 100;
+    small.doneDate = 200;
+    small.activityDate = 300;
+    small.downloadDir = "/a";
+    small.bandwidthPriority = 0;
+    small.queuePosition = 0;
+    small.secondsSeeding = 0;
+    small.isPrivate = false;
+    tgui::TrackerStat smallTracker;
+    smallTracker.announce = "https://a.example/announce";
+    smallTracker.hasAnnounced = true;
+    smallTracker.lastAnnounceResult = "A";
+    small.trackerStats = {smallTracker};
+
+    Torrent large;
+    large.id = 2;
+    large.name = "b";
+    large.status = 6;
+    large.sizeWhenDone = 1000.0;
+    large.totalSize = 1000.0;
+    large.leftUntilDone = 100.0;
+    large.peersSendingToUs = 2;
+    large.peersGettingFromUs = 2;
+    large.rateDownload = 2;
+    large.rateUpload = 2;
+    large.eta = 90;
+    large.uploadRatio = 1.5;
+    large.downloadedEver = 2.0;
+    large.uploadedEver = 2.0;
+    tgui::TrackerStat tracker;
+    tracker.announce = "https://b.example/announce";
+    tracker.hasAnnounced = true;
+    tracker.lastAnnounceSucceeded = true;
+    large.trackerStats = {tracker};
+    large.addedDate = 200;
+    large.doneDate = 300;
+    large.activityDate = 400;
+    large.downloadDir = "/b";
+    large.bandwidthPriority = 1;
+    large.queuePosition = 1;
+    large.secondsSeeding = 1;
+    large.isPrivate = true;
+    large.labels = QStringList{"x"};
+
+    for (int column = 0; column < TorrentModel::ColumnCount; ++column) {
+        const QVariant keySmall = TorrentModel::sortKey(small, column);
+        const QVariant keyLarge = TorrentModel::sortKey(large, column);
+        // QVariant не имеет operator< — сравниваем по типу (строка/число).
+        const bool ordered = keySmall.typeId() == QMetaType::QString && keyLarge.typeId() == QMetaType::QString
+            ? keySmall.toString() < keyLarge.toString()
+            : keySmall.toDouble() < keyLarge.toDouble();
+        EXPECT_TRUE(ordered) << "колонка " << column;
+    }
+}

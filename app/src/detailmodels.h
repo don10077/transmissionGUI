@@ -6,6 +6,8 @@
 #include <QHash>
 #include <QSet>
 
+#include <functional>
+
 #include "tgui/models.h"
 #include "tgui/geoip.h"
 
@@ -77,6 +79,11 @@ public:
     // W11: Resolve Host — асинхронный reverse DNS (IP → hostname) с кешем и обработкой ошибок.
     void setResolveHost(bool on);
     bool resolveHost() const { return m_resolveHost; }
+    // TST-02: внедряемый резолвер (ip → колбэк с hostname, "" — ошибка/отсутствие).
+    // По умолчанию — QHostInfo::lookupHost; в тестах — детерминированный фейк.
+    using Resolver = std::function<void(const QString& ip, std::function<void(QString host)>)>;
+    void setResolver(Resolver resolver);
+    const Resolver& resolver() const { return m_resolver; }
     // Записать результат reverse-DNS в кеш (host=="" — ошибка/отсутствие) и обновить колонку «Адрес».
     void setResolvedHost(const QString& ip, const QString& host);
     /** Проверяет, закеширован ли результат для @p ip, включая отсутствие имени. */
@@ -94,6 +101,7 @@ private:
     QString m_flagsDirectory;
     mutable QHash<QString, QIcon> m_flagCache;
     bool m_resolveHost = false;
+    Resolver m_resolver;
     QHash<QString, QString> m_hostCache;   // ip → hostname ("" — ошибка/отсутствие); кеш результатов
     QSet<QString> m_pendingLookups;        // ip, по которым reverse-DNS ещё выполняется
     void startReverseLookups();

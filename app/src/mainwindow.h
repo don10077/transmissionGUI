@@ -186,7 +186,6 @@ private:
     void clearConnection();
     void handleConnectionError(const QString& error, bool retry);
     void maybeAutoConnect();
-    void confirmPendingExternalTorrents();
     void switchToProfile(const QString& name,
                          std::optional<tgui::RpcClient::Options> sessionOptions = std::nullopt);
     // Двойной клик (референс: lvFilesDblClick / gTorrentsDblClick): файл → запустить,

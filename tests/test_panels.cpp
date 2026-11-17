@@ -1460,14 +1460,6 @@ TEST_F(AutomaticAddSources, ExternalOpenForwardsUnicodeFileAndMagnetBeforeConnec
     EXPECT_TRUE(additions().isEmpty());
 
     ASSERT_NO_FATAL_FAILURE(connectWindow(window));
-    QMessageBox* confirm = nullptr;
-    ASSERT_TRUE(waitForSettings([&] {
-        confirm = window.findChild<QMessageBox*>(QStringLiteral("pendingExternalTorrentsConfirmation"));
-        return confirm && confirm->isVisible();
-    }));
-    EXPECT_TRUE(additions().isEmpty());
-    ASSERT_NE(confirm->button(QMessageBox::Yes), nullptr);
-    confirm->button(QMessageBox::Yes)->click();
     ASSERT_TRUE(waitForSettings([&] { return additions().size() >= 2; }));
     const auto result = additions();
     ASSERT_EQ(result.size(), 2);

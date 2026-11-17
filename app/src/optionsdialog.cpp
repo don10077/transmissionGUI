@@ -1,6 +1,7 @@
 #include "optionsdialog.h"
 
 #include "theme.h"
+#include "assoc.h"
 
 #include <algorithm>
 
@@ -30,11 +31,6 @@
 #include <QTabWidget>
 #include <QVBoxLayout>
 
-#ifdef Q_OS_WIN
-#include <qt_windows.h>
-#include <shlobj.h>
-#endif
-
 #include "pathmap.h"
 #include "sequentialpolicy.h"
 #include "torrentlabels.h"
@@ -49,88 +45,6 @@ constexpr char kKeyMinimizeToTray[] = "ui/minimizeToTray";
 constexpr char kKeyTrayIcon[] = "ui/trayIcon";
 constexpr char kKeyTrayNotify[] = "ui/trayNotify";
 constexpr char kKeyToolbarStyle[] = "ui/toolbarButtonStyle";
-
-#ifdef Q_OS_WIN
-QString handlerCommand()
-{
-    const QSettings setup(
-        "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\transmissionGUI",
-        QSettings::NativeFormat);
-    const auto location = setup.value("InstallLocation").toString();
-    const QDir installed(location);
-    const auto installedExe = installed.filePath(QStringLiteral("TransmissionGUI.exe"));
-    const bool useInstalled = !location.isEmpty() && QFileInfo(installedExe).isFile();
-    const auto executable = useInstalled ? installedExe : QCoreApplication::applicationFilePath();
-    return QStringLiteral("\"%1\" -- \"%2\"")
-        .arg(QDir::toNativeSeparators(executable), QStringLiteral("%1"));
-}
-
-/** Зарегистрирован ли клиент как обработчик .torrent-файлов. */
-bool torrentHandlerRegistered()
-{
-    QSettings classes("HKEY_CURRENT_USER\\Software\\Classes", QSettings::NativeFormat);
-    return classes.contains(QStringLiteral("transmissionGUI.Torrent/shell/open/command/Default")) &&
-           classes.contains(QStringLiteral(".torrent/OpenWithProgids/transmissionGUI.Torrent"));
-}
-
-/** Зарегистрирован ли клиент как обработчик magnet-ссылок. */
-bool magnetHandlerRegistered()
-{
-    QSettings classes("HKEY_CURRENT_USER\\Software\\Classes", QSettings::NativeFormat);
-    return classes.contains(QStringLiteral("transmissionGUI.Magnet/shell/open/command/Default")) &&
-           classes.contains(QStringLiteral("transmissionGUI.Magnet/URL Protocol"));
-}
-
-/** Регистрирует или снимает обработчики .torrent/magnet для текущего пользователя. */
-bool applyTorrentHandlers(bool torrent, bool magnet)
-{
-    QSettings classes("HKEY_CURRENT_USER\\Software\\Classes", QSettings::NativeFormat);
-    const auto command = handlerCommand();
-    if (torrent) {
-        classes.setValue("transmissionGUI.Torrent/Default", "Torrent file");
-        classes.setValue("transmissionGUI.Torrent/shell/open/command/Default", command);
-        classes.setValue(".torrent/OpenWithProgids/transmissionGUI.Torrent", QStringLiteral(""));
-    } else {
-        classes.remove("transmissionGUI.Torrent");
-        classes.remove(".torrent/OpenWithProgids/transmissionGUI.Torrent");
-    }
-    if (magnet) {
-        classes.setValue("transmissionGUI.Magnet/Default", "Magnet link");
-        classes.setValue("transmissionGUI.Magnet/URL Protocol", QStringLiteral(""));
-        classes.setValue("transmissionGUI.Magnet/shell/open/command/Default", command);
-    } else {
-        classes.remove("transmissionGUI.Magnet");
-    }
-    classes.sync();
-    if (classes.status() != QSettings::NoError)
-        return false;
-
-    QSettings software("HKEY_CURRENT_USER\\Software", QSettings::NativeFormat);
-    software.setValue("transmissionGUI/Capabilities/ApplicationName", QStringLiteral(TGUI_DISPLAY_NAME));
-    software.setValue("transmissionGUI/Capabilities/ApplicationDescription",
-                      "Manage torrents on a Transmission server");
-    if (torrent)
-        software.setValue("transmissionGUI/Capabilities/FileAssociations/.torrent",
-                          "transmissionGUI.Torrent");
-    else
-        software.remove("transmissionGUI/Capabilities/FileAssociations/.torrent");
-    if (magnet)
-        software.setValue("transmissionGUI/Capabilities/UrlAssociations/magnet",
-                          "transmissionGUI.Magnet");
-    else
-        software.remove("transmissionGUI/Capabilities/UrlAssociations/magnet");
-    if (torrent || magnet)
-        software.setValue("RegisteredApplications/transmissionGUI",
-                          "Software\\transmissionGUI\\Capabilities");
-    else
-        software.remove("RegisteredApplications/transmissionGUI");
-    software.sync();
-    if (software.status() != QSettings::NoError)
-        return false;
-    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
-    return true;
-}
-#endif
 
 QLabel* noteLabel(const QString& text, QWidget* parent)
 {

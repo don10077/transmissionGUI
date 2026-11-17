@@ -38,7 +38,12 @@ TEST(E2ETabs, SelectionLoadsDetails)
 
     // Страховка: при сбое подключения MainWindow показывает модалку, которая
     // блокирует тест — форс-выход вместо зависания.
-    QTimer::singleShot(45000, qApp, [] { std::_Exit(3); });
+    // Стековый QTimer автоматически останавливается при выходе из теста.
+    QTimer watchdog;
+    watchdog.setSingleShot(true);
+    watchdog.setInterval(45000);
+    QObject::connect(&watchdog, &QTimer::timeout, qApp, [] { std::_Exit(3); });
+    watchdog.start();
 
     MainWindow w;
     tgui::RpcClient::Options o;

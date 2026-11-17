@@ -1,6 +1,9 @@
 #pragma once
 
 #include <QByteArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QVersionNumber>
 #include <optional>
 
 #include <cstdint>
@@ -33,5 +36,9 @@ std::string formatRatio(double ratio);
 
 // Прогресс торрента 0..100 ((sizeWhenDone - leftUntilDone) / sizeWhenDone).
 double percentComplete(double sizeWhenDone, double leftUntilDone);
+
+// Версия релиза из ответа GitHub API («tag_name»: «v1.2.3»/«1.2.3»).
+// Предварительные релизы («1.2.3-rc1») и нераспознаваемый тег — std::nullopt.
+std::optional<QVersionNumber> parseLatestRelease(const QJsonDocument& document);
 
 } // namespace tgui

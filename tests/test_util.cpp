@@ -1,6 +1,7 @@
 #include <climits>
 
 #include <gtest/gtest.h>
+#include <QJsonObject>
 #include <QScopeGuard>
 
 #include "tgui/util.h"
@@ -21,6 +22,46 @@ TEST(Gunzip, ValidatesGzipAndEnforcesOutputLimit)
     EXPECT_EQ(tgui::gunzipData(packed.chopped(1), 3), std::nullopt);
     EXPECT_EQ(tgui::gunzipData({}, 3), std::nullopt);
     EXPECT_EQ(tgui::gunzipData("not gzip", 3), std::nullopt);
+}
+
+// TST-03: разбор ответа проверки обновлений (внесен в core для юнит-теста).
+namespace {
+QJsonDocument releaseDocument(const char* tag)
+{
+    return QJsonDocument(QJsonObject{{"tag_name", QString::fromLatin1(tag)}});
+}
+} // namespace
+
+TEST(ParseLatestRelease, AcceptsTagNames)
+{
+    EXPECT_EQ(tgui::parseLatestRelease(releaseDocument("v1.2.3")).value_or(QVersionNumber{}),
+              QVersionNumber(1, 2, 3));
+    EXPECT_EQ(tgui::parseLatestRelease(releaseDocument("1.2.3")).value_or(QVersionNumber{}),
+              QVersionNumber(1, 2, 3));
+    // Префикс «v» — регистронезависим.
+    EXPECT_EQ(tgui::parseLatestRelease(releaseDocument("V2.0.1")).value_or(QVersionNumber{}),
+              QVersionNumber(2, 0, 1));
+}
+
+TEST(ParseLatestRelease, RejectsInvalidTags)
+{
+    EXPECT_FALSE(tgui::parseLatestRelease(releaseDocument("v1.2.3-rc1")));
+    EXPECT_FALSE(tgui::parseLatestRelease(releaseDocument("1.2.3beta")));
+    EXPECT_FALSE(tgui::parseLatestRelease(releaseDocument("not-a-version")));
+    EXPECT_FALSE(tgui::parseLatestRelease(releaseDocument("v")));
+    // Отсутствует tag_name.
+    EXPECT_FALSE(tgui::parseLatestRelease(QJsonDocument(QJsonObject{{"name", "x"}})));
+    // Битый JSON.
+    EXPECT_FALSE(tgui::parseLatestRelease(QJsonDocument::fromJson("this is not json")));
+}
+
+TEST(ParseLatestRelease, ComparesNumerically)
+{
+    // 1.10.0 > 1.9.0 — численно, а не лексикографически.
+    const auto ten = tgui::parseLatestRelease(releaseDocument("v1.10.0"));
+    const auto nine = tgui::parseLatestRelease(releaseDocument("v1.9.0"));
+    ASSERT_TRUE(ten && nine);
+    EXPECT_GT(*ten, *nine);
 }
 
 TEST(RpcStartupPassword, ExplicitValueOverridesEnvironment)
@@ -59,6 +100,22 @@ TEST(UtilFormatSize, RateMode)
     // roundTo = 1: минимальная единица KB, 1 знак (GetHumanSize(sz, 1)).
     EXPECT_EQ(formatSize(123456, 1), "120.6 KB");
     EXPECT_EQ(formatSize(500, 1), "0.5 KB");
+}
+
+TEST(UtilFormatSize, LocaleIndependentDotSeparator)
+{
+    // TST-03: под de_DE (LC_NUMERIC) разделитель остаётся точкой, а не запятой.
+    std::locale de;
+    try {
+        de = std::locale("de_DE");
+    } catch (const std::exception&) {
+        GTEST_SKIP() << "локаль de_DE недоступна на этой системе";
+    }
+    const std::locale classic = std::locale::global(de);
+    const auto restore = qScopeGuard([&] { std::locale::global(classic); });
+    EXPECT_EQ(formatSize(1.23 * 1024 * 1024 * 1024), "1.23 GB");
+    EXPECT_EQ(formatSize(500, 1), "0.5 KB");
+    EXPECT_EQ(formatSize(1.234 * 1024.0 * 1024 * 1024 * 1024), "1.234 TB");
 }
 
 TEST(UtilFormatRate, PerSecond)

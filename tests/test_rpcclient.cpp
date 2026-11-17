@@ -3,9 +3,11 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
 #include <QSslSocket>
+#include <QThread>
 #include <QTcpSocket>
 #include <QTimer>
 #include <QTemporaryFile>
@@ -13,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include "mockhttpserver.h"
+#include "testwait.h"
 #include "tgui/rpcclient.h"
 
 using namespace tgui;
@@ -218,20 +221,15 @@ TEST_F(RpcClientTest, TlsHandshakeFailureIsNotRetryable)
     options.url = QUrl(QString("https://127.0.0.1:%1").arg(endpoint.serverPort()));
     options.timeoutMs = 1000;
     RpcClient tlsClient(options);
-    QEventLoop loop;
     bool permanentFailure = false;
     bool interrupted = false;
-    QObject::connect(&tlsClient, &RpcClient::connectionFailed, &loop, [&](const QString&) {
-        permanentFailure = true;
-        loop.quit();
-    });
-    QObject::connect(&tlsClient, &RpcClient::connectionInterrupted, &loop, [&](const QString&) {
-        interrupted = true;
-        loop.quit();
-    });
-    QTimer::singleShot(2000, &loop, &QEventLoop::quit);
+    QObject::connect(&tlsClient, &RpcClient::connectionFailed, &tlsClient,
+                     [&permanentFailure](const QString&) { permanentFailure = true; });
+    QObject::connect(&tlsClient, &RpcClient::connectionInterrupted, &tlsClient,
+                     [&interrupted](const QString&) { interrupted = true; });
+    // TST-02: ожидание по предикату вместо «выхода через 2000 мс».
     tlsClient.connectToDaemon();
-    loop.exec();
+    ASSERT_TRUE(waitUntil([&] { return permanentFailure || interrupted; }, 10000));
     EXPECT_TRUE(permanentFailure);
     EXPECT_FALSE(interrupted);
 }
@@ -257,26 +255,34 @@ TEST_F(RpcClientTest, ClientIdentityWithDisabledServerVerificationFailsBeforeReq
 
 TEST_F(RpcClientTest, DelayedListCannotOverwriteNewerSnapshot)
 {
-    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[{"id":1,"name":"old"}]}})", {}, 180});
-    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[{"id":1,"name":"new"}]}})", {}});
+    // TST-02: задержка первого (старшего) ответа — ручная holdNext()/release()
+    // вместо 180 мс; ожидания — предикаты waitUntil() вместо singleShot(500).
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[{"id":1,"name":"old"}]}})"});
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[{"id":1,"name":"new"}]}})"});
+    server.holdNext(); // первый ответ не уйдёт до release()
 
-    QEventLoop loop;
     QStringList names;
-    QObject::connect(client.get(), &RpcClient::torrentsReceived, &loop, [&](const QVector<Torrent>& torrents) {
-        if (!torrents.isEmpty())
-            names.append(torrents.first().name.value_or(QString{}));
-    });
-    QTimer dispatch;
-    QObject::connect(&dispatch, &QTimer::timeout, &loop, [&] {
-        if (server.requestCount() != 1)
-            return;
-        dispatch.stop();
-        client->getTorrents();
-    });
-    dispatch.start(1);
-    QTimer::singleShot(500, &loop, &QEventLoop::quit);
-    client->getTorrents();
-    loop.exec();
+    QObject::connect(client.get(), &RpcClient::torrentsReceived,
+                     [&](const QVector<Torrent>& torrents) {
+                         if (!torrents.isEmpty())
+                             names.append(torrents.first().name.value_or(QString{}));
+                     });
+
+    client->getTorrents(); // запрос №1 — ответ удерживается
+    ASSERT_TRUE(waitUntil([&] { return server.requestCount() == 1 && server.heldCount() == 1; }));
+    client->getTorrents(); // запрос №2 — ответ приходит сразу
+    ASSERT_TRUE(waitUntil([&] { return server.requestCount() == 2 && names == QStringList{"new"}; }));
+
+    // «Старый» снапшот доехал после более нового — клиент обязан его отбросить.
+    server.release();
+    // Краткий дренаж event loop: ответ принят и (по контракту) отброшен
+    // без emissions; на localhost это миллисекунды.
+    QElapsedTimer settle;
+    settle.start();
+    while (settle.elapsed() < 300) {
+        QCoreApplication::processEvents();
+        QThread::msleep(1);
+    }
     EXPECT_EQ(server.requestCount(), 2);
     EXPECT_EQ(names, QStringList{"new"});
 }

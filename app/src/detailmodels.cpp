@@ -157,7 +157,24 @@ bool FileListModel::setData(const QModelIndex& index, const QVariant& value, int
 
 // --- PeerListModel ---
 
-PeerListModel::PeerListModel(QObject* parent) : QAbstractTableModel(parent) {}
+PeerListModel::PeerListModel(QObject* parent) : QAbstractTableModel(parent)
+{
+    // Резолвер по умолчанию — системный reverse DNS (QHostInfo).
+    setResolver([](const QString& ip, std::function<void(QString)> done) {
+        QHostInfo::lookupHost(ip, [done, ip](QHostInfo info) {
+            QString host;
+            if (info.error() == QHostInfo::NoError && !info.hostName().isEmpty() &&
+                info.hostName() != ip)
+                host = info.hostName();
+            done(std::move(host));
+        });
+    });
+}
+
+void PeerListModel::setResolver(Resolver resolver)
+{
+    m_resolver = std::move(resolver);
+}
 
 void PeerListModel::setPeers(const QVector<tgui::Peer>& peers)
 {
@@ -233,17 +250,15 @@ void PeerListModel::startReverseLookups()
             continue;
         if (seen.contains(ip) || m_pendingLookups.contains(ip) || hasHostLookupResult(ip))
             continue; // кеш или уже в работе — не дублируем запрос
+        if (!m_resolver)
+            continue; // резолвер не задан — запрос не начинаем
         seen.insert(ip);
         m_pendingLookups.insert(ip);
         QPointer<PeerListModel> self(this);
-        QHostInfo::lookupHost(ip, [self, ip](QHostInfo info) {
+        m_resolver(ip, [self, ip](QString host) {
             if (!self)
                 return; // модель уничтожена — не трогаем её
             self->m_pendingLookups.remove(ip);
-            QString host;
-            if (info.error() == QHostInfo::NoError && !info.hostName().isEmpty() &&
-                info.hostName() != ip)
-                host = info.hostName();
             self->setResolvedHost(ip, host); // host=="" → кеш ошибки
         });
     }

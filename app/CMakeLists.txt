@@ -28,6 +28,8 @@ add_library(tgui_app_lib STATIC
     src/daemonoptionsdialog.cpp
     src/colsetup.cpp
     src/aboutdialog.cpp
+    src/startup.cpp
+    src/assoc.cpp
     # Явное перечисление Q_OBJECT-заголовков для AUTOMOC (как в core).
     src/mainwindow.h
     src/theme.h

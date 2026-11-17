@@ -9,6 +9,7 @@ add_executable(tgui_tests
     test_util.cpp
     test_bencode.cpp
     test_jsonrpc.cpp
+    test_rpcdialect.cpp
     test_models.cpp
     test_detailmodels.cpp
     test_panels.cpp
@@ -23,6 +24,9 @@ add_executable(tgui_tests
     test_daemonoptions.cpp
     test_colsetup.cpp
     test_about.cpp
+    test_startup.cpp
+    test_delegates.cpp
+    test_assoc.cpp
     tst_pathmap.cpp
     tst_geoip.cpp
     # Скриншот-тесты темы (последними: apply() меняет глобальный стиль).
@@ -38,6 +42,10 @@ tgui_set_warnings(tgui_tests)
 target_compile_definitions(tgui_tests PRIVATE
     TGUI_QM_PATH="${PROJECT_BINARY_DIR}/app/translations/tgui_ru.qm"
     TGUI_TS_PATH="${PROJECT_SOURCE_DIR}/translations/tgui_ru.ts")
+if(WIN32)
+    # RegDeleteTreeW — уборка тестового ключа реестра (test_assoc.cpp).
+    target_link_libraries(tgui_tests PRIVATE advapi32)
+endif()
 
 add_dependencies(tgui_tests release_translations)
 

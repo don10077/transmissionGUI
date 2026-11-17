@@ -2,6 +2,12 @@
 
 [English](README.md) | **Русский**
 
+**Скачать** · [Релиз v1.0.0](https://github.com/don10077/transmissionGUI/releases/tag/v1.0.0) · [Все релизы](https://github.com/don10077/transmissionGUI/releases)
+
+- Windows x64 — [Установщик (.exe)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.0/transmissiongui-1.0.0-windows-x64-setup.exe) · [Портативная версия (.zip)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.0/transmissiongui-windows-x64.zip)
+- macOS — [Образ диска (.dmg)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.0/transmissiongui-1.0.0-Darwin.dmg)
+- Debian / Ubuntu (amd64) — [Пакет (.deb)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.0/transmissiongui_1.0.0_amd64.deb)
+
 Нативный клиент и **GUI для Transmission** — битторент-демона **Transmission**, написанный
 на **C++23 / Qt 6**. Работает через штатный JSON-RPC API и даёт одно окно для управления
 торрентами на локальной или удалённой машине — без браузера и `transmission-remote`.

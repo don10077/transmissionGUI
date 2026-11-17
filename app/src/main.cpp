@@ -4,10 +4,10 @@
 #include "externalopen.h"
 #include "theme.h"
 #include "settingsbackup.h"
+#include "startup.h"
 #include "tgui/rpcpassword.h"
 
 #include <QApplication>
-#include <QCommandLineParser>
 #include <QFileOpenEvent>
 #include <QFont>
 #include <QIcon>
@@ -116,48 +116,30 @@ int main(int argc, char* argv[])
             app.installTranslator(&qtTranslator);
     }
 
-    // Описания опций переводим после установки переводчика, чтобы справка была на выбранном языке.
-    // Литералы даём lupdate напрямую в QCoreApplication::translate (I18N-03):
-    // через лямбду-обёртку он их не видел, и описания оставались без перевода.
-    QCommandLineParser parser;
-    parser.addHelpOption();
-    parser.addVersionOption();
-    parser.addOption({"url",
-                      QCoreApplication::translate("main", "Transmission server URL."),
-                      QCoreApplication::translate("main", "url"), "url"});
-    parser.addOption({"user",
-                      QCoreApplication::translate("main", "RPC user."),
-                      QCoreApplication::translate("main", "user"), "user"});
-    parser.addOption({"pass",
-                      QCoreApplication::translate("main",
-                                                   "RPC password (unsafe: visible in the command line)."),
-                      QCoreApplication::translate("main", "password"), "password"});
-    parser.addOption({"pass-stdin",
-                      QCoreApplication::translate("main", "Read the RPC password from standard input.")});
-    parser.addOption({"path",
-                      QCoreApplication::translate("main", "RPC path."),
-                      QCoreApplication::translate("main", "path"), "path"});
-    parser.addOption({"smoke-test",
-                      QCoreApplication::translate("main", "Check startup with isolated settings.")});
-    parser.addPositionalArgument("torrent",
-                                 QCoreApplication::translate("main", "Local .torrent files or magnet links."),
-                                 QCoreApplication::translate("main", "[torrent...]"));
-    parser.process(app);
-
-    QStringList inputs;
-    for (const auto& argument : parser.positionalArguments()) {
-        const auto input = externalTorrentInput(argument);
-        if (!input.isEmpty() && !inputs.contains(input))
-            inputs.append(input);
+    // Разбор аргументов — в parseStartup (TST-03): без exit(), с переводом описаний
+    // после установки переводчика; --help/--version обрабатываем сами.
+    const auto startup = parseStartup(app.arguments());
+    if (startup.showHelp) {
+        qInfo().noquote() << startupHelpText();
+        return 0;
     }
+    if (startup.showVersion) {
+        qInfo() << app.applicationName().toStdString() << " " << app.applicationVersion().toStdString();
+        return 0;
+    }
+    if (!startup.ok) {
+        qWarning().noquote() << startup.error;
+        return 1;
+    }
+    const QStringList inputs = startup.inputs;
 
     ExternalOpen external(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation));
     if (!smokeTest) {
         const auto state = external.listen([&app](const auto& items) { app.open(items); });
         if (state == ExternalOpen::Result::AlreadyRunning) {
-            if (parser.isSet("url"))
+            if (startup.hasUrl)
                 qWarning("An instance is already running. The requested server was not changed.");
-            if (external.forward(parser.isSet("url") ? QStringList{} : inputs))
+            if (external.forward(startup.hasUrl ? QStringList{} : inputs))
                 return 0;
             qWarning("Could not reach the running window.");
             return 1;
@@ -201,28 +183,28 @@ int main(int argc, char* argv[])
     }
 
     tgui::RpcClient::Options autoOpts;
-    if (!smokeTest && (parser.isSet("url") || parser.isSet("user"))) {
-        if (parser.isSet("url"))
-            autoOpts.url = QUrl(parser.value("url"));
+    if (!smokeTest && (startup.hasUrl || startup.hasUser)) {
+        if (startup.hasUrl)
+            autoOpts.url = QUrl(startup.url);
         else
             autoOpts = ProfileStore().currentProfile().toOptions();
         if (autoOpts.url.host().isEmpty()) {
             qWarning("Specify --url or configure a daemon profile before using --user.");
             return 1;
         }
-        if (parser.isSet("path"))
-            autoOpts.rpcPath = parser.value("path");
-        if (parser.isSet("user"))
-            autoOpts.username = parser.value("user");
+        if (!startup.rpcPath.isEmpty())
+            autoOpts.rpcPath = startup.rpcPath;
+        if (startup.hasUser)
+            autoOpts.username = startup.username;
         const auto password = tgui::startupRpcPassword(
-            parser.isSet("pass") ? parser.value("pass") : QString{}, parser.isSet("pass-stdin"));
-        if (!password && parser.isSet("pass-stdin")) {
+            startup.hasPassword ? startup.password : QString{}, startup.passwordFromStdin);
+        if (!password && startup.passwordFromStdin) {
             qWarning("Could not read the RPC password from standard input.");
             return 1;
         }
         if (password) {
             autoOpts.password = *password;
-        } else if (parser.isSet("user")) {
+        } else if (startup.hasUser) {
             ConnectDialog credentials(autoOpts);
             if (credentials.exec() != QDialog::Accepted)
                 return 0;
