@@ -3,8 +3,10 @@
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
+#include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDateTime>
+#include <QLocale>
 #include <QUrl>
 #include <QFontMetrics>
 #include <QFrame>
@@ -36,7 +38,11 @@ QString fmtUnixTime(int unix)
 {
     if (unix <= 0)
         return QStringLiteral("—");
-    return QDateTime::fromSecsSinceEpoch(unix).toString(QStringLiteral("dd.MM.yyyy HH:mm:ss"));
+    // Короткий формат даты и времени по текущей локали (I18N-03);
+    // секунды важны для «обновление трекера через…», поэтому добавляем к нему.
+    const QLocale locale;
+    return locale.toString(QDateTime::fromSecsSinceEpoch(unix),
+                           locale.dateTimeFormat(QLocale::ShortFormat) + QStringLiteral(":ss"));
 }
 
 QString fmtSize(double bytes)
@@ -513,7 +519,7 @@ void PropsForm::rebuild()
         wasted = QStringLiteral("%1 (%2 %3)")
                      .arg(fmtSize(*t.corruptEver))
                      .arg(hashfails)
-                     .arg(QObject::tr("hashfails"));
+                     .arg(tr("hashfails"));
     }
     makeCell(grid, 1, 4, tr("Wasted"), wasted);
 
@@ -521,7 +527,8 @@ void PropsForm::rebuild()
         QString s = QString::fromStdString(tgui::formatRate(rate));
         if (total && seconds && seconds.value() > 0 && total.value() > 0)
             s += QStringLiteral(" (%1: %2)")
-                     .arg(QObject::tr("average"))
+                     // Лямбда: lupdate не видит её контекст, указываем явно (I18N-03).
+                     .arg(QCoreApplication::translate("PropsForm", "average"))
                      .arg(QString::fromStdString(
                          tgui::formatRate(static_cast<qint64>(total.value() / seconds.value()))));
         return s;
@@ -557,23 +564,14 @@ void PropsForm::rebuild()
     const int leechers = (!t.trackerStats.isEmpty() && t.trackerStats.first().leecherCount >= 0)
                              ? t.trackerStats.first().leecherCount
                              : -1;
-    QString seedsText = QStringLiteral("%1 %2").arg(t.peersSendingToUs.value_or(0))
-                            .arg(QObject::tr("connected"));
+    // Целые фразы вместо склейки отдельных слов (I18N-03).
+    QString seedsText = tr("%1 connected").arg(t.peersSendingToUs.value_or(0));
     if (seeders >= 0)
-        seedsText = QStringLiteral("%1 %2 %3 %4")
-                        .arg(t.peersSendingToUs.value_or(0))
-                        .arg(QObject::tr("of"))
-                        .arg(seeders)
-                        .arg(QObject::tr("connected"));
+        seedsText = tr("%1 of %2 connected").arg(t.peersSendingToUs.value_or(0)).arg(seeders);
     makeCell(grid, 4, 0, tr("Seeds"), seedsText);
-    QString peersText = QStringLiteral("%1 %2").arg(t.peersGettingFromUs.value_or(0))
-                            .arg(QObject::tr("connected"));
+    QString peersText = tr("%1 connected").arg(t.peersGettingFromUs.value_or(0));
     if (leechers >= 0)
-        peersText = QStringLiteral("%1 %2 %3 %4")
-                        .arg(t.peersGettingFromUs.value_or(0))
-                        .arg(QObject::tr("of"))
-                        .arg(leechers)
-                        .arg(QObject::tr("in swarm"));
+        peersText = tr("%1 of %2 in swarm").arg(t.peersGettingFromUs.value_or(0)).arg(leechers);
     makeCell(grid, 4, 2, tr("Peers"), peersText);
     makeCell(grid, 4, 4, tr("Max peers"),
              t.maxConnectedPeers ? QString::number(*t.maxConnectedPeers) : dash());
@@ -593,7 +591,7 @@ void PropsForm::rebuild()
 
     const int priority = t.bandwidthPriority.value_or(0);
     makeCell(grid, 6, 4, tr("Priority"),
-             priority > 0 ? QObject::tr("High") : priority < 0 ? QObject::tr("Low") : QObject::tr("Normal"));
+             priority > 0 ? tr("High") : priority < 0 ? tr("Low") : tr("Normal"));
 
     // Секция «Torrent» (panGeneralInfo) — две пары label/value на строку.
     if (build)
@@ -607,14 +605,14 @@ void PropsForm::rebuild()
 
     QString created = fmtUnixTime(t.dateCreated.value_or(0));
     if (t.creator.has_value() && !t.creator->isEmpty())
-        created += " by " + *t.creator;
+        created = tr("%1 by %2").arg(created, *t.creator); // целая фраза (I18N-03)
     makeCell(tgrid, 0, 2, tr("Created on"), created);
 
     const QString totalSizeText = (swd > 0.0)
                                       ? QStringLiteral("%1 (%2 %3)")
                                             .arg(fmtSize(t.totalSize.value_or(swd)))
                                             .arg(fmtSize(swd - ltd))
-                                            .arg(QObject::tr("done"))
+                                            .arg(tr("done"))
                                       : dash();
     makeCell(tgrid, 1, 0, tr("Total size"), totalSizeText);
 
@@ -628,7 +626,7 @@ void PropsForm::rebuild()
         pieces = QStringLiteral("%1 x %2 (%3 %4)")
                      .arg(t.pieceCount.value())
                      .arg(fmtSize(t.pieceSize.value_or(0.0)))
-                     .arg(QObject::tr("have"))
+                     .arg(tr("have"))
                      .arg(have >= 0 ? QString::number(have) : dash());
     }
     makeCell(tgrid, 1, 2, tr("Pieces"), pieces);
@@ -700,9 +698,9 @@ void PropsForm::rebuild()
     }
 
     makeCell(tgrid, 5, 2, tr("Sequential download"),
-             t.sequentialDownload ? (*t.sequentialDownload ? QObject::tr("yes") : QObject::tr("no")) : dash());
+             t.sequentialDownload ? (*t.sequentialDownload ? tr("yes") : tr("no")) : dash());
     makeCell(tgrid, 6, 2, tr("Private"),
-             t.isPrivate ? (*t.isPrivate ? QObject::tr("yes") : QObject::tr("no")) : dash());
+             t.isPrivate ? (*t.isPrivate ? tr("yes") : tr("no")) : dash());
 
     if (!build)
         return;

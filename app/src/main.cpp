@@ -117,21 +117,31 @@ int main(int argc, char* argv[])
     }
 
     // Описания опций переводим после установки переводчика, чтобы справка была на выбранном языке.
+    // Литералы даём lupdate напрямую в QCoreApplication::translate (I18N-03):
+    // через лямбду-обёртку он их не видел, и описания оставались без перевода.
     QCommandLineParser parser;
     parser.addHelpOption();
     parser.addVersionOption();
-    const auto optionText = [](const char* text) {
-        return QCoreApplication::translate("main", text);
-    };
-    parser.addOption({"url", optionText("Transmission server URL."), optionText("url"), "url"});
-    parser.addOption({"user", optionText("RPC user."), optionText("user"), "user"});
-    parser.addOption({"pass", optionText("RPC password (unsafe: visible in the command line)."),
-                      optionText("password"), "password"});
-    parser.addOption({"pass-stdin", optionText("Read the RPC password from standard input.")});
-    parser.addOption({"path", optionText("RPC path."), optionText("path"), "path"});
-    parser.addOption({"smoke-test", optionText("Check startup with isolated settings.")});
-    parser.addPositionalArgument("torrent", optionText("Local .torrent files or magnet links."),
-                                 optionText("[torrent...]"));
+    parser.addOption({"url",
+                      QCoreApplication::translate("main", "Transmission server URL."),
+                      QCoreApplication::translate("main", "url"), "url"});
+    parser.addOption({"user",
+                      QCoreApplication::translate("main", "RPC user."),
+                      QCoreApplication::translate("main", "user"), "user"});
+    parser.addOption({"pass",
+                      QCoreApplication::translate("main",
+                                                   "RPC password (unsafe: visible in the command line)."),
+                      QCoreApplication::translate("main", "password"), "password"});
+    parser.addOption({"pass-stdin",
+                      QCoreApplication::translate("main", "Read the RPC password from standard input.")});
+    parser.addOption({"path",
+                      QCoreApplication::translate("main", "RPC path."),
+                      QCoreApplication::translate("main", "path"), "path"});
+    parser.addOption({"smoke-test",
+                      QCoreApplication::translate("main", "Check startup with isolated settings.")});
+    parser.addPositionalArgument("torrent",
+                                 QCoreApplication::translate("main", "Local .torrent files or magnet links."),
+                                 QCoreApplication::translate("main", "[torrent...]"));
     parser.process(app);
 
     QStringList inputs;

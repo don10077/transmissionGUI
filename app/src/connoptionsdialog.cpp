@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDialogButtonBox>
 #include <QEventLoop>
 #include <QFileDialog>
@@ -41,13 +42,16 @@ ConnTest runTest(const tgui::RpcClient::Options& opts)
         if (done) return;
         done = true;
         r.ok = true;
-        r.message = QObject::tr("Connected: Transmission %1 (RPC %2)").arg(info.version).arg(info.rpcVersion);
+        // Свободная функция: контекст указываем явно (I18N-03).
+        r.message = QCoreApplication::translate("ConnOptionsDialog",
+                                                 "Connected: Transmission %1 (RPC %2)")
+                        .arg(info.version).arg(info.rpcVersion);
         loop.quit();
     });
     QObject::connect(client, &tgui::RpcClient::authenticationFailed, &loop, [&](const QString& e) {
         if (done) return;
         done = true;
-        r.message = QObject::tr("Authentication failed: %1").arg(e);
+        r.message = QCoreApplication::translate("ConnOptionsDialog", "Authentication failed: %1").arg(e);
         loop.quit();
     });
     const auto fail = [&](const QString& e) {
@@ -79,7 +83,7 @@ ConnTest runTest(const tgui::RpcClient::Options& opts)
     QObject::disconnect(client, nullptr, nullptr, nullptr);
     client->deleteLater();
     if (!r.ok && !r.needsPassphrase && r.message.isEmpty())
-        r.message = QObject::tr("No response (timeout).");
+        r.message = QCoreApplication::translate("ConnOptionsDialog", "No response (timeout).");
     return r;
 }
 

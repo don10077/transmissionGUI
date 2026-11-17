@@ -2,6 +2,7 @@
 
 #include <QBrush>
 #include <algorithm>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -64,13 +65,15 @@ int FileListModel::columnCount(const QModelIndex& parent) const
 
 static QString priorityText(int priority)
 {
+    // Свободная функция: lupdate кладёт QObject::tr в контекст «QObject»,
+    // поэтому контекст указываем явно (I18N-03).
     switch (priority) {
         case -1:
-            return QObject::tr("Low");
+            return QCoreApplication::translate("FileListModel", "Low");
         case 1:
-            return QObject::tr("High");
+            return QCoreApplication::translate("FileListModel", "High");
         default:
-            return QObject::tr("Normal");
+            return QCoreApplication::translate("FileListModel", "Normal");
     }
 }
 
@@ -102,7 +105,7 @@ QVariant FileListModel::data(const QModelIndex& index, int role) const
         case ColPriority:
             return priorityText(f.priority);
         case ColWanted:
-            return f.wanted ? QObject::tr("on") : QObject::tr("skip");
+            return f.wanted ? tr("on") : tr("skip");
     }
     return {};
 }
@@ -113,15 +116,15 @@ QVariant FileListModel::headerData(int section, Qt::Orientation orientation, int
         return {};
     switch (section) {
         case ColName:
-            return QObject::tr("Name");
+            return tr("Name");
         case ColSize:
-            return QObject::tr("Size");
+            return tr("Size");
         case ColProgress:
-            return QObject::tr("Progress");
+            return tr("Progress");
         case ColPriority:
-            return QObject::tr("Priority");
+            return tr("Priority");
         case ColWanted:
-            return QObject::tr("Wanted");
+            return tr("Wanted");
     }
     return {};
 }
@@ -333,21 +336,21 @@ QVariant PeerListModel::headerData(int section, Qt::Orientation orientation, int
         return {};
     switch (section) {
         case ColAddress:
-            return QObject::tr("Host");
+            return tr("Host");
         case ColCountry:
-            return QObject::tr("Country");
+            return tr("Country");
         case ColFlags:
-            return QObject::tr("Flags");
+            return tr("Flags");
         case ColPort:
-            return QObject::tr("Port");
+            return tr("Port");
         case ColClient:
-            return QObject::tr("Client");
+            return tr("Client");
         case ColProgress:
-            return QObject::tr("Have");
+            return tr("Have");
         case ColRateDown:
-            return QObject::tr("Down speed");
+            return tr("Down speed");
         case ColRateUp:
-            return QObject::tr("Up speed");
+            return tr("Up speed");
     }
     return {};
 }
@@ -399,12 +402,12 @@ QVariant TrackerListModel::data(const QModelIndex& index, int role) const
         case ColTier:
             return t.tier;
         case ColSeeders:
-            return t.seederCount >= 0 ? QString::number(t.seederCount) : QObject::tr("—");
+            return t.seederCount >= 0 ? QString::number(t.seederCount) : tr("—");
         case ColLeechers:
-            return t.leecherCount >= 0 ? QString::number(t.leecherCount) : QObject::tr("—");
+            return t.leecherCount >= 0 ? QString::number(t.leecherCount) : tr("—");
         case ColLastResult:
             if (t.announceState == 2 || t.announceState == 3)
-                return QObject::tr("Updating...");
+                return tr("Updating...");
             return t.lastAnnounceResult;
         case ColUpdate:
             return t.nextAnnounceTime > 0 ? QString::fromStdString(tgui::formatEta(
@@ -423,17 +426,17 @@ QVariant TrackerListModel::headerData(int section, Qt::Orientation orientation, 
         return {};
     switch (section) {
         case ColAnnounce:
-            return QObject::tr("Tracker");
+            return tr("Tracker");
         case ColTier:
-            return QObject::tr("Tier");
+            return tr("Tier");
         case ColSeeders:
-            return QObject::tr("Seeds");
+            return tr("Seeds");
         case ColLeechers:
-            return QObject::tr("Leechers");
+            return tr("Leechers");
         case ColLastResult:
-            return QObject::tr("Status");
+            return tr("Status");
         case ColUpdate:
-            return QObject::tr("Update in");
+            return tr("Update in");
     }
     return {};
 }

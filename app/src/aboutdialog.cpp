@@ -52,7 +52,8 @@ QString versionText()
     QStringList parts;
     const QString version = QCoreApplication::applicationVersion();
     if (!version.isEmpty())
-        parts << QObject::tr("Version %1").arg(version);
+        // Свободная функция: контекст указываем явно (I18N-03).
+        parts << QCoreApplication::translate("AboutDialog", "Version %1").arg(version);
     parts << QStringLiteral("Qt %1").arg(QStringLiteral(QT_VERSION_STR));
     const QString platform = platformName();
     if (!platform.isEmpty())

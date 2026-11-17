@@ -1025,7 +1025,7 @@ void MainWindow::updateInfoTitleWithCount(qsizetype count)
     QString title = torrent ? torrent->name.value_or(QString()) : QString();
     if (!title.isEmpty()) {
         if (count > 1)
-            title += tr(" (+%1 more)").arg(count - 1);
+            title += QLatin1Char(' ') + tr("(%1 more)").arg(count - 1); // без ведущего пробела в строке (I18N-03)
     }
     const int textWidth = qMax(0, qMin(360, m_tabs->width() * 45 / 100) - 16);
     m_infoTitle->setText(m_infoTitle->fontMetrics().elidedText(title, Qt::ElideRight, textWidth));
@@ -1528,7 +1528,7 @@ void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
         if (!completed.isEmpty())
             emit downloadNotification(completed.size() == 1 ?
                 tr("Download completed: %1").arg(completed.first()) :
-                tr("Downloads completed: %1").arg(completed.size()));
+                tr("%n downloads completed").arg(completed.size())); // плюрал (I18N-03)
     }
 
     const int prevId = m_currentId;
@@ -1679,6 +1679,26 @@ void MainWindow::onReadError(const QString& what, const QString& error)
     statusBar()->showMessage(tr("%1: %2").arg(what, error), 8000);
 }
 
+/** Человекочитаемое имя действия для строки состояния (I18N-03):
+    показываем действие, а не сырое имя RPC-метода. Неизвестные методы — как есть. */
+static QString actionLabel(const QString& method)
+{
+    // Свободная функция: контекст указываем явно (I18N-03).
+    static const QHash<QString, QString> kNames = {
+        {QStringLiteral("torrent-start"), QCoreApplication::translate("MainWindow", "Start")},
+        {QStringLiteral("torrent-start-now"), QCoreApplication::translate("MainWindow", "Start now")},
+        {QStringLiteral("torrent-stop"), QCoreApplication::translate("MainWindow", "Stop")},
+        {QStringLiteral("torrent-remove"), QCoreApplication::translate("MainWindow", "Remove")},
+        {QStringLiteral("torrent-set"), QCoreApplication::translate("MainWindow", "Change settings")},
+        {QStringLiteral("torrent-rename-path"), QCoreApplication::translate("MainWindow", "Rename")},
+        {QStringLiteral("torrent-set-location"), QCoreApplication::translate("MainWindow", "Move")},
+        {QStringLiteral("torrent-verify"), QCoreApplication::translate("MainWindow", "Verify")},
+        {QStringLiteral("torrent-reannounce"), QCoreApplication::translate("MainWindow", "Reannounce")},
+        {QStringLiteral("session-set"), QCoreApplication::translate("MainWindow", "Change daemon settings")},
+    };
+    return kNames.value(method, method);
+}
+
 void MainWindow::onRequestCompleted(const QString& method, bool ok, const QString& error,
                                     const QJsonObject& arguments)
 {
@@ -1687,10 +1707,11 @@ void MainWindow::onRequestCompleted(const QString& method, bool ok, const QStrin
         m_rpc->getTorrents();
     if (method == QLatin1String("session-set") && m_rpc && m_connected)
         m_rpc->getSession(); // Refresh on success and roll back the toggle on failure.
+    const QString name = actionLabel(method);
     if (ok)
-        statusBar()->showMessage(tr("\"%1\" done").arg(method), 5000);
+        statusBar()->showMessage(tr("«%1» done").arg(name), 5000);
     else
-        statusBar()->showMessage(tr("«%1»: %2").arg(method, error), 8000);
+        statusBar()->showMessage(tr("«%1»: %2").arg(name, error), 8000);
 }
 
 void MainWindow::showToast(const QString& message)
@@ -1820,9 +1841,7 @@ void MainWindow::onRemoveSelected()
 
     const QPointer<tgui::RpcClient> rpc(m_rpc.get());
     QMessageBox box(QMessageBox::Question, tr("Remove torrents"),
-                 ids.size() == 1
-                     ? tr("Remove the torrent from the daemon's list?")
-                     : tr("Remove %1 torrents from the daemon's list?").arg(ids.size()),
+                 tr("Remove %n torrent(s) from the daemon's list?").arg(ids.size()), // плюрал (I18N-03)
                  QMessageBox::Cancel, this);
     box.setIconPixmap(tgui::theme::icon(tgui::theme::Icon::Warning).pixmap(QSize(32, 32), devicePixelRatioF()));
     auto* remove = box.addButton(tr("Remove"), QMessageBox::AcceptRole);
@@ -1857,9 +1876,9 @@ void MainWindow::updateStatusBarTotals()
 
     const auto selected = m_view->selectionModel()->selectedRows();
     const int count = m_model.rowCount();
-    QString countText = count == 1 ? tr("1 torrent") : tr("%1 torrents").arg(count);
+    QString countText = tr("%n torrent(s)").arg(count); // плюрал (I18N-03)
     if (selected.size() > 1)
-        countText += tr(", %1 selected").arg(selected.size());
+        countText += tr(", %n selected").arg(selected.size());
     m_countLabel->setText(countText);
     updateStatusBarPresentation();
 }
@@ -2012,7 +2031,7 @@ void MainWindow::onMoveSelected()
     const bool localDaemon = options.proxy.type() == QNetworkProxy::NoProxy && tgui::isLocalDaemon(options.url);
     MoveDialog dlg(found->downloadDir.value_or(QString()), this, profile, localDaemon);
     if (ids.size() > 1)
-        dlg.setWindowTitle(tr("Move torrents - %1 selected").arg(ids.size()));
+        dlg.setWindowTitle(tr("Move %n torrents").arg(ids.size())); // плюрал (I18N-03)
     if (dlg.exec() != QDialog::Accepted || !rpc || rpc != m_rpc.get() ||
         !m_connected || profile != m_connectionProfile)
         return;
@@ -3163,7 +3182,7 @@ void MainWindow::onImportTorrentList()
         return;
     }
     if (QMessageBox::question(this, tr("Import torrent list"),
-            tr("Add %1 torrent links to the connected daemon?").arg(links.size())) != QMessageBox::Yes)
+            tr("Add %n torrent link(s) to the connected daemon?").arg(links.size())) != QMessageBox::Yes) // плюрал (I18N-03)
         return;
     if (rpc && rpc == m_rpc.get() && m_connected && profile == m_connectionProfile)
         openExternalTorrents(links);
@@ -3467,7 +3486,7 @@ void MainWindow::onVerifySelected()
     QMessageBox box(QMessageBox::Question, tr("Verify"),
         ids.size() == 1
             ? tr("Torrent verification may take a long time.\nAre you sure to start verification?")
-            : tr("Torrent verification may take a long time.\nAre you sure to start verification of %1 torrents?")
+            : tr("Torrent verification may take a long time.\nAre you sure to start verification of %n torrent(s)?") // плюрал (I18N-03)
                   .arg(ids.size()),
         QMessageBox::Yes | QMessageBox::No, this);
     box.setIconPixmap(tgui::theme::icon(tgui::theme::Icon::Question).pixmap(QSize(32, 32), devicePixelRatioF()));
@@ -4189,7 +4208,7 @@ void MainWindow::onFilesContextMenu(const QPoint& pos)
     connect(expand, &QAction::triggered, view, &QTreeView::expandAll);
     connect(collapse, &QAction::triggered, view, &QTreeView::collapseAll);
     menu->addSeparator();
-    auto* aCols = menu->addAction(tr("Setup columns..."));
+    auto* aCols = menu->addAction(tr("Setup columns…")); // единое многоточие (I18N-03)
 
     const QPoint global = view->mapToGlobal(pos);
     const auto isCurrent = [this, rpc = QPointer(m_rpc.get()), id = m_currentId] {
@@ -4282,7 +4301,7 @@ void MainWindow::onPeersContextMenu(const QPoint& pos)
 
     // Setup Columns
     menu->addSeparator();
-    auto* aCols = menu->addAction(tr("Setup Columns"));
+    auto* aCols = menu->addAction(tr("Setup columns…")); // регистр и многоточие как в остальных местах (I18N-03)
     QObject::connect(aCols, &QAction::triggered, this, [this, view] {
         const int count = PeerListModel::ColumnCount;
         QStringList titles;

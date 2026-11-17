@@ -1,6 +1,8 @@
 #include "torrentmodel.h"
 
 #include <QBrush>
+#include <QCoreApplication>
+#include <QLocale>
 
 #include <algorithm>
 #include <limits>
@@ -127,24 +129,24 @@ QString TorrentModel::statusText(int status, bool finished)
 {
     // Текст статуса — 1:1 с GetTorrentStatus референса (main.pas).
     if (finished && status == 0)
-        return QObject::tr("Finished");
+        return tr("Finished");
     switch (status) {
         case 0:
-            return QObject::tr("Paused");
+            return tr("Paused");
         case 1:
-            return QObject::tr("Waiting");
+            return tr("Waiting");
         case 2:
-            return QObject::tr("Verifying");
+            return tr("Verifying");
         case 3:
-            return QObject::tr("Waiting");
+            return tr("Waiting");
         case 4:
-            return QObject::tr("Downloading");
+            return tr("Downloading");
         case 5:
-            return QObject::tr("Waiting");
+            return tr("Waiting");
         case 6:
-            return QObject::tr("Seeding");
+            return tr("Seeding");
     }
-    return QObject::tr("Unknown");
+    return tr("Unknown");
 }
 
 bool TorrentModel::matchesGroup(const tgui::Torrent& t, int group)
@@ -181,12 +183,12 @@ bool TorrentModel::matchesGroup(const tgui::Torrent& t, int group)
 
 namespace {
 
-// dd.MM.yyyy HH:mm; <= 0 — «—».
+// Короткий формат даты и времени по текущей локали; <= 0 — «—» (I18N-03).
 QString fmtTime(int unix)
 {
     if (unix <= 0)
         return QStringLiteral("—");
-    return QDateTime::fromSecsSinceEpoch(unix).toString(QStringLiteral("dd.MM.yyyy HH:mm"));
+    return QLocale().toString(QDateTime::fromSecsSinceEpoch(unix), QLocale::ShortFormat);
 }
 
 // 93782 → «25:53:02».
@@ -202,13 +204,14 @@ QString fmtDuration(int seconds)
 
 QString priorityText(int priority)
 {
+    // Свободная функция: контекст указываем явно (I18N-03).
     switch (priority) {
         case -1:
-            return QObject::tr("Low");
+            return QCoreApplication::translate("TorrentModel", "Low");
         case 1:
-            return QObject::tr("High");
+            return QCoreApplication::translate("TorrentModel", "High");
         default:
-            return QObject::tr("Normal");
+            return QCoreApplication::translate("TorrentModel", "Normal");
     }
 }
 
@@ -221,7 +224,7 @@ QString trackerStatusText(const tgui::Torrent& t)
         if (ts.hasAnnounced) {
             if (ts.lastAnnounceSucceeded ||
                 ts.lastAnnounceResult.compare(QLatin1String("Success"), Qt::CaseInsensitive) == 0)
-                return QObject::tr("Working");
+                return QCoreApplication::translate("TorrentModel", "Working");
             return ts.lastAnnounceResult;
         }
         return t.announceResponse.value_or(QString());
@@ -236,7 +239,7 @@ QString countWithTotal(int current, int total)
         current = 0;
     if (total < 0)
         return QString::number(current);
-    return QObject::tr("%1/%2").arg(current).arg(total);
+    return QCoreApplication::translate("TorrentModel", "%1/%2").arg(current).arg(total);
 }
 
 // Идёт проверка торрента?
@@ -393,12 +396,12 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
                            'f', 1) +
                        "%";
             if (t.metadataPercentComplete)
-                return QObject::tr("metadata %1%")
+                return tr("metadata %1%")
                     .arg(t.metadataPercentComplete.value() * 100.0, 0, 'f', 0);
             return QStringLiteral("—");
         }
         case ColStatus:
-            return hasError() ? QObject::tr("Error") : statusText(status, isFinished());
+            return hasError() ? tr("Error") : statusText(status, isFinished());
         case ColSeeds:
             return countWithTotal(t.peersSendingToUs.value_or(0),
                                   t.trackerStats.isEmpty() ? -1
@@ -459,7 +462,7 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
         case ColSizeLeft:
             return QString::fromStdString(tgui::formatSize(t.leftUntilDone.value_or(0.0)));
         case ColPrivate:
-            return t.isPrivate ? (*t.isPrivate ? QObject::tr("yes") : QObject::tr("no")) : QStringLiteral("—");
+            return t.isPrivate ? (*t.isPrivate ? tr("yes") : tr("no")) : QStringLiteral("—");
         case ColLabels:
             return t.labels.value_or(QStringList()).join(QStringLiteral(", "));
     }
@@ -477,57 +480,57 @@ QVariant TorrentModel::headerData(int section, Qt::Orientation orientation, int 
     // Заголовки 1:1 с референсом (Title.Caption в main.lfm).
     switch (section) {
         case ColName:
-            return QObject::tr("Name");
+            return tr("Name");
         case ColSize:
-            return QObject::tr("Size");
+            return tr("Size");
         case ColDone:
-            return QObject::tr("Done");
+            return tr("Done");
         case ColStatus:
-            return QObject::tr("Status");
+            return tr("Status");
         case ColSeeds:
-            return QObject::tr("Seeds");
+            return tr("Seeds");
         case ColPeers:
-            return QObject::tr("Peers");
+            return tr("Peers");
         case ColRateDown:
-            return QObject::tr("Down speed");
+            return tr("Down speed");
         case ColRateUp:
-            return QObject::tr("Up speed");
+            return tr("Up speed");
         case ColEta:
             return QStringLiteral("ETA");
         case ColRatio:
-            return QObject::tr("Ratio");
+            return tr("Ratio");
         case ColDownloaded:
-            return QObject::tr("Downloaded");
+            return tr("Downloaded");
         case ColUploaded:
-            return QObject::tr("Uploaded");
+            return tr("Uploaded");
         case ColTracker:
-            return QObject::tr("Tracker");
+            return tr("Tracker");
         case ColTrackerStatus:
-            return QObject::tr("Tracker status");
+            return tr("Tracker status");
         case ColAddedOn:
-            return QObject::tr("Added on");
+            return tr("Added on");
         case ColCompletedOn:
-            return QObject::tr("Completed on");
+            return tr("Completed on");
         case ColLastActive:
-            return QObject::tr("Last active");
+            return tr("Last active");
         case ColPath:
-            return QObject::tr("Path");
+            return tr("Path");
         case ColPriority:
-            return QObject::tr("Priority");
+            return tr("Priority");
         case ColSizeToDownload:
-            return QObject::tr("Size to download");
+            return tr("Size to download");
         case ColId:
             return QStringLiteral("ID");
         case ColQueuePosition:
-            return QObject::tr("Queue position");
+            return tr("Queue position");
         case ColSeedingTime:
-            return QObject::tr("Seeding time");
+            return tr("Seeding time");
         case ColSizeLeft:
-            return QObject::tr("Size left");
+            return tr("Size left");
         case ColPrivate:
-            return QObject::tr("Private");
+            return tr("Private");
         case ColLabels:
-            return QObject::tr("Labels");
+            return tr("Labels");
     }
     return {};
 }
@@ -550,7 +553,7 @@ QVariant TorrentModel::sortKey(const tgui::Torrent& t, int column)
             const int status = t.status.value_or(-1);
             const bool finished = tgui::statusIsFinished(status, t.sizeWhenDone.value_or(0.0),
                                                          t.leftUntilDone.value_or(0.0));
-            return tgui::torrentError(t).isEmpty() ? statusText(status, finished) : QObject::tr("Error");
+            return tgui::torrentError(t).isEmpty() ? statusText(status, finished) : tr("Error");
         }
         case ColSeeds:
             return t.peersSendingToUs.value_or(0);

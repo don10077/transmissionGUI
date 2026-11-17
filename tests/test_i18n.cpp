@@ -108,6 +108,11 @@ TEST(I18n, TranslationFileIsComplete)
             bool hasTranslation = false;
             bool numerus = false;
 
+            // Qt помечает плюральные записи атрибутом на <message>
+            // (формат, который понимает lrelease этой сборки Qt).
+            if (xml.attributes().value(QLatin1String("numerus")).toString() == QLatin1String("yes"))
+                numerus = true;
+
             while (xml.readNextStartElement()) {
                 const auto name = xml.name();
                 if (name == QLatin1String("source")) {

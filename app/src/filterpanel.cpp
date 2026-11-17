@@ -200,26 +200,29 @@ FilterPanel::FilterPanel(QWidget* parent) : QWidget(parent)
     layout->addWidget(m_tree, 1);
 
     // Статусные строки (порядок — как в референсе, lvFilter.Rows[0..7]).
+    // Имена лежат в таблице и переводятся через tr(s.name) в момент использования —
+    // чтобы lupdate видел литералы, они обёрнуты в QT_TR_NOOP (I18N-03).
     const struct {
         int group;
         const char* name;
     } status[] = {
-        {TorrentModel::GroupAll, "All torrents"},
-        {TorrentModel::GroupDownloading, "Downloading"},
-        {TorrentModel::GroupCompleted, "Completed"},
-        {TorrentModel::GroupActive, "Active"},
-        {TorrentModel::GroupInactive, "Inactive"},
-        {TorrentModel::GroupStopped, "Stopped"},
-        {TorrentModel::GroupError, "Error"},
-        {TorrentModel::GroupWaiting, "Waiting"},
+        {TorrentModel::GroupAll, QT_TR_NOOP("All torrents")},
+        {TorrentModel::GroupDownloading, QT_TR_NOOP("Downloading")},
+        {TorrentModel::GroupCompleted, QT_TR_NOOP("Completed")},
+        {TorrentModel::GroupActive, QT_TR_NOOP("Active")},
+        {TorrentModel::GroupInactive, QT_TR_NOOP("Inactive")},
+        {TorrentModel::GroupStopped, QT_TR_NOOP("Stopped")},
+        {TorrentModel::GroupError, QT_TR_NOOP("Error")},
+        {TorrentModel::GroupWaiting, QT_TR_NOOP("Waiting")},
     };
     for (const auto& s : status) {
         auto* it = new QTreeWidgetItem(m_tree);
-        it->setText(0, tr(s.name));
+        const QString name = tr(s.name);
+        it->setText(0, name);
         it->setData(0, kRoleGroup, s.group);
-        it->setData(0, kRoleBase, tr(s.name));
+        it->setData(0, kRoleBase, name);
         it->setData(0, kRoleCount, 0);
-        it->setToolTip(0, tr(s.name));
+        it->setToolTip(0, name);
     }
 
     m_foldersSection = new QTreeWidgetItem(m_tree);

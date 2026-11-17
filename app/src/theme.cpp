@@ -1065,7 +1065,8 @@ void decorateDialog(QDialog* dialog)
     auto* close = new QPushButton(QStringLiteral("✕"), header);
     close->setObjectName(QStringLiteral("dialogClose"));
     close->setFocusPolicy(Qt::NoFocus);
-    close->setToolTip(QObject::tr("Close"));
+    // Свободная функция: контекст указываем явно (I18N-03).
+    close->setToolTip(QCoreApplication::translate("Dialog", "Close"));
     close->setCursor(Qt::ArrowCursor);
     headerLayout->addWidget(title, 1);
     headerLayout->addWidget(close);
