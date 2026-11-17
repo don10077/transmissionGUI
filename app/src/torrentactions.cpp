@@ -614,10 +614,3 @@ void TorrentActions::onPriorityLow()
 {
     runTorrentAction("torrent-set", m_selection(), {{"bandwidthPriority", -1}});
 }
-
-void TorrentActions::onPortTest()
-{
-    if (!m_connection.client() || !m_connection.isConnected())
-        return;
-    m_connection.client()->portTest();
-}

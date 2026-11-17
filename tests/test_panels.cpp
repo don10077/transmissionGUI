@@ -1170,21 +1170,20 @@ TEST_F(MockDaemonWindow, RefreshIntervalFollowsWindowVisibilityAndAutoRefresh)
     MainWindow window;
     window.show();
     ASSERT_NO_FATAL_FAILURE(connectWindow(window));
-    auto* timer = window.findChild<QTimer*>("refreshTimer");
-    auto* refresh = window.findChild<QAction*>("autoRefreshAction");
-    ASSERT_NE(timer, nullptr);
+    auto* refresh = window.findChild<QAction*>(QStringLiteral("autoRefreshAction"));
     ASSERT_NE(refresh, nullptr);
-    EXPECT_TRUE(timer->isActive());
-    EXPECT_EQ(timer->interval(), 2000);
+    // ARCH-02: refreshTimer — член без parent, читаем через доступители.
+    EXPECT_TRUE(window.refreshActive());
+    EXPECT_EQ(window.refreshIntervalMs(), 2000);
     window.showMinimized();
-    EXPECT_EQ(timer->interval(), 9000);
+    EXPECT_EQ(window.refreshIntervalMs(), 9000);
     window.showNormal();
-    EXPECT_EQ(timer->interval(), 2000);
+    EXPECT_EQ(window.refreshIntervalMs(), 2000);
     window.hide();
-    EXPECT_EQ(timer->interval(), 9000);
+    EXPECT_EQ(window.refreshIntervalMs(), 9000);
     refresh->setChecked(false);
     window.show();
-    EXPECT_FALSE(timer->isActive());
+    EXPECT_FALSE(window.refreshActive());
 }
 
 TEST_F(MockDaemonWindow, AutomaticUpdateCheckUsesSavedSchedule)
@@ -1196,20 +1195,17 @@ TEST_F(MockDaemonWindow, AutomaticUpdateCheckUsesSavedSchedule)
     settings.remove("ui/lastUpdateAttempt");
     {
         MainWindow window;
-        auto* timer = window.findChild<QTimer*>("updateCheckTimer");
-        ASSERT_NE(timer, nullptr);
-        EXPECT_FALSE(timer->isActive());
+        // ARCH-02: updateCheckTimer — член без parent, читаем через доступители.
+        EXPECT_FALSE(window.updateChecker().updateCheckActive());
     }
 
     settings.setValue("ui/updateCheckEnabled", true);
     settings.setValue("ui/updateCheckDays", 7);
     settings.setValue("ui/lastUpdateCheck", QDateTime::currentDateTimeUtc().addDays(-7).addSecs(3600));
     MainWindow window;
-    auto* timer = window.findChild<QTimer*>("updateCheckTimer");
-    ASSERT_NE(timer, nullptr);
-    EXPECT_TRUE(timer->isActive());
-    EXPECT_GT(timer->interval(), 3590000);
-    EXPECT_LE(timer->interval(), 3600000);
+    EXPECT_TRUE(window.updateChecker().updateCheckActive());
+    EXPECT_GT(window.updateChecker().updateCheckIntervalMs(), 3590000);
+    EXPECT_LE(window.updateChecker().updateCheckIntervalMs(), 3600000);
 }
 
 TEST(TorrentModel, RateSmoothingLeavesRpcSamplesAndActiveFilterUnchanged)

@@ -20,7 +20,7 @@ constexpr int kUpdateCheckWakeMs = 24 * 60 * 60 * 1000;
 }
 
 UpdateChecker::UpdateChecker(QMainWindow& window, Notify notify)
-    : m_window(window), m_notify(std::move(notify)), m_updateCheckTimer(&window)
+    : m_window(window), m_notify(std::move(notify))
 {
     m_updateCheckTimer.setObjectName(QStringLiteral("updateCheckTimer"));
     m_updateCheckTimer.setSingleShot(true);

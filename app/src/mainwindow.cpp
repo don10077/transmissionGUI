@@ -94,7 +94,7 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
     m_geoIp.initialize();
 
     // W07: интервал обновления из настроек (секунды), по умолчанию 2 (ранее 2000 ms).
-    m_refreshTimer.setParent(this);
+    // ARCH-02: таймер — простой член без parent (единая схема владения таймерами).
     m_refreshTimer.setObjectName(QStringLiteral("refreshTimer"));
     connect(&m_refreshTimer, &QTimer::timeout, this, [this] {
         if (m_connection.client() && m_connection.isConnected()) {
@@ -130,7 +130,13 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
 
 MainWindow::~MainWindow()
 {
+    // ARCH-02: сначала останавливаем все таймеры и завершаем RPC-клиент,
+    // затем деструкторы членов (модели, контроллеры) — клиент не должен
+    // существовать (и тем более слать сигналы) после их уничтожения.
+    // Владелец таймеров — сами члены-контроллеры, parent не нужен.
     m_refreshTimer.stop();
+    m_watchService.stop();
+    m_actions.suspend();
     m_connection.shutdown();
 }
 
@@ -517,10 +523,6 @@ void MainWindow::onDaemonOptions()
     }
     m_connection.client()->setSession(params); // фидбек — через onRequestCompleted (status bar)
     statusBar()->showMessage(tr("Applying daemon options…"), 3000);
-}
-
-void MainWindow::onToggleAltSpeed()
-{
 }
 
 /** Возвращает только локальные .torrent-файлы и поддерживаемые ссылки из @p mime. */

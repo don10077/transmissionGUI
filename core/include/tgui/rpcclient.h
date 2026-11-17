@@ -17,6 +17,13 @@ inline constexpr qint64 kMaxTorrentFileBytes = 32LL * 1024 * 1024;
 
 // Высокоуровневый асинхронный RPC-клиент Transmission (QObject, сигналы в
 // потоке-владельце).
+//
+// ARCH-03: время жизни колбэков безопасно — клиент можно уничтожить прямо из
+// слота, вызванного из RPC-колбэка (torrentsReceived, requestCompleted и
+// т.д.): синхронно (unique_ptr::reset / delete) или через deleteLater().
+// Транспорт (JsonRpcClient) переносит колбэк в локальную копию до вызова,
+// поэтому уничтожение клиента изнутри сигнала не разрушает действующий
+// функтор QNetworkReply::finished (UB исключён).
 class RpcClient : public QObject {
     Q_OBJECT
 public:

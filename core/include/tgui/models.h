@@ -53,7 +53,6 @@ struct Torrent {
     std::optional<QString> name;
     std::optional<int> status;
     std::optional<QString> errorString;
-    std::optional<QString> announceResponse;
     std::optional<double> recheckProgress;         // 0..1
     std::optional<double> sizeWhenDone;            // байты
     std::optional<double> totalSize;               // байты

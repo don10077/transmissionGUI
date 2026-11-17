@@ -1073,29 +1073,6 @@
     </message>
 </context>
 <context>
-    <name>GroupedTorrentProxy</name>
-    <message>
-        <location filename="../app/src/groupedproxy.cpp" line="112"/>
-        <source>%1</source>
-        <translation>%1</translation>
-    </message>
-    <message>
-        <location filename="../app/src/groupedproxy.cpp" line="260"/>
-        <source>(no folder)</source>
-        <translation>(без папки)</translation>
-    </message>
-    <message>
-        <location filename="../app/src/groupedproxy.cpp" line="262"/>
-        <source>(no label)</source>
-        <translation>(без метки)</translation>
-    </message>
-    <message>
-        <location filename="../app/src/groupedproxy.cpp" line="264"/>
-        <source>(no tracker)</source>
-        <translation>(без трекера)</translation>
-    </message>
-</context>
-<context>
     <name>MainWindow</name>
     <message>
         <location filename="../app/src/mainwindow.cpp" line="2373"/>

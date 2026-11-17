@@ -36,7 +36,6 @@ add_library(tgui_app_lib STATIC
     src/connectdialog.cpp
     src/fileselectdialog.cpp
     src/torrentreplacement.cpp
-    src/groupedproxy.cpp
     src/delegates.cpp
     src/filterpanel.cpp
     src/detailmodels.cpp
@@ -60,7 +59,6 @@ add_library(tgui_app_lib STATIC
     src/addlinkdialog.h
     src/connectdialog.h
     src/fileselectdialog.h
-    src/groupedproxy.h
     src/delegates.h
     src/filterpanel.h
     src/detailmodels.h

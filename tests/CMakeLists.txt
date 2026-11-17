@@ -13,6 +13,7 @@ add_executable(tgui_tests
     test_models.cpp
     test_detailmodels.cpp
     test_panels.cpp
+    test_windowshutdown.cpp
     test_e2e_tabs.cpp
     test_rpcclient.cpp
     test_addlinkdialog.cpp

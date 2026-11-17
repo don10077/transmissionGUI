@@ -79,7 +79,6 @@ public:
     void onPriorityHigh();
     void onPriorityNormal();
     void onPriorityLow();
-    void onPortTest();
 
     tgui::RpcClient::RequestCallback afterTorrentChange(const QString& method,
                                                         RefreshAfter refresh, int id = -1,

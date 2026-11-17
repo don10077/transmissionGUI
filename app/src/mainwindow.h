@@ -40,7 +40,7 @@ public:
     explicit MainWindow(QWidget* parent = nullptr, const tgui::RpcClient::Options& startupOptions = {});
     ~MainWindow() override;
 
-    // Быстрый запуск из командной строки: --url/--user/--pass/--path.
+    // Автоподключение только для E2E-тестов (в приложении opts передаётся конструктору MainWindow).
     void setAutoConnect(const tgui::RpcClient::Options& opts);
     void openExternalTorrents(const QStringList& inputs);
 
@@ -65,6 +65,10 @@ public:
     {
         onTorrentsReceived(torrents);
     }
+    const UpdateChecker& updateChecker() const { return m_updateChecker; }
+    // ARCH-02: таймеры — члены без parent, поэтому тестам нужны доступители.
+    int refreshIntervalMs() const { return m_refreshTimer.interval(); }
+    bool refreshActive() const { return m_refreshTimer.isActive(); }
 
 signals:
     void downloadNotification(const QString& message);
@@ -86,7 +90,6 @@ private slots:
     void onHome();
     void onDevSite();
     void onCheckUpdate();
-    void onToggleAltSpeed();
     void onDaemonOptions();
     void onOptions();
     void onConnectionOptions();

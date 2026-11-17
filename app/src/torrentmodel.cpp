@@ -222,7 +222,7 @@ QString priorityText(int priority)
 }
 
 // Статус трекера : lastAnnounceSucceeded → «Работает»,
-// иначе lastAnnounceResult («Success» → «Работает»); fallback — announceResponse.
+// иначе lastAnnounceResult («Success» → «Работает»).
 QString trackerStatusText(const tgui::Torrent& t)
 {
     if (!t.trackerStats.isEmpty()) {
@@ -233,7 +233,7 @@ QString trackerStatusText(const tgui::Torrent& t)
                 return QCoreApplication::translate("TorrentModel", "Working");
             return ts.lastAnnounceResult;
         }
-        return t.announceResponse.value_or(QString());
+        return QString();
     }
     return QStringLiteral("—");
 }

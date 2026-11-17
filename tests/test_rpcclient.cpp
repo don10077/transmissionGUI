@@ -117,6 +117,48 @@ TEST_F(RpcClientTest, ConnectAndSessionInfo)
     EXPECT_EQ(server.requests().at(1).arguments.value("path").toString(), "/downloads");
 }
 
+// ARCH-03: синхронное уничтожение клиента прямо из слота torrentsReceived.
+// Транспорт обязан перенести колбэк в локальную копию до вызова: иначе
+// client.reset() здесь (→ ~QNetworkAccessManager → ~QNetworkReply → уничтожение
+// функтора reply->finished, членом которого был колбэк) разрушило бы действующий
+// объект колбэка в процессе вызова (UB). Под ASan/UBSan сценарий обязан пройти
+// чисто: слот отрабатывает, клиент уничтожен, без UAF/дабл-фри.
+TEST_F(RpcClientTest, DeleteClientInsideTorrentsReceivedSlot)
+{
+    connectWith(18);
+    server.enqueue(MockRpcServer::Response{
+        200,
+        R"({"result": "success", "arguments": {"torrents": [["id","name","status"], [7,"movie",4]]}})",
+        {}});
+
+    bool destroyedInSlot = false;
+    QString readError;
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(client.get(), &RpcClient::readError,
+                     [&readError, &loop](const QString&, const QString& e) {
+                         readError = e;
+                         loop.quit();
+                     });
+    QObject::connect(client.get(), &RpcClient::torrentsReceived,
+                     [this, &destroyedInSlot, &loop](const QVector<Torrent>&) {
+                         destroyedInSlot = true;
+                         loop.quit();
+                         // Синхронный разрыв владения из слота: именно этот
+                         // сценарий раньше разрушал действующий функтор reply.
+                         client.reset();
+                     });
+    timer.start(5000);
+    client->getTorrents();
+    loop.exec();
+
+    EXPECT_TRUE(destroyedInSlot) << "readError=" << readError.toStdString();
+    EXPECT_EQ(client.get(), nullptr);
+    server.release();
+}
+
 TEST_F(RpcClientTest, ConnectFailure)
 {
     server.enqueue(MockRpcServer::Response{

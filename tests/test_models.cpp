@@ -12,7 +12,6 @@ TEST(ModelTorrent, ParseFull)
         {"name", "ubuntu-24.04.iso"},
         {"status", 4},
         {"errorString", ""},
-        {"announceResponse", "Success"},
         {"recheckProgress", 0.5},
         {"sizeWhenDone", qint64{4600000000}},
         {"totalSize", qint64{5800000000}},
@@ -389,7 +388,6 @@ TEST(ModelStatus, Helpers)
 #include <QAbstractItemModelTester>
 #include <QVector>
 
-#include "groupedproxy.h"
 #include "torrentmodel.h"
 
 TEST(TorrentModel, IncrementalRowsKeepPersistentIndexes)
@@ -440,12 +438,9 @@ TEST(GuiListChain, ListVisibleAfterModelReset)
     TorrentModel model;
     TorrentFilterProxy filter;
     filter.setSourceModel(&model);
-    GroupedTorrentProxy groups;
-    groups.setSourceProxy(&filter);
-    groups.setGroupBy(GroupedTorrentProxy::GroupNone);
 
     // До получения списка — пусто.
-    EXPECT_EQ(groups.rowCount(), 0);
+    EXPECT_EQ(filter.rowCount(), 0);
 
     // Имитация получения списка из демона: полный сброс модели.
     QVector<tgui::Torrent> torrents = {
@@ -457,12 +452,11 @@ TEST(GuiListChain, ListVisibleAfterModelReset)
     qApp->processEvents();
 
     EXPECT_EQ(model.rowCount(), 3);
-    EXPECT_EQ(filter.rowCount(), 3);
-    EXPECT_EQ(groups.rowCount(), 3)
-        << "групповое прокси не пересобрано после modelReset → таблица пустая";
+    EXPECT_EQ(filter.rowCount(), 3)
+        << "прокси не видит строки после modelReset → таблица пустая";
 
-    // Данные проходят через всю цепочку.
-    const QModelIndex idx = groups.index(0, TorrentModel::ColName, QModelIndex());
+    // Данные проходят через цепочку.
+    const QModelIndex idx = filter.index(0, TorrentModel::ColName, QModelIndex());
     EXPECT_TRUE(idx.isValid());
     EXPECT_FALSE(idx.data(Qt::DisplayRole).toString().isEmpty());
 
@@ -470,12 +464,7 @@ TEST(GuiListChain, ListVisibleAfterModelReset)
     torrents.append(makeUiTorrent(4, "/Shares/C", "delta"));
     model.setTorrents(torrents);
     qApp->processEvents();
-    EXPECT_EQ(groups.rowCount(), 4);
-
-    // Группировка по папке: A(2) + B(1) + C(1).
-    groups.setGroupBy(GroupedTorrentProxy::GroupFolder);
-    qApp->processEvents();
-    EXPECT_EQ(groups.rowCount(), 3);
+    EXPECT_EQ(filter.rowCount(), 4);
 }
 
 #include <QPixmap>
@@ -489,11 +478,9 @@ TEST(GuiListChain, OffscreenTreeViewRendersRows)
     TorrentModel model;
     TorrentFilterProxy filter;
     filter.setSourceModel(&model);
-    GroupedTorrentProxy groups;
-    groups.setSourceProxy(&filter);
 
     QTreeView view;
-    view.setModel(&groups);
+    view.setModel(&filter);
     view.setSortingEnabled(true); // как в приложении
     view.setRootIsDecorated(false);
     view.resize(900, 400);
@@ -508,13 +495,13 @@ TEST(GuiListChain, OffscreenTreeViewRendersRows)
     model.setTorrents(torrents);
     qApp->processEvents();
 
-    EXPECT_EQ(groups.rowCount(), 3) << "прокси не видит строки после modelReset";
-    const QModelIndex first = groups.index(0, TorrentModel::ColName, QModelIndex());
+    EXPECT_EQ(filter.rowCount(), 3) << "прокси не видит строки после modelReset";
+    const QModelIndex first = filter.index(0, TorrentModel::ColName, QModelIndex());
     EXPECT_TRUE(first.isValid());
-    EXPECT_FALSE(groups.data(first, Qt::DisplayRole).toString().isEmpty());
-    EXPECT_TRUE(groups.hasChildren(QModelIndex())) << "у корня должны быть строки";
-    EXPECT_FALSE(groups.hasChildren(first)) << "строки не имеют детей";
-    EXPECT_EQ(groups.headerData(0, Qt::Horizontal, Qt::DisplayRole).toString(),
+    EXPECT_FALSE(filter.data(first, Qt::DisplayRole).toString().isEmpty());
+    EXPECT_TRUE(filter.hasChildren(QModelIndex())) << "у корня должны быть строки";
+    EXPECT_FALSE(filter.hasChildren(first)) << "строки не имеют детей";
+    EXPECT_EQ(filter.headerData(0, Qt::Horizontal, Qt::DisplayRole).toString(),
               QObject::tr("Name"));
 
     view.viewport()->update();

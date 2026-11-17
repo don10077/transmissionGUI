@@ -538,10 +538,6 @@ void DetailsPanel::onFilesDoubleClicked(int row)
     if (dir.isEmpty())
         return;
     const QString rel = files.at(row).name;
-    if (rel.endsWith(QLatin1Char('/'))) {
-        openLocalPath(dir + QStringLiteral("/") + rel, /*selectFile=*/false);  // папка
-        return;
-    }
     const QString path = dir + QStringLiteral("/") + rel;
     // Не скачанный до конца файл не имеет смысла запускать — открываем каталог.
     openLocalPath(path, /*selectFile=*/files.at(row).completion < 1.0);

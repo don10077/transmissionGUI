@@ -481,25 +481,6 @@ void TorrentListController::onSelectAll()
     onSelectionChanged();
 }
 
-void TorrentListController::onCopyPath()
-{
-    const auto ids = selectedTorrentIds();
-    if (ids.size() != 1)
-        return;
-    for (const auto& t : m_model.torrents()) {
-        if (t.id == ids.first()) {
-            const QString dir = t.downloadDir.value_or(QString());
-            QString name = t.name.value_or(QString());
-            if (!name.isEmpty())
-                name = name.mid(name.lastIndexOf(QLatin1Char('/')) + 1);
-            const QString path = dir + QStringLiteral("/") + name;
-            QApplication::clipboard()->setText(path);
-            m_status->showToast(tr("Path copied"));
-            return;
-        }
-    }
-}
-
 void TorrentListController::onOpenFolder()
 {
     const auto ids = selectedTorrentIds();

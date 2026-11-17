@@ -9,7 +9,6 @@
 #include <QStyleOptionViewItem>
 
 #include "detailmodels.h"
-#include "groupedproxy.h"
 #include "theme.h"
 #include "torrentlabels.h"
 #include "torrentmodel.h"
@@ -209,24 +208,6 @@ void TorrentDelegate::paint(QPainter* painter, const QStyleOptionViewItem& optio
         return;
 
     const auto& colors = palette();
-    if (index.data(GroupedTorrentProxy::IsGroupRole).toBool()) {
-        painter->save();
-        painter->setClipRect(row, Qt::IntersectClip);
-        painter->fillRect(row, colors.groupRow);
-        painter->setPen(colors.border);
-        painter->drawLine(row.bottomLeft(), row.bottomRight());
-        QFont font = option.font;
-        font.setWeight(QFont::DemiBold);
-        painter->setFont(font);
-        painter->setPen(index.column() == TorrentModel::ColName ? colors.text : colors.textMuted);
-        const QRect content = row.adjusted(6, 0, -6, -1);
-        const QString text = QFontMetrics(font).elidedText(index.data().toString(), Qt::ElideRight,
-                                                          qMax(0, content.width()));
-        const auto alignment = index.column() == TorrentModel::ColSize ? Qt::AlignRight : Qt::AlignLeft;
-        painter->drawText(content, alignment | Qt::AlignVCenter, text);
-        painter->restore();
-        return;
-    }
     const auto* view = qobject_cast<const QAbstractItemView*>(option.widget);
     const bool selected = option.state & QStyle::State_Selected;
     const bool active = view ? view->isActiveWindow() : option.state.testFlag(QStyle::State_Active);
@@ -292,8 +273,6 @@ QSize TorrentDelegate::sizeHint(const QStyleOptionViewItem& option,
     updateFonts(option.font);
     QSize size = QStyledItemDelegate::sizeHint(option, index);
     size.setHeight(std::max(tgui::theme::rowHeightFor(option.font), m_progressHeight + 4));
-    if (index.data(GroupedTorrentProxy::IsGroupRole).toBool())
-        size.setHeight(qMax(24, size.height()));
     return size;
 }
 

@@ -41,6 +41,16 @@ struct JsonRpcResult {
 // event loop; callback вызывается в этом же потоке.
 class JsonRpcClient {
 public:
+    // ARCH-03: клиент владеет QNetworkAccessManager и висящими в полёте
+    // запросами, поэтому не копируется и не перемещается — только in-place
+    // создание (RpcClient::m_rpc, локальные переменные). Копирование unique_ptr
+    // невозможно, а перемещение опасно: захват this в лямбдах и незавершённые
+    // ответы привязаны к конкретному экземпляру.
+    JsonRpcClient(const JsonRpcClient&) = delete;
+    JsonRpcClient& operator=(const JsonRpcClient&) = delete;
+    JsonRpcClient(JsonRpcClient&&) = delete;
+    JsonRpcClient& operator=(JsonRpcClient&&) = delete;
+
     using Callback = std::function<void(JsonRpcResult)>;
 
     explicit JsonRpcClient(const QUrl& url, const QString& rpcPath = QString());

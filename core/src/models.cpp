@@ -111,7 +111,6 @@ bool parseTorrent(const QJsonObject& j, Torrent& t, bool partial)
     assign(t.name, "name", optStr);
     assign(t.status, "status", optInt);
     assign(t.errorString, "errorString", optStr);
-    assign(t.announceResponse, "announceResponse", optStr);
     assign(t.recheckProgress, "recheckProgress", optNum);
     assign(t.sizeWhenDone, "sizeWhenDone", optNum);
     assign(t.totalSize, "totalSize", optNum);
@@ -531,12 +530,6 @@ QString torrentError(const Torrent& torrent)
             if (!working && result.isEmpty()) result = QObject::tr("Tracker error: %1").arg(error);
             if (global == error) global.clear();
         }
-    }
-    if (torrent.trackerStats.isEmpty()) {
-        const QString legacy = torrent.announceResponse.value_or(QString());
-        if (!legacy.isEmpty() && legacy != QStringLiteral("Success") &&
-            !legacy.contains(QStringLiteral("(200)")))
-            result = QObject::tr("Tracker error: %1").arg(legacy);
     }
     // A stopped torrent does not announce; stale tracker errors are hidden,
     // but local failures (missing files, disk errors, etc.) remain visible.

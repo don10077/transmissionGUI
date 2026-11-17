@@ -19,6 +19,9 @@ public:
     UpdateChecker(QMainWindow& window, Notify notify);
     /** Планирует фоновую проверку по настройкам. */
     void updateCheckSchedule();
+    /** ARCH-02: состояние планировщика — чтение для тестов. */
+    int updateCheckIntervalMs() const { return m_updateCheckTimer.interval(); }
+    bool updateCheckActive() const { return m_updateCheckTimer.isActive(); }
     /** Запрашивает последний выпуск. */
     void checkUpdate(bool requestedManually);
     /** Останавливает фоновую проверку после импорта настроек. */

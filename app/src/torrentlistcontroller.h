@@ -59,7 +59,6 @@ public:
     QVector<int> selectedTorrentIds() const;
     void onColumns();
     void onSelectAll();
-    void onCopyPath();
     void onOpenFolder();
     QString mappedLocalPath(const QString& remotePath) const;
     void openLocalPath(const QString& path, bool selectFile);

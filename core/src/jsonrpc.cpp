@@ -152,6 +152,20 @@ static bool sameRpcOrigin(const QUrl& first, const QUrl& second)
         first.port(defaultPort) == second.port(defaultPort);
 }
 
+/** ARCH-03: безопасно вызывает пользовательский колбэк.
+ *
+ * Колбэк сначала переносится в локальную переменную: она живёт в кадре этой
+ * (независимой) функции и переживает синхронное удаление клиента и QNetworkReply
+ * изнутри самого колбэка. Без этого уничтожение reply — вместе с функтором
+ * QNetworkReply::finished, членом которого был cb — разрушало бы действующий
+ * объект колбэка в процессе вызова (UB).
+ */
+static void safelyInvokeCallback(JsonRpcClient::Callback cb, const JsonRpcResult& result)
+{
+    auto callback = std::move(cb);
+    callback(result);
+}
+
 void JsonRpcClient::doRequest(Request rpc, Callback cb)
 {
     const auto remaining = rpc.deadline.remainingTime();
@@ -231,14 +245,14 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
                     res.error = QStringLiteral("RPC response exceeds the size limit.");
                     res.networkError = QNetworkReply::ContentOperationNotPermittedError;
                     reply->deleteLater();
-                    cb(res);
+                    safelyInvokeCallback(std::move(cb), res);
                     return;
                 }
                 if (reply->property("rpcTimedOut").toBool() || rpc.deadline.hasExpired()) {
                     res.error = QStringLiteral("Timeout");
                     res.networkError = QNetworkReply::TimeoutError;
                     reply->deleteLater();
-                    cb(res);
+                    safelyInvokeCallback(std::move(cb), res);
                     return;
                 }
 
@@ -260,7 +274,7 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
                     if (!header.isEmpty()) {
                         res.error = QStringLiteral("Session ID error.");
                         reply->deleteLater();
-                        cb(res);
+                        safelyInvokeCallback(std::move(cb), res);
                         return;
                     }
                     // Без заголовка — обработаем ниже как HTTP-ошибку (тело/статус).
@@ -275,7 +289,7 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
                         !sameRpcOrigin(rpc.url, target)) {
                         res.error = QStringLiteral("RPC redirect refused.");
                         reply->deleteLater();
-                        cb(res);
+                        safelyInvokeCallback(std::move(cb), res);
                         return;
                     }
                     auto path = target.path(QUrl::FullyEncoded);
@@ -317,7 +331,7 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
                     parseModern(res, rpc.method, rpc.id);
                     if (res.ok)
                         m_modern = true;
-                    cb(res);
+                    safelyInvokeCallback(std::move(cb), res);
                     return;
                 }
                 if (!doc.isObject() || (rpc.modern && res.httpCode == 200) || !res.body.contains("result")) {
@@ -330,7 +344,7 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
                     else
                         res.error = QStringLiteral("Invalid server response.");
                     reply->deleteLater();
-                    cb(res);
+                    safelyInvokeCallback(std::move(cb), res);
                     return;
                 }
                 reply->deleteLater();
@@ -338,14 +352,14 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
                 const QJsonValue resultValue = res.body.value("result");
                 if (!res.body.contains("result") || !resultValue.isString()) {
                     res.error = QStringLiteral("Invalid server response.");
-                    cb(res);
+                    safelyInvokeCallback(std::move(cb), res);
                     return;
                 }
                 res.status = resultValue.toString();
                 if (res.status.compare("success", Qt::CaseInsensitive) != 0) {
                     const QString message = res.body.value("error").toString();
                     res.error = message.isEmpty() ? res.status : message;
-                    cb(res);
+                    safelyInvokeCallback(std::move(cb), res);
                     return;
                 }
                 res.ok = true;
@@ -353,7 +367,7 @@ void JsonRpcClient::doRequest(Request rpc, Callback cb)
                 if (rpc.method == QLatin1String("session-get") &&
                     supportsJsonRpc(res.arguments.value("rpc-version-semver").toString()))
                     m_modern = true;
-                cb(res);
+                safelyInvokeCallback(std::move(cb), res);
             });
 }
 
