@@ -124,7 +124,7 @@ int main(int argc, char* argv[])
         return 0;
     }
     if (startup.showVersion) {
-        qInfo() << app.applicationName().toStdString() << " " << app.applicationVersion().toStdString();
+        qInfo().noquote() << app.applicationName() << app.applicationVersion();
         return 0;
     }
     if (!startup.ok) {

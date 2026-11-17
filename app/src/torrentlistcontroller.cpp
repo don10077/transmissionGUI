@@ -184,7 +184,7 @@ TorrentListController::Selection TorrentListController::applySnapshot(const QVec
         if (!completed.isEmpty())
             m_downloadCompleted(completed.size() == 1 ?
                 tr("Download completed: %1").arg(completed.first()) :
-                tr("%n downloads completed").arg(completed.size())); // плюрал (I18N-03)
+                tr("%n downloads completed", nullptr, static_cast<int>(completed.size())));
     }
 
     const bool firstLoad = m_model.rowCount() == 0;

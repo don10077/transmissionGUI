@@ -224,9 +224,9 @@ void StatusBarController::updateStatusBarTotals()
 
     const auto selected = m_view->selectionModel()->selectedRows();
     const int count = m_model.rowCount();
-    QString countText = tr("%n torrent(s)").arg(count); // плюрал (I18N-03)
+    QString countText = tr("%n torrent(s)", nullptr, count);
     if (selected.size() > 1)
-        countText += tr(", %n selected").arg(selected.size());
+        countText += tr(", %n selected", nullptr, static_cast<int>(selected.size()));
     m_countLabel->setText(countText);
     updateStatusBarPresentation();
 }

@@ -212,7 +212,7 @@ PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion
 /** Создаёт диалог, в котором каждое изменение для всей группы выбирается явно. */
 PropsDialog::PropsDialog(int torrentCount, QWidget* parent, int rpcVersion) : QDialog(parent)
 {
-    setWindowTitle(tr("Properties — %n torrent(s)").arg(torrentCount)); // плюрал (I18N-03)
+    setWindowTitle(tr("Properties — %n torrent(s)", nullptr, torrentCount));
     auto* form = tgui::theme::formGrid(this);
     QList<std::function<void(QJsonObject&)>> readers;
     const auto choiceRow = [&](const QString& title, const QStringList& choices) {

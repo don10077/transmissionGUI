@@ -219,7 +219,8 @@ void AddTorrentCoordinator::onImportTorrentList()
         return;
     }
     if (QMessageBox::question(&m_window, QCoreApplication::translate("MainWindow", "Import torrent list"),
-            QCoreApplication::translate("MainWindow", "Add %n torrent link(s) to the connected daemon?").arg(links.size())) != QMessageBox::Yes) // плюрал (I18N-03)
+            QCoreApplication::translate("MainWindow", "Add %n torrent link(s) to the connected daemon?",
+                                        nullptr, static_cast<int>(links.size()))) != QMessageBox::Yes)
         return;
     if (rpc && rpc == m_connection.client() && m_connection.isConnected() && profile == m_connection.profile())
         openExternalTorrents(links);

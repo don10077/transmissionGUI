@@ -34,12 +34,11 @@ if defined MSYS2_ROOT (
     if not defined BUILD_PROFILE call :findMsys2 "%SystemDrive%\msys64"
 )
 if not defined BUILD_PROFILE (
-    echo ERROR: No complete MSYS2 UCRT64 or MINGW64 toolchain found.
-    echo Install cmake, ninja, gcc and g++ in one profile, or set MSYS2_ROOT to the installation directory.
+    echo ERROR: No complete MSYS2 UCRT64 toolchain found.
+    echo Install UCRT64 cmake, ninja, gcc and g++, or set MSYS2_ROOT to the installation directory.
     goto finish
 )
-rem Keep the existing MINGW64 output path used by local launchers.
-if /I "%BUILD_PROFILE%"=="ucrt64" set "BUILD_DIR=ucrt64\%BUILD_DIR%"
+set "BUILD_DIR=ucrt64\%BUILD_DIR%"
 set "PATH=%BUILD_BIN%;%PATH%"
 pushd "%~dp0"
 if errorlevel 1 goto finish
@@ -82,11 +81,8 @@ if "%BUILD_PAUSE%"=="1" pause
 exit /b %BUILD_RESULT%
 
 :findMsys2
-for %%P in (ucrt64 mingw64) do (
-    call :findProfile "%~1" %%P
-    if defined BUILD_PROFILE exit /b 0
-)
-exit /b 1
+call :findProfile "%~1" ucrt64
+exit /b %errorlevel%
 
 :findProfile
 set "BUILD_BIN=%~1\%~2\bin"

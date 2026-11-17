@@ -19,6 +19,8 @@
 #include <QTranslator>
 #include <QXmlStreamReader>
 
+#include "propsdialog.h"
+
 namespace {
 
 /// Имена подстановок (%1, %n, %L1), встречающихся в тексте.
@@ -69,6 +71,25 @@ TEST(I18n, FallbackEnglishThenQmTranslates)
     EXPECT_NE(translated, QStringLiteral("Force start"));
     // Убираем переводчик, чтобы состояние не перетекало в следующие тесты.
     QApplication::instance()->removeTranslator(&translator);
+}
+
+TEST(I18n, GroupPropertiesTitleUsesPluralForms)
+{
+    QTranslator translator;
+    ASSERT_TRUE(translator.load(QStringLiteral(TGUI_QM_PATH)));
+    QApplication::instance()->installTranslator(&translator);
+
+    const auto checkTitle = [](int count, const QString& expected) {
+        PropsDialog dialog(count, nullptr, 0);
+        EXPECT_EQ(dialog.windowTitle(), expected) << count;
+    };
+    checkTitle(1, QStringLiteral("Свойства — 1 торрент"));
+    checkTitle(2, QStringLiteral("Свойства — 2 торрента"));
+    checkTitle(5, QStringLiteral("Свойства — 5 торрентов"));
+    checkTitle(21, QStringLiteral("Свойства — 21 торрент"));
+
+    QApplication::instance()->removeTranslator(&translator);
+    checkTitle(2, QStringLiteral("Properties — 2 torrent(s)"));
 }
 
 TEST(I18n, TranslationFileIsComplete)
@@ -156,6 +177,9 @@ TEST(I18n, TranslationFileIsComplete)
             if (!translationType.isEmpty())
                 problems << QStringLiteral("[%1] %2: type=\"%3\"")
                                 .arg(context, source, translationType);
+
+            if (placeholders(source).contains(QStringLiteral("n")) && !numerus)
+                problems << QStringLiteral("[%1] %2: нет numerus=\"yes\" для %n").arg(context, source);
 
             if (!numerus) {
                 if (translation.isEmpty()) {

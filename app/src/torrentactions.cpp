@@ -306,7 +306,7 @@ void TorrentActions::onRemoveSelected()
 
     const QPointer<tgui::RpcClient> rpc(m_connection.client());
     QMessageBox box(QMessageBox::Question, tr("Remove torrents"),
-                 tr("Remove %n torrent(s) from the daemon's list?").arg(ids.size()), // плюрал (I18N-03)
+                 tr("Remove %n torrent(s) from the daemon's list?", nullptr, static_cast<int>(ids.size())),
                  QMessageBox::Cancel, &m_window);
     box.setIconPixmap(tgui::theme::icon(tgui::theme::Icon::Warning).pixmap(QSize(32, 32), m_window.devicePixelRatioF()));
     auto* remove = box.addButton(tr("Remove"), QMessageBox::AcceptRole);
@@ -352,7 +352,7 @@ void TorrentActions::onMoveSelected()
     const bool localDaemon = options.proxy.type() == QNetworkProxy::NoProxy && tgui::isLocalDaemon(options.url);
     MoveDialog dlg(found->downloadDir.value_or(QString()), &m_window, profile, localDaemon);
     if (ids.size() > 1)
-        dlg.setWindowTitle(tr("Move %n torrents").arg(ids.size())); // плюрал (I18N-03)
+        dlg.setWindowTitle(tr("Move %n torrents", nullptr, static_cast<int>(ids.size())));
     if (dlg.exec() != QDialog::Accepted || !rpc || rpc != m_connection.client() ||
         !m_connection.isConnected() || profile != m_connection.profile())
         return;
@@ -526,8 +526,8 @@ void TorrentActions::onVerifySelected()
     QMessageBox box(QMessageBox::Question, tr("Verify"),
         ids.size() == 1
             ? tr("Torrent verification may take a long time.\nAre you sure to start verification?")
-            : tr("Torrent verification may take a long time.\nAre you sure to start verification of %n torrent(s)?") // плюрал (I18N-03)
-                  .arg(ids.size()),
+            : tr("Torrent verification may take a long time.\nAre you sure to start verification of %n torrent(s)?",
+                 nullptr, static_cast<int>(ids.size())),
         QMessageBox::Yes | QMessageBox::No, &m_window);
     box.setIconPixmap(tgui::theme::icon(tgui::theme::Icon::Question).pixmap(QSize(32, 32), m_window.devicePixelRatioF()));
     if (box.exec() == QMessageBox::Yes && rpc)
