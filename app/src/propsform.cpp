@@ -644,7 +644,7 @@ void PropsForm::rebuild()
     if (build) {
         m_magnetLabel = new QLabel(tr("Magnet Link") + ":", m_content);
         m_magnetLabel->setObjectName(QStringLiteral("fieldLabel"));
-        tgrid.at(0)->addWidget(m_magnetLabel, 4, 0);
+        tgrid.at(0)->addWidget(m_magnetLabel, 5, 0);
         m_magnet = new QLineEdit(m_content);
         m_magnet->setObjectName(QStringLiteral("magnetLink"));
         m_magnet->setReadOnly(true);
@@ -657,7 +657,7 @@ void PropsForm::rebuild()
             if (!link.isEmpty())
                 QDesktopServices::openUrl(link);
         });
-        tgrid.at(0)->addWidget(m_magnet, 4, 1);
+        tgrid.at(0)->addWidget(m_magnet, 5, 1);
         m_labelEdit = nullptr;
     }
     if (m_magnet->text() != magnetText) {

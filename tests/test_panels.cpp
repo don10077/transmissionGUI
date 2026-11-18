@@ -13,6 +13,7 @@
 #include <QDateTime>
 #include <QDropEvent>
 #include <QEventLoop>
+#include <QGridLayout>
 #include <QHeaderView>
 #include <QImage>
 #include <QInputDialog>
@@ -440,6 +441,28 @@ TEST(PropsForm, ProgressStaysVisibleWhileDetailsScroll)
     EXPECT_TRUE(magnet->isReadOnly());
     magnet->selectAll();
     EXPECT_EQ(magnet->selectedText(), *torrent.magnetLink);
+
+    // Строка magnet link не должна делить ячейку сетки с «Completed on».
+    auto* magnetGrid = qobject_cast<QGridLayout*>(magnet->parentWidget()->layout());
+    ASSERT_NE(magnetGrid, nullptr);
+    int magnetRow = -1;
+    int completedRow = -1;
+    for (int i = 0; i < magnetGrid->count(); ++i) {
+        int row = -1;
+        int column = -1;
+        int rowSpan = -1;
+        int columnSpan = -1;
+        magnetGrid->getItemPosition(i, &row, &column, &rowSpan, &columnSpan);
+        auto* widget = magnetGrid->itemAt(i)->widget();
+        if (widget == magnet)
+            magnetRow = row;
+        if (auto* label = qobject_cast<QLabel*>(widget);
+            label && label->text().startsWith(QStringLiteral("Completed on")))
+            completedRow = row;
+    }
+    EXPECT_GE(magnetRow, 0);
+    EXPECT_GE(completedRow, 0);
+    EXPECT_NE(magnetRow, completedRow);
 
     form.clear();
     EXPECT_EQ(form.findChild<QWidget*>(QStringLiteral("progressRow")), nullptr);
