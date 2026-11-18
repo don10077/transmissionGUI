@@ -24,8 +24,10 @@
 #include <QSettings>
 #include <QSizeGrip>
 #include <QStyleFactory>
+#include <QStyleHints>
 #include <QSvgRenderer>
 #include <QScreen>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -374,7 +376,7 @@ QColor progressColor(ProgressState state)
 
 QString buildQss(const Palette& p);
 void installAppearance(QApplication& app, bool resetStyle);
-void applyNativeScheme(QWidget* widget);
+void applyNativeScheme(QWidget* widget, bool refreshCaption = false);
 
 namespace {
 
@@ -577,7 +579,7 @@ Palette& activePalette()
 
 Scheme g_scheme = Scheme::Light;
 
-/** Красит системный заголовок новых окон под текущую схему. */
+/** Обновляет системный заголовок после обработки событий оформления в Qt. */
 class NativeSchemeFilter : public QObject {
 public:
     using QObject::QObject;
@@ -585,9 +587,28 @@ public:
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override
     {
-        if (event->type() == QEvent::Show) {
-            if (auto* widget = qobject_cast<QWidget*>(watched); widget && widget->isWindow())
-                applyNativeScheme(widget);
+        switch (event->type()) {
+        case QEvent::Show:
+        case QEvent::WinIdChange:
+        case QEvent::WindowStateChange:
+        case QEvent::ApplicationPaletteChange:
+        case QEvent::PaletteChange:
+        case QEvent::ThemeChange:
+            if (auto* widget = qobject_cast<QWidget*>(watched); widget && widget->isWindow()) {
+                // Qt может обновить рамку позже нашего фильтра. Применяем тему
+                // после события, объединяя повторные уведомления одного окна.
+                constexpr auto pending = "_tguiNativeSchemePending";
+                if (!widget->property(pending).toBool()) {
+                    widget->setProperty(pending, true);
+                    QTimer::singleShot(0, widget, [widget] {
+                        widget->setProperty("_tguiNativeSchemePending", false);
+                        applyNativeScheme(widget);
+                    });
+                }
+            }
+            break;
+        default:
+            break;
         }
         return false;
     }
@@ -618,7 +639,7 @@ void setScheme(Scheme scheme)
         for (auto* widget : app->allWidgets())
             widget->update();
         for (auto* widget : app->topLevelWidgets())
-            applyNativeScheme(widget);
+            applyNativeScheme(widget, true);
     }
 }
 
@@ -1088,12 +1109,15 @@ QCheckBox, QRadioButton { spacing: 6px; }
     // рисуем их токенами палитры (не отмеченный тоже должен быть заметен).
     if (g_scheme == Scheme::Dark) {
         q += QStringLiteral(R"(
-QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid %inputBorder%; border-radius: 2px; background: %panel%; }
-QCheckBox::indicator:hover { border-color: %inputFocus%; }
-QCheckBox::indicator:checked { background: %highlight%; border-color: %highlight%; image: url(:/icons/i-check.svg); }
-QCheckBox::indicator:checked:hover { background: %inputFocus%; border-color: %inputFocus%; }
-QCheckBox::indicator:unchecked:disabled { background: %btnDisabledBg%; border-color: %btnDisabledBorder%; }
-QCheckBox::indicator:checked:disabled { background: %btnDisabledBorder%; border-color: %btnDisabledBorder%; }
+QCheckBox::indicator, QTreeView::indicator { width: 14px; height: 14px; border: 1px solid %inputBorder%; border-radius: 2px; background: %panel%; }
+QCheckBox::indicator:hover, QTreeView::indicator:hover { border-color: %inputFocus%; }
+QCheckBox::indicator:checked, QTreeView::indicator:checked { background: %highlight%; border-color: %highlight%; image: url(:/icons/i-check.svg); }
+QCheckBox::indicator:checked:hover, QTreeView::indicator:checked:hover { background: %inputFocus%; border-color: %inputFocus%; }
+QCheckBox::indicator:indeterminate, QTreeView::indicator:indeterminate { background: %highlight%; border-color: %highlight%; image: url(:/icons/i-check-partial.svg); }
+QCheckBox::indicator:indeterminate:hover, QTreeView::indicator:indeterminate:hover { background: %inputFocus%; border-color: %inputFocus%; }
+QCheckBox::indicator:unchecked:disabled, QTreeView::indicator:unchecked:disabled { background: %btnDisabledBg%; border-color: %btnDisabledBorder%; }
+QCheckBox::indicator:checked:disabled, QTreeView::indicator:checked:disabled,
+QCheckBox::indicator:indeterminate:disabled, QTreeView::indicator:indeterminate:disabled { background: %btnDisabledBorder%; border-color: %btnDisabledBorder%; }
 )");
     }
     const struct {
@@ -1101,6 +1125,7 @@ QCheckBox::indicator:checked:disabled { background: %btnDisabledBorder%; border-
         const QColor& color;
     } subs[] = {
         {"%window%", p.window},
+        {"%highlight%", p.highlight},
         {"%headerBg%", p.headerBg},
         {"%listHeaderHover%", p.listHeaderHover},
         {"%detailTabHover%", p.detailTabHover},
@@ -1186,6 +1211,12 @@ void saveProgressColors(QSettings& settings, const ProgressColors& colors)
 
 void installAppearance(QApplication& app, bool resetStyle)
 {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    // Схема платформы нужна в том числе для контрастных значков в прозрачной
+    // шапке Qt; одной палитры/QSS для её переключения недостаточно.
+    app.styleHints()->setColorScheme(g_scheme == Scheme::Dark
+        ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+#endif
     if (resetStyle)
         app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
@@ -1213,22 +1244,51 @@ void installAppearance(QApplication& app, bool resetStyle)
     app.setStyleSheet(buildQss(pal));
 }
 
-void applyNativeScheme(QWidget* widget)
+void applyNativeScheme(QWidget* widget, bool refreshCaption)
 {
 #ifdef Q_OS_WIN
-    if (!widget)
+    if (!widget || !widget->isWindow())
         return;
-    const HWND window = reinterpret_cast<HWND>(widget->winId());
-    if (!window)
+    // Не создаём HWND скрытых окон и не трогаем меню/окна без системного заголовка.
+    const HWND window = reinterpret_cast<HWND>(widget->internalWinId());
+    if (!window || (GetWindowLongPtrW(window, GWL_STYLE) & WS_CAPTION) != WS_CAPTION)
         return;
     // 20 — DWMWA_USE_IMMERSIVE_DARK_MODE (Win10 1903+), 19 — старое значение.
     constexpr DWORD immersiveDarkMode = 20;
     constexpr DWORD legacyImmersiveDarkMode = 19;
     const BOOL dark = g_scheme == Scheme::Dark ? TRUE : FALSE;
-    if (FAILED(DwmSetWindowAttribute(window, immersiveDarkMode, &dark, sizeof(dark))))
-        DwmSetWindowAttribute(window, legacyImmersiveDarkMode, &dark, sizeof(dark));
+    BOOL previousDark = FALSE;
+    const bool changed = FAILED(DwmGetWindowAttribute(window, immersiveDarkMode,
+                                                     &previousDark, sizeof(previousDark)))
+                         || previousDark != dark;
+    HRESULT result = DwmSetWindowAttribute(window, immersiveDarkMode, &dark, sizeof(dark));
+    if (FAILED(result))
+        result = DwmSetWindowAttribute(window, legacyImmersiveDarkMode, &dark, sizeof(dark));
+
+    // Windows 11: фиксируем цвета выбранной схемы приложения независимо
+    // от системной темы и акцентного цвета Windows. Windows 10 игнорирует
+    // неподдерживаемые атрибуты и использует immersiveDarkMode выше.
+    constexpr DWORD captionColorAttribute = 35; // DWMWA_CAPTION_COLOR
+    constexpr DWORD textColorAttribute = 36; // DWMWA_TEXT_COLOR
+    const auto& pal = palette();
+    const COLORREF captionColor = RGB(pal.window.red(), pal.window.green(), pal.window.blue());
+    const COLORREF textColor = RGB(pal.text.red(), pal.text.green(), pal.text.blue());
+    DwmSetWindowAttribute(window, captionColorAttribute, &captionColor, sizeof(captionColor));
+    DwmSetWindowAttribute(window, textColorAttribute, &textColor, sizeof(textColor));
+    if (SUCCEEDED(result) && (refreshCaption || changed) && widget->isVisible()
+        && !widget->isMinimized()) {
+        // На Windows 10 WM_NCPAINT не обновляет закэшированные цвета активного
+        // заголовка. Обновляем только оформление через DefWindowProc, минуя Qt:
+        // настоящее активное окно и клавиатурный фокус при этом не меняются.
+        const bool active = GetActiveWindow() == window;
+        DefWindowProcW(window, WM_NCACTIVATE, active ? FALSE : TRUE, 0);
+        DefWindowProcW(window, WM_NCACTIVATE, active ? TRUE : FALSE, 0);
+    }
+    RedrawWindow(window, nullptr, nullptr,
+                 RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOCHILDREN);
 #else
     Q_UNUSED(widget);
+    Q_UNUSED(refreshCaption);
 #endif
 }
 
@@ -1247,7 +1307,7 @@ void apply(QApplication& app, Scheme scheme)
         nativeFilterInstalled = true;
     }
     for (auto* widget : app.topLevelWidgets())
-        applyNativeScheme(widget);
+        applyNativeScheme(widget, true);
 
     QFont font;
     font.setFamilies({QStringLiteral("Segoe UI"), QStringLiteral("SF Pro Text"),

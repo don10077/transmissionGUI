@@ -336,11 +336,14 @@ void NameCheckDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opt
 
 // --- WantCheckDelegate ---
 /** Возвращает общий прямоугольник для отрисовки и попадания мыши. */
-static QRect wantCheckRect(const QRect& cell)
+static QRect wantCheckRect(const QStyleOptionViewItem& option)
 {
-    constexpr int size = 14;
-    return QRect(cell.left() + (cell.width() - size) / 2,
-                 cell.top() + (cell.height() - size) / 2, size, size);
+    QStyleOptionViewItem check(option);
+    check.features |= QStyleOptionViewItem::HasCheckIndicator;
+    const auto* style = option.widget ? option.widget->style() : QApplication::style();
+    const QSize size = style->subElementRect(QStyle::SE_ItemViewItemCheckIndicator,
+                                            &check, option.widget).size();
+    return QStyle::alignedRect(option.direction, Qt::AlignCenter, size, option.rect);
 }
 
 void WantCheckDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
@@ -353,9 +356,8 @@ void WantCheckDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opt
     painter->save();
 
     drawDetailCell(*painter, option);
-    QStyleOptionButton check;
-    check.rect = wantCheckRect(r);
-    check.palette = option.palette;
+    QStyleOptionViewItem check(option);
+    check.rect = wantCheckRect(option);
     check.state = option.state & (QStyle::State_Enabled | QStyle::State_MouseOver);
     switch (static_cast<Qt::CheckState>(index.data(Qt::CheckStateRole).toInt())) {
         case Qt::Checked: check.state |= QStyle::State_On; break;
@@ -363,7 +365,7 @@ void WantCheckDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opt
         default: check.state |= QStyle::State_Off; break;
     }
     const auto* style = option.widget ? option.widget->style() : QApplication::style();
-    style->drawPrimitive(QStyle::PE_IndicatorCheckBox, &check, painter, option.widget);
+    style->drawPrimitive(QStyle::PE_IndicatorItemViewItemCheck, &check, painter, option.widget);
     painter->restore();
 }
 
@@ -379,7 +381,7 @@ bool WantCheckDelegate::editorEvent(QEvent* event, QAbstractItemModel* model,
 
     const auto hitsCheckbox = [&] {
         const auto* mouse = static_cast<QMouseEvent*>(event);
-        return mouse->button() == Qt::LeftButton && wantCheckRect(option.rect).contains(mouse->position().toPoint());
+        return mouse->button() == Qt::LeftButton && wantCheckRect(option).contains(mouse->position().toPoint());
     };
     switch (event->type()) {
         case QEvent::MouseButtonPress:

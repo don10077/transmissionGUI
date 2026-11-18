@@ -6,11 +6,15 @@
 #include <QEventLoop>
 #include <QFont>
 #include <QImage>
+#include <QLineEdit>
+#include <QMenuBar>
 #include <QPalette>
 #include <QScopeGuard>
 #include <QSettings>
+#include <QStyleHints>
 #include <QTimer>
 #include <QUrl>
+#include <QWindow>
 
 #include "aboutdialog.h"
 #include "connectdialog.h"
@@ -19,6 +23,14 @@
 #include "propsform.h"
 #include "qostream.h"
 #include "theme.h"
+
+#ifdef Q_OS_WIN
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#  include <dwmapi.h>
+#endif
 #include "tgui/models.h"
 
 namespace {
@@ -49,6 +61,9 @@ class ThemeRendering : public ::testing::Test {
 protected:
     void SetUp() override
     {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+        m_colorScheme = qApp->styleHints()->colorScheme();
+#endif
         m_styleSheet = qApp->styleSheet();
         m_palette = qApp->palette();
         m_font = qApp->font();
@@ -57,12 +72,18 @@ protected:
 
     void TearDown() override
     {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+        qApp->styleHints()->setColorScheme(m_colorScheme);
+#endif
         qApp->setStyleSheet(m_styleSheet);
         qApp->setPalette(m_palette);
         qApp->setFont(m_font);
     }
 
 private:
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    Qt::ColorScheme m_colorScheme = Qt::ColorScheme::Unknown;
+#endif
     QString m_styleSheet;
     QPalette m_palette;
     QFont m_font;
@@ -109,6 +130,98 @@ TEST_F(ThemeRendering, DarkSchemeSwitchesPaletteAndQss)
     EXPECT_EQ(tgui::theme::scheme(), tgui::theme::Scheme::Light);
     EXPECT_EQ(tgui::theme::palette().window.lightness(), lightWindow);
 }
+
+#ifdef Q_OS_WIN
+TEST_F(ThemeRendering, NativeTitleBarFollowsSchemeAndWindowEvents)
+{
+    if (QGuiApplication::platformName() != QStringLiteral("windows"))
+        GTEST_SKIP() << "Requires the native Windows platform";
+
+    const auto restore = qScopeGuard([] {
+        tgui::theme::setScheme(tgui::theme::Scheme::Light);
+    });
+    class NativeWindow : public QWidget {
+    public:
+        using QWidget::destroy;
+    } window;
+    window.setWindowTitle(QStringLiteral("TransmissionGUI theme check"));
+    window.resize(420, 220);
+    auto* edit = new QLineEdit(&window);
+    edit->setGeometry(20, 40, 260, 30);
+    window.show();
+    window.activateWindow();
+    edit->setFocus();
+    spinEvents();
+    ASSERT_TRUE(window.isActiveWindow());
+    ASSERT_EQ(QApplication::focusWidget(), edit);
+    COLORREF color = 0;
+    const bool supportsCaptionColor = SUCCEEDED(DwmGetWindowAttribute(
+        reinterpret_cast<HWND>(window.winId()), 35, &color, sizeof(color)));
+
+    const auto expectCaption = [&] {
+        const HWND handle = reinterpret_cast<HWND>(window.winId());
+        const auto& palette = tgui::theme::palette();
+        BOOL dark = FALSE;
+        ASSERT_TRUE(SUCCEEDED(DwmGetWindowAttribute(handle, 20, &dark, sizeof(dark))));
+        EXPECT_EQ(dark != FALSE, tgui::theme::scheme() == tgui::theme::Scheme::Dark);
+        if (supportsCaptionColor) {
+            COLORREF caption = 0;
+            COLORREF text = 0;
+            ASSERT_TRUE(SUCCEEDED(DwmGetWindowAttribute(handle, 35, &caption, sizeof(caption))));
+            ASSERT_TRUE(SUCCEEDED(DwmGetWindowAttribute(handle, 36, &text, sizeof(text))));
+            EXPECT_EQ(caption, RGB(palette.window.red(), palette.window.green(), palette.window.blue()));
+            EXPECT_EQ(text, RGB(palette.text.red(), palette.text.green(), palette.text.blue()));
+        }
+    };
+    for (int i = 0; i < 4; ++i) {
+        const HWND active = GetActiveWindow();
+        const HWND focus = GetFocus();
+        tgui::theme::setScheme(i % 2 == 0 ? tgui::theme::Scheme::Dark : tgui::theme::Scheme::Light);
+        expectCaption();
+        EXPECT_EQ(GetActiveWindow(), active);
+        EXPECT_EQ(GetFocus(), focus);
+        spinEvents();
+        expectCaption();
+        EXPECT_EQ(GetActiveWindow(), active);
+        EXPECT_EQ(GetFocus(), focus);
+        EXPECT_EQ(QApplication::focusWidget(), edit);
+    }
+
+    tgui::theme::setScheme(tgui::theme::Scheme::Dark);
+    // Системное обновление рамки не должно оставлять заголовок чужого цвета.
+    const BOOL otherTheme = FALSE;
+    ASSERT_TRUE(SUCCEEDED(DwmSetWindowAttribute(reinterpret_cast<HWND>(window.winId()),
+                                               20, &otherTheme, sizeof(otherTheme))));
+    if (supportsCaptionColor) {
+        const COLORREF otherColor = RGB(255, 255, 255);
+        ASSERT_TRUE(SUCCEEDED(DwmSetWindowAttribute(reinterpret_cast<HWND>(window.winId()),
+                                                   35, &otherColor, sizeof(otherColor))));
+    }
+    QEvent themeChange(QEvent::ThemeChange);
+    QCoreApplication::sendEvent(&window, &themeChange);
+    spinEvents();
+    expectCaption();
+
+    window.hide();
+    window.destroy();
+    window.show();
+    spinEvents();
+    expectCaption();
+    window.showMinimized();
+    spinEvents();
+    tgui::theme::setScheme(tgui::theme::Scheme::Light);
+    window.showNormal();
+    spinEvents();
+    expectCaption();
+
+    // Смена темы не должна создавать системное окно для ещё не показанного диалога.
+    QWidget hidden;
+    EXPECT_EQ(hidden.internalWinId(), WId(0));
+    tgui::theme::setScheme(tgui::theme::Scheme::Dark);
+    spinEvents();
+    EXPECT_EQ(hidden.internalWinId(), WId(0));
+}
+#endif
 
 TEST_F(ThemeRendering, DarkSchemePreview)
 {
@@ -194,6 +307,39 @@ TEST_F(ThemeRendering, MainWindow)
     MainWindow w;
     w.resize(1280, 800);
     EXPECT_FALSE(grabWidget(w).isNull());
+#if defined(Q_OS_WIN) && QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+    if (QGuiApplication::platformName() == QStringLiteral("windows")) {
+        w.show();
+        spinEvents();
+        const auto restoreScheme = qScopeGuard([] {
+            tgui::theme::setScheme(tgui::theme::Scheme::Light);
+        });
+        const auto expectTitleBackground = [&] {
+            const int titleHeight = w.windowHandle()->safeAreaMargins().top();
+            ASSERT_GT(titleHeight, 0);
+            EXPECT_GE(w.menuBar()->geometry().top(), titleHeight);
+            const QImage shot = w.grab().toImage();
+            const qreal scale = shot.devicePixelRatio();
+            EXPECT_EQ(shot.pixelColor(shot.width() / 2, qRound(titleHeight * scale / 2)),
+                      tgui::theme::palette().window);
+        };
+        for (auto scheme : {tgui::theme::Scheme::Dark, tgui::theme::Scheme::Light,
+                            tgui::theme::Scheme::Dark}) {
+            tgui::theme::setScheme(scheme);
+            spinEvents();
+            EXPECT_EQ(qApp->styleHints()->colorScheme(), scheme == tgui::theme::Scheme::Dark
+                ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+            expectTitleBackground();
+        }
+        w.showMaximized();
+        spinEvents();
+        expectTitleBackground();
+        w.showNormal();
+        spinEvents();
+        expectTitleBackground();
+        w.close();
+    }
+#endif
 }
 
 TEST_F(ThemeRendering, PropsForm)

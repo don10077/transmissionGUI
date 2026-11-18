@@ -72,6 +72,13 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
     , m_clipboard(*this, m_list.model(), [this] { return m_connection.isConnected() ? m_connection.client() : nullptr; },
                   [this](const auto& params) { m_add.startAdd(params); })
 {
+#if defined(Q_OS_WIN) && QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+    // Qt рисует кнопки и заголовок поверх фона главного окна, поэтому шапка
+    // совпадает с палитрой приложения и на Windows 10. Safe area оставляет
+    // меню и панель инструментов ниже заголовка.
+    setWindowFlags(windowFlags() | Qt::ExpandedClientAreaHint | Qt::NoTitleBarBackgroundHint);
+    setAttribute(Qt::WA_ContentsMarginsRespectsSafeArea);
+#endif
     setWindowTitle(QStringLiteral(TGUI_DISPLAY_NAME));
     setWindowIcon(tgui::theme::icon(tgui::theme::Icon::App));
     resize(1200, 780);
