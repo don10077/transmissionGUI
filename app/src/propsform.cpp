@@ -167,8 +167,9 @@ protected:
     {
         const auto& colors = tgui::theme::palette();
         const auto color = tgui::theme::progressColor(m_state);
-        if (m_color != color) {
+        if (m_color != color || m_mapEmpty != colors.pieceEmpty) {
             m_color = color;
+            m_mapEmpty = colors.pieceEmpty;
             rebuildMap();
         }
         QPainter painter(this);
@@ -229,6 +230,7 @@ private:
     int m_pieceCount = 0;
     tgui::theme::ProgressState m_state = tgui::theme::ProgressState::Paused;
     QColor m_color;
+    QColor m_mapEmpty;
     QImage m_map;
     bool m_dual = false;
 };

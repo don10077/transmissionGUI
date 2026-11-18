@@ -621,6 +621,17 @@ void MainWindow::saveWindowLayout()
 
 bool MainWindow::event(QEvent* event)
 {
+    // Смена палитры приходит как ApplicationPaletteChange и не попадает в
+    // changeEvent, поэтому значок кнопки темы синхронизируем здесь.
+    // Смена палитры на живом окне приходит как PaletteChange (а у части
+    // виджетов — ApplicationPaletteChange), поэтому ловим оба варианта и
+    // синхронизируем значок/подсказку кнопки темы.
+    if ((event->type() == QEvent::ApplicationPaletteChange ||
+         event->type() == QEvent::PaletteChange) && m_actTheme) {
+        const QSignalBlocker blocker(m_actTheme);
+        m_actTheme->setChecked(tgui::theme::scheme() == tgui::theme::Scheme::Dark);
+        updateThemeAction();
+    }
     const bool handled = QMainWindow::event(event);
     if (event->type() == QEvent::Show || event->type() == QEvent::Hide ||
         event->type() == QEvent::WindowStateChange)

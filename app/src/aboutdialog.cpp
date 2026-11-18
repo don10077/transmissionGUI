@@ -73,14 +73,15 @@ QLabel* linkLabel(const QString& url, const QString& text, QWidget* parent)
     return label;
 }
 
-/** Превращает светлые участки QR-кода в прозрачный фон, сохраняя модули и поля. */
+/** Готовит QR-код для обеих тем: чёрные модули на белом фоне. Прозрачный
+    фон на тёмной теме делал код нечитаемым для сканера. */
 QImage donationQrImage()
 {
     auto image = QImage(QStringLiteral(":/icons/donate-qr.png")).convertToFormat(QImage::Format_ARGB32);
     for (int y = 0; y < image.height(); ++y) {
         auto* pixels = reinterpret_cast<QRgb*>(image.scanLine(y));
         for (int x = 0; x < image.width(); ++x)
-            pixels[x] = qRgba(0, 0, 0, 255 - qGray(pixels[x]));
+            pixels[x] = qGray(pixels[x]) < 128 ? qRgba(0, 0, 0, 255) : qRgba(255, 255, 255, 255);
     }
     return image;
 }

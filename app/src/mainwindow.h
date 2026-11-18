@@ -112,6 +112,7 @@ private:
     void setConnectedUi(bool connected);
     void setConnectionState(const QString& text, const QColor& color);
     void updateConnectionButton();
+    void updateThemeAction();
     void updateRefreshSchedule();
     void saveWindowLayout();
     void updateSelectionActions(qsizetype count = -1);
@@ -151,6 +152,7 @@ private:
     QAction* m_actAltSpeed = nullptr;
     QAction* m_actDaemonOptions = nullptr;
     QAction* m_actOptions = nullptr;
+    QAction* m_actTheme = nullptr;
     QAction* m_actAbout = nullptr;
     // View (visibility/grouping) — нужны для применения сохранённого состояния
     // при старте и для горячих клавиш (F11/F12/Shift+F11/Shift+F12).

@@ -81,7 +81,7 @@ target_compile_definitions(tgui_app_lib PUBLIC
 target_link_libraries(tgui_app_lib PUBLIC tgui_core Qt6::Widgets Qt6::Network Qt6::Svg
     Qt6::Concurrent ZLIB::ZLIB LibArchive::LibArchive)
 if(WIN32)
-    target_link_libraries(tgui_app_lib PUBLIC shell32 crypt32)
+    target_link_libraries(tgui_app_lib PUBLIC shell32 crypt32 dwmapi)
 endif()
 tgui_set_warnings(tgui_app_lib)
 

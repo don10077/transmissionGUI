@@ -4,6 +4,7 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QEvent>
+#include <QFile>
 #include <QFileInfo>
 #include <QFont>
 #include <QFontMetrics>
@@ -19,6 +20,7 @@
 #include <QPainter>
 #include <QPalette>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QSizeGrip>
 #include <QStyleFactory>
@@ -29,6 +31,14 @@
 #include <algorithm>
 
 #include "tgui/models.h"
+
+#ifdef Q_OS_WIN
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#  include <dwmapi.h>
+#endif
 
 namespace {
 
@@ -144,8 +154,55 @@ QString iconPath(Icon id)
             return QStringLiteral(":/icons/i-file.svg");
         case Icon::TabStatistics:
             return QStringLiteral(":/icons/i-stat.svg");
+        case Icon::ThemeDark:
+            return QStringLiteral(":/icons/i-theme-dark.svg");
+        case Icon::ThemeLight:
+            return QStringLiteral(":/icons/i-theme-light.svg");
     }
     return {};
+}
+
+/**
+ * Читает SVG и в тёмной схеме осветляет нейтральные цвета, чтобы значки
+ * не терялись на тёмном фоне. Цветные акценты остаются как в макете.
+ * @param path Путь к SVG в ресурсах.
+ */
+QByteArray iconData(const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    const QByteArray data = file.readAll();
+    if (tgui::theme::scheme() != tgui::theme::Scheme::Dark)
+        return data;
+
+    static const QRegularExpression colorPattern(
+        QStringLiteral("#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\\b"));
+    QString svg = QString::fromUtf8(data);
+    struct Replacement {
+        qsizetype position;
+        qsizetype length;
+        QString text;
+    };
+    QList<Replacement> replacements;
+    auto it = colorPattern.globalMatch(svg);
+    while (it.hasNext()) {
+        const auto match = it.next();
+        QColor color(match.captured(0));
+        if (!color.isValid() || color.saturationF() > 0.35f || color.lightnessF() >= 0.62f)
+            continue;
+        float hue = 0.0f;
+        float saturation = 0.0f;
+        float lightness = 0.0f;
+        float alpha = 0.0f;
+        color.getHslF(&hue, &saturation, &lightness, &alpha);
+        color.setHslF(hue, saturation, 0.74f, alpha);
+        replacements.append({match.capturedStart(), match.capturedLength(),
+                             color.name(QColor::HexRgb)});
+    }
+    for (auto r = replacements.crbegin(); r != replacements.crend(); ++r)
+        svg.replace(r->position, r->length, r->text);
+    return svg.toUtf8();
 }
 
 /**
@@ -219,8 +276,11 @@ private:
     {
         if (size.isEmpty())
             return {};
-        const auto key = QStringLiteral("tgui:%1:%2x%3:%4:%5:%6")
-            .arg(m_path).arg(size.width()).arg(size.height()).arg(mode).arg(state).arg(dpr, 0, 'g', 16);
+        const auto key = QStringLiteral("tgui:%1:%2:%3x%4:%5:%6:%7")
+            .arg(m_path)
+            .arg(tgui::theme::scheme() == tgui::theme::Scheme::Dark ? QStringLiteral("dark")
+                                                                    : QStringLiteral("light"))
+            .arg(size.width()).arg(size.height()).arg(mode).arg(state).arg(dpr, 0, 'g', 16);
         QPixmap image;
         if (QPixmapCache::find(key, &image))
             return image;
@@ -228,7 +288,7 @@ private:
         if (mode == QIcon::Disabled) {
             image = disabledIcon(raster(size, QIcon::Normal, state, dpr));
         } else {
-            QSvgRenderer renderer(m_path);
+            QSvgRenderer renderer(iconData(m_path));
             if (!renderer.isValid())
                 return {};
             renderer.setAspectRatioMode(Qt::KeepAspectRatio);
@@ -312,11 +372,17 @@ QColor progressColor(ProgressState state)
     return activeProgressColors()[static_cast<size_t>(state)];
 }
 
-const Palette& palette()
+QString buildQss(const Palette& p);
+void installAppearance(QApplication& app, bool resetStyle);
+void applyNativeScheme(QWidget* widget);
+
+namespace {
+
+/** Светлая палитра нового дизайна — значения из design/mockup.html
+    (таблицы макета 0.1/0.2; расхождения с макетом зафиксированы там же). */
+Palette lightPalette()
 {
-    // Светлая палитра нового дизайна — значения из design/mockup.html
-    // (таблицы макета 0.1/0.2; расхождения с макетом зафиксированы там же).
-    static const Palette p{
+    return Palette{
         // Поверхности
         QColor(0xF0, 0xF0, 0xF0), // window
         QColor(0xFF, 0xFF, 0xFF), // panel
@@ -369,6 +435,7 @@ const Palette& palette()
         QColor(0x1B, 0x1B, 0x1B), // highlightText
         // Новые элементы
         QColor(0x2B, 0x2B, 0x2B), // toastBackground
+        QColor(0xFF, 0xFF, 0xFF), // toastText
         QColor(0xF1, 0xF4, 0xF7), // groupRow
         QColor(0xF9, 0xF9, 0xF9), // toolbarBg
         QColor(0xD3, 0xD3, 0xD3), // toolbarSep
@@ -405,7 +472,154 @@ const Palette& palette()
         QColor(0x7F, 0x8A, 0x95), // dialogBorder
         QColor(0xC9, 0xC9, 0xC9)  // dialogTabBorder
     };
-    return p;
+}
+
+/** Тёмная палитра: те же токены, приглушённые поверхности и светлый текст. */
+Palette darkPalette()
+{
+    return Palette{
+        // Поверхности
+        QColor(0x20, 0x22, 0x25), // window
+        QColor(0x26, 0x28, 0x2C), // panel
+        QColor(0x2B, 0x2E, 0x33), // zebra
+        QColor(0x3A, 0x3D, 0x42), // section
+        QColor(0x2B, 0x2E, 0x33), // headerBg
+        QColor(0x34, 0x38, 0x3E), // listHeaderHover
+        QColor(0x34, 0x38, 0x3E), // detailTabHover
+        // Границы
+        QColor(0x3A, 0x3D, 0x42), // border
+        QColor(0x33, 0x36, 0x3B), // borderSoft
+        QColor(0x3A, 0x3D, 0x42), // layoutBorder
+        QColor(0x2F, 0x32, 0x37), // listRowBorder
+        QColor(0x40, 0x44, 0x4B), // menuBorder
+        QColor(0x45, 0x6F, 0x9E), // menuSelectionBorder
+        QColor(0x3D, 0x40, 0x46), // menuSeparator
+        QColor(0x6F, 0x73, 0x7A), // menuDisabledText
+        QColor(0x33, 0x38, 0x40), // statusRateHover
+        QColor(0x7B, 0x7F, 0x86), // statusOfflineDot
+        // Текст
+        QColor(0xE6, 0xE7, 0xE9), // text
+        QColor(0xA9, 0xAD, 0xB4), // textMuted
+        QColor(0x8A, 0x8E, 0x95), // textFaint
+        QColor(0xC3, 0xC7, 0xCD), // iconSlate
+        QColor(0xB7, 0xBB, 0xC2), // detailFieldLabel
+        QColor(0xD7, 0xDA, 0xDE), // formLabel
+        // Акцент
+        QColor(0x5A, 0xA9, 0xEF), // accent
+        QColor(0x8C, 0xC4, 0xF5), // accentDark
+        // Статусы
+        QColor(0x56, 0xC2, 0x71), // green
+        QColor(0x23, 0x39, 0x2A), // greenLight
+        QColor(0xE0, 0xAA, 0x4A), // amber
+        QColor(0x3A, 0x2F, 0x1C), // amberLight
+        QColor(0xE5, 0x67, 0x6D), // red
+        QColor(0x3D, 0x23, 0x26), // redLight
+        QColor(0xA4, 0x8F, 0xDF), // purple
+        QColor(0xB0, 0xB4, 0xBA), // statusNeutral
+        // Текст статуса загрузки
+        QColor(0x5A, 0xA9, 0xEF), // blue
+        // Состояния
+        QColor(0x30, 0x34, 0x3A), // hoverBg
+        QColor(0x2F, 0x4A, 0x66), // selBg
+        QColor(0x37, 0x5A, 0x7C), // selBgActive
+        QColor(0x2B, 0x3A, 0x48), // selBgInactive
+        QColor(0x2F, 0x4A, 0x66), // itemSelBg
+        QColor(0xEE, 0xF3, 0xF8), // itemSelText
+        QColor(0x6D, 0x71, 0x78), // disabledText
+        QColor(0x2F, 0x6D, 0xA8), // highlight
+        QColor(0xFF, 0xFF, 0xFF), // highlightText
+        // Новые элементы
+        QColor(0x3A, 0x3E, 0x44), // toastBackground
+        QColor(0xF2, 0xF3, 0xF5), // toastText
+        QColor(0x2F, 0x32, 0x37), // groupRow
+        QColor(0x2A, 0x2D, 0x31), // toolbarBg
+        QColor(0x3D, 0x40, 0x46), // toolbarSep
+        QColor(0x5A, 0xA9, 0xEF), // selectionBorder
+        QColor(0x3B, 0x29, 0x29), // connectOfflineBg
+        QColor(0x9C, 0x5F, 0x5F), // connectOfflineBorder
+        QColor(0x2F, 0x32, 0x38), // sectionHeader
+        QColor(0x9E, 0xC3, 0xEA), // labelText
+        // PieceBar
+        QColor(0x33, 0x37, 0x3C), // pieceEmpty
+        QColor(0x4A, 0x50, 0x58), // pieceBorder
+        // Input
+        QColor(0x4A, 0x4D, 0x54), // inputBorder
+        QColor(0x5A, 0xA9, 0xEF), // inputFocus
+        QColor(0xFF, 0xFF, 0xFF), // inputSelectionText
+        QColor(0x3B, 0x3D, 0x42), // tooltipBg
+        // Кнопки диалогов
+        QColor(0x34, 0x37, 0x3C), // btnBg
+        QColor(0x4A, 0x4E, 0x55), // btnBorder
+        QColor(0x3D, 0x43, 0x4B), // btnHoverBg
+        QColor(0x4A, 0x2D, 0x2F), // btnDangerHover
+        QColor(0x2B, 0x2D, 0x31), // btnDisabledBg
+        QColor(0x3A, 0x3D, 0x42), // btnDisabledBorder
+        QColor(0x6D, 0x71, 0x78), // btnDisabledText
+        // GroupBox
+        QColor(0x8F, 0xC1, 0xF0), // groupTitle
+        QColor(0x3F, 0x43, 0x4A), // groupBorder
+        // Прогресс-бар
+        QColor(0x30, 0x33, 0x38), // progressBg
+        QColor(0x4A, 0x4E, 0x55), // progressBorder
+        // Скроллбары
+        QColor(0x4A, 0x4E, 0x55), // scrollbarHandle
+        QColor(0x5A, 0x5F, 0x67), // scrollHover
+        QColor(0x4A, 0x4E, 0x55), // dialogBorder
+        QColor(0x3A, 0x3D, 0x42)  // dialogTabBorder
+    };
+}
+
+Palette& activePalette()
+{
+    static Palette palette = lightPalette();
+    return palette;
+}
+
+Scheme g_scheme = Scheme::Light;
+
+/** Красит системный заголовок новых окон под текущую схему. */
+class NativeSchemeFilter : public QObject {
+public:
+    using QObject::QObject;
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (event->type() == QEvent::Show) {
+            if (auto* widget = qobject_cast<QWidget*>(watched); widget && widget->isWindow())
+                applyNativeScheme(widget);
+        }
+        return false;
+    }
+};
+
+} // namespace
+
+const Palette& palette()
+{
+    return activePalette();
+}
+
+Scheme scheme()
+{
+    return g_scheme;
+}
+
+void setScheme(Scheme scheme)
+{
+    if (scheme == g_scheme)
+        return;
+    g_scheme = scheme;
+    activePalette() = scheme == Scheme::Dark ? darkPalette() : lightPalette();
+
+    QPixmapCache::clear();
+    if (auto* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
+        installAppearance(*app, false);
+        for (auto* widget : app->allWidgets())
+            widget->update();
+        for (auto* widget : app->topLevelWidgets())
+            applyNativeScheme(widget);
+    }
 }
 
 int rowHeightFor(const QFont& font)
@@ -552,7 +766,7 @@ QPushButton#dialogClose {
     background: transparent; border: none; border-radius: 0;
     min-width: 44px; max-width: 44px; min-height: 30px; max-height: 30px; padding: 0;
 }
-QPushButton#dialogClose:hover { background: %red%; color: %panel%; }
+QPushButton#dialogClose:hover { background: %red%; color: %inputSelectionText%; }
 QWidget#dialogBody { background: %window%; }
 QMenuBar { background: %panel%; border-bottom: 1px solid %layoutBorder%; padding: 1px 4px; }
 QMenuBar::item { background: transparent; padding: 5px 10px; border-radius: 3px; color: %text%; }
@@ -591,6 +805,9 @@ QToolBar#mainToolBar > QToolButton[toolbarAction="true"]:hover { border-color: %
 QToolBar#mainToolBar > QToolButton[toolbarAction="true"]:pressed { background: %selBgActive%; }
 QToolBar#mainToolBar > QToolButton[toolbarAction="true"]:checked { border-color: %selectionBorder%; }
 QToolBar#mainToolBar > QToolButton[toolbarAction="true"]:focus { border-color: %inputFocus%; }
+QToolBar#mainToolBar > QToolButton#themeButton:checked { background: transparent; border-color: transparent; }
+QToolBar#mainToolBar > QToolButton#themeButton:checked:hover { background: %hoverBg%; border-color: %border%; }
+QToolBar#mainToolBar > QToolButton#themeButton:checked:pressed { background: %selBgActive%; }
 QToolBar#mainToolBar > QToolButton[toolbarAction="true"]:disabled { color: %disabledText%; }
 QToolBar#mainToolBar > QToolButton#queueButton { padding-right: 16px; }
 QToolButton#queueButton::menu-indicator {
@@ -851,7 +1068,7 @@ QLabel#donateQr { background: transparent; }
 QToolButton#licenseToggle { border: none; background: transparent; color: %accent%; padding: 2px 0; }
 QToolButton#licenseToggle:hover { text-decoration: underline; }
 QToolButton#licenseToggle:checked { background: transparent; }
-QLabel#toast { background: %toastBackground%; color: %panel%; border-radius: 3px; padding: 7px 14px; }
+QLabel#toast { background: %toastBackground%; color: %toastText%; border-radius: 3px; padding: 7px 14px; }
 QPushButton#propertyLink, QPushButton[linkStyle="true"] {
     color: %accent%; background: transparent; border: none; min-width: 0; min-height: 0; padding: 0;
 }
@@ -867,6 +1084,18 @@ QScrollArea > QWidget > QWidget { background: transparent; }
 QToolTip { background: %tooltipBg%; color: %text%; border: 1px solid %border%; padding: 3px 6px; border-radius: 0; }
 QCheckBox, QRadioButton { spacing: 6px; }
 )");
+    // В тёмной схеме нативные индикаторы чекбоксов почти сливаются с фоном —
+    // рисуем их токенами палитры (не отмеченный тоже должен быть заметен).
+    if (g_scheme == Scheme::Dark) {
+        q += QStringLiteral(R"(
+QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid %inputBorder%; border-radius: 2px; background: %panel%; }
+QCheckBox::indicator:hover { border-color: %inputFocus%; }
+QCheckBox::indicator:checked { background: %highlight%; border-color: %highlight%; image: url(:/icons/i-check.svg); }
+QCheckBox::indicator:checked:hover { background: %inputFocus%; border-color: %inputFocus%; }
+QCheckBox::indicator:unchecked:disabled { background: %btnDisabledBg%; border-color: %btnDisabledBorder%; }
+QCheckBox::indicator:checked:disabled { background: %btnDisabledBorder%; border-color: %btnDisabledBorder%; }
+)");
+    }
     const struct {
         const char* token;
         const QColor& color;
@@ -925,6 +1154,7 @@ QCheckBox, QRadioButton { spacing: 6px; }
         {"%scrollHover%", p.scrollHover},
         {"%dialogBorder%", p.dialogBorder},
         {"%toastBackground%", p.toastBackground},
+        {"%toastText%", p.toastText},
         {"%dialogTabBorder%", p.dialogTabBorder},
     };
     for (const auto& s : subs)
@@ -954,10 +1184,10 @@ void saveProgressColors(QSettings& settings, const ProgressColors& colors)
         qApp->setStyleSheet(buildQss(palette()));
 }
 
-void apply(QApplication& app)
+void installAppearance(QApplication& app, bool resetStyle)
 {
-    activeProgressColors() = loadProgressColors(QSettings());
-    app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+    if (resetStyle)
+        app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
     const Palette& pal = palette();
     QPalette p;
@@ -971,8 +1201,8 @@ void apply(QApplication& app)
     p.setColor(QPalette::BrightText, Qt::white);
     p.setColor(QPalette::Highlight, pal.highlight);
     p.setColor(QPalette::HighlightedText, pal.highlightText);
-    p.setColor(QPalette::ToolTipBase, pal.text);
-    p.setColor(QPalette::ToolTipText, Qt::white);
+    p.setColor(QPalette::ToolTipBase, pal.tooltipBg);
+    p.setColor(QPalette::ToolTipText, pal.text);
     p.setColor(QPalette::PlaceholderText, pal.textFaint);
     p.setColor(QPalette::Link, pal.accent);
     p.setColor(QPalette::LinkVisited, pal.accentDark);
@@ -980,14 +1210,50 @@ void apply(QApplication& app)
     p.setColor(QPalette::Disabled, QPalette::ButtonText, pal.textFaint);
     p.setColor(QPalette::Disabled, QPalette::WindowText, pal.textFaint);
     app.setPalette(p);
+    app.setStyleSheet(buildQss(pal));
+}
+
+void applyNativeScheme(QWidget* widget)
+{
+#ifdef Q_OS_WIN
+    if (!widget)
+        return;
+    const HWND window = reinterpret_cast<HWND>(widget->winId());
+    if (!window)
+        return;
+    // 20 — DWMWA_USE_IMMERSIVE_DARK_MODE (Win10 1903+), 19 — старое значение.
+    constexpr DWORD immersiveDarkMode = 20;
+    constexpr DWORD legacyImmersiveDarkMode = 19;
+    const BOOL dark = g_scheme == Scheme::Dark ? TRUE : FALSE;
+    if (FAILED(DwmSetWindowAttribute(window, immersiveDarkMode, &dark, sizeof(dark))))
+        DwmSetWindowAttribute(window, legacyImmersiveDarkMode, &dark, sizeof(dark));
+#else
+    Q_UNUSED(widget);
+#endif
+}
+
+void apply(QApplication& app, Scheme scheme)
+{
+    activeProgressColors() = loadProgressColors(QSettings());
+    g_scheme = scheme;
+    activePalette() = scheme == Scheme::Dark ? darkPalette() : lightPalette();
+    QPixmapCache::clear();
+
+    installAppearance(app, true);
+
+    static bool nativeFilterInstalled = false;
+    if (!nativeFilterInstalled) {
+        app.installEventFilter(new NativeSchemeFilter(&app));
+        nativeFilterInstalled = true;
+    }
+    for (auto* widget : app.topLevelWidgets())
+        applyNativeScheme(widget);
 
     QFont font;
     font.setFamilies({QStringLiteral("Segoe UI"), QStringLiteral("SF Pro Text"),
                       QStringLiteral("Noto Sans"), QStringLiteral("DejaVu Sans")});
     font.setPointSize(9);
     app.setFont(font);
-
-    app.setStyleSheet(buildQss(pal));
 }
 
 namespace {

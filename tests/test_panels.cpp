@@ -2162,6 +2162,36 @@ TEST(ToolbarVariantB, LayoutAvailabilityAndSavedStyle)
     window.applyTorrentsUpdate({torrent});
     EXPECT_TRUE(queue->isEnabled());
     window.resize(1120,700);window.show();QCoreApplication::processEvents();
+    auto* themeButton = window.findChild<QToolButton*>(QStringLiteral("themeButton"));
+    ASSERT_NE(themeButton, nullptr);
+    EXPECT_EQ(themeButton->toolButtonStyle(), Qt::ToolButtonIconOnly);
+    auto* searchEdit = window.findChild<QLineEdit*>(QStringLiteral("searchEdit"));
+    ASSERT_NE(searchEdit, nullptr);
+    // Тема — крайняя правая кнопка, сразу после поиска.
+    EXPECT_GE(themeButton->mapTo(toolbar, QPoint(0, 0)).x(),
+              searchEdit->mapTo(toolbar, QPoint(0, 0)).x());
+    auto* themeAction = themeButton->defaultAction();
+    ASSERT_NE(themeAction, nullptr);
+    EXPECT_TRUE(themeAction->isCheckable());
+    const QVariant previousTheme = settings.value(QStringLiteral("ui/theme"));
+    const auto initialScheme = tgui::theme::scheme();
+    themeAction->setChecked(initialScheme != tgui::theme::Scheme::Dark);
+    EXPECT_EQ(tgui::theme::scheme(),
+              initialScheme == tgui::theme::Scheme::Dark ? tgui::theme::Scheme::Light
+                                                         : tgui::theme::Scheme::Dark);
+    const qint64 switchedIcon = themeAction->icon().cacheKey();
+    settings.sync();
+    EXPECT_EQ(settings.value(QStringLiteral("ui/theme")).toString(),
+              initialScheme == tgui::theme::Scheme::Dark ? QStringLiteral("light")
+                                                         : QStringLiteral("dark"));
+    themeAction->setChecked(initialScheme == tgui::theme::Scheme::Dark);
+    EXPECT_EQ(tgui::theme::scheme(), initialScheme);
+    // Живое переключение схемы обязано сменить значок (луна/солнце).
+    EXPECT_NE(themeAction->icon().cacheKey(), switchedIcon);
+    if (previousTheme.isValid())
+        settings.setValue(QStringLiteral("ui/theme"), previousTheme);
+    else
+        settings.remove(QStringLiteral("ui/theme"));
     const QString preview=qEnvironmentVariable("TGUI_TOOLBAR_PREVIEW_DIR");
     if(!preview.isEmpty()){
         tgui::theme::apply(*qobject_cast<QApplication*>(QCoreApplication::instance()));

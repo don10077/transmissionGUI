@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <QDir>
 #include <QEventLoop>
 #include <QFont>
 #include <QImage>
@@ -91,6 +92,82 @@ TEST_F(ThemeRendering, IconRasterUsesRequestedSizeAndDisabledOpacity)
     EXPECT_LT(maxAlpha(disabled), maxAlpha(normal));
 }
 
+TEST_F(ThemeRendering, DarkSchemeSwitchesPaletteAndQss)
+{
+    const int lightWindow = tgui::theme::palette().window.lightness();
+    tgui::theme::setScheme(tgui::theme::Scheme::Dark);
+    EXPECT_EQ(tgui::theme::scheme(), tgui::theme::Scheme::Dark);
+    const auto& dark = tgui::theme::palette();
+    EXPECT_LT(dark.window.lightness(), lightWindow);
+    EXPECT_GT(dark.text.lightness(), dark.window.lightness());
+    EXPECT_TRUE(qApp->styleSheet().contains(dark.window.name()));
+    // Нейтральные значки перерисовываются под тёмный фон без потери альфы.
+    const auto icon = tgui::theme::icon(tgui::theme::Icon::Folder);
+    EXPECT_FALSE(icon.pixmap(QSize(16, 16)).isNull());
+
+    tgui::theme::setScheme(tgui::theme::Scheme::Light);
+    EXPECT_EQ(tgui::theme::scheme(), tgui::theme::Scheme::Light);
+    EXPECT_EQ(tgui::theme::palette().window.lightness(), lightWindow);
+}
+
+TEST_F(ThemeRendering, DarkSchemePreview)
+{
+    const QString output = qEnvironmentVariable("TGUI_DARK_PREVIEW_DIR");
+    if (output.isEmpty())
+        GTEST_SKIP() << "TGUI_DARK_PREVIEW_DIR is not set";
+    QDir().mkpath(output);
+
+    QSettings settings;
+    const QStringList keys{"daemons/current", "peers/showFlag", "ui/trayIcon", "ui/updateCheckEnabled"};
+    QVariantMap saved;
+    for (const auto& key : keys)
+        saved.insert(key, settings.value(key));
+    const bool quitOnClose = QApplication::quitOnLastWindowClosed();
+    const auto restore = qScopeGuard([&] {
+        for (auto it = saved.cbegin(); it != saved.cend(); ++it) {
+            if (it.value().isValid())
+                settings.setValue(it.key(), it.value());
+            else
+                settings.remove(it.key());
+        }
+        QApplication::setQuitOnLastWindowClosed(quitOnClose);
+        tgui::theme::setScheme(tgui::theme::Scheme::Light);
+    });
+    settings.remove(keys.first());
+    for (qsizetype i = 1; i < keys.size(); ++i)
+        settings.setValue(keys.at(i), false);
+    QApplication::setQuitOnLastWindowClosed(false);
+
+    MainWindow window;
+    window.resize(1280, 800);
+    window.show();
+    spinEvents();
+    EXPECT_TRUE(window.grab().save(output + QStringLiteral("/light-main.png")));
+
+    // Переключаем тему на живом окне: тот же экземпляр должен перерисоваться.
+    tgui::theme::setScheme(tgui::theme::Scheme::Dark);
+    spinEvents();
+    EXPECT_TRUE(window.grab().save(output + QStringLiteral("/dark-main.png")));
+
+    PropsForm form;
+    tgui::Torrent t;
+    t.id = 42;
+    t.name = "movie-2160p";
+    t.status = 4;
+    t.totalSize = 1073741824.0;
+    t.sizeWhenDone = 536870912.0;
+    t.leftUntilDone = 268435456.0;
+    t.downloadDir = "/Shares/Video";
+    form.setTorrent(t);
+    form.setSession(tgui::SessionInfo{});
+    form.resize(720, 560);
+    EXPECT_TRUE(grabWidget(form).save(output + QStringLiteral("/dark-props.png")));
+
+    OptionsDialog dialog;
+    dialog.resize(900, 650);
+    EXPECT_TRUE(grabWidget(dialog).save(output + QStringLiteral("/dark-options.png")));
+}
+
 TEST_F(ThemeRendering, MainWindow)
 {
     // Предыдущие тесты могут оставить выбранный профиль с уже остановленным мок-сервером.
@@ -158,4 +235,30 @@ TEST_F(ThemeRendering, AboutDialog)
     AboutDialog dialog;
     dialog.resize(560, 420);
     EXPECT_FALSE(grabWidget(dialog).isNull());
+}
+
+#include <QPainter>
+#include <QSvgRenderer>
+#include <cstdio>
+
+TEST(TmpMeasure, MoonBounds)
+{
+    for (const char* name : {":/icons/i-theme-dark.svg", ":/icons/i-theme-light.svg"}) {
+        QSvgRenderer r(QString::fromLatin1(name));
+        QImage img(160, 160, QImage::Format_ARGB32_Premultiplied);
+        img.fill(Qt::transparent);
+        QPainter p(&img);
+        r.render(&p);
+        p.end();
+        QRect bbox;
+        for (int y = 0; y < 160; ++y) {
+            for (int x = 0; x < 160; ++x) {
+                if (qAlpha(img.pixel(x, y)) > 8)
+                    bbox = bbox.isNull() ? QRect(x, y, 1, 1) : bbox.united(QRect(x, y, 1, 1));
+            }
+        }
+        fprintf(stderr, "MEASURE %s bbox px=(%d,%d %dx%d) units=(%.2f,%.2f %.2fx%.2f)\n",
+                name, bbox.x(), bbox.y(), bbox.width(), bbox.height(),
+                bbox.x() / 10.0, bbox.y() / 10.0, bbox.width() / 10.0, bbox.height() / 10.0);
+    }
 }

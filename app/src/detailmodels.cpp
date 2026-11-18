@@ -551,9 +551,12 @@ void FileTreeModel::setFiles(const QVector<tgui::FileStat>& files)
         auto* parent = want->parent() ? want->parent() : invisibleRootItem();
         const int row = want->row();
         if (rebuild || (node.previous.wanted == 0) != (total.wanted == 0)) {
-            const auto foreground = total.wanted == 0 ? QBrush(Qt::gray) : QBrush();
+            // Пустой QBrush в ForegroundRole — это NoBrush с чёрным цветом,
+            // поэтому для «нужных» строк роль нужно именно очищать.
+            const QVariant foreground = total.wanted == 0
+                ? QVariant::fromValue(QBrush(Qt::gray)) : QVariant();
             for (int column = 0; column < ColumnCount; ++column)
-                parent->child(row, column)->setForeground(foreground);
+                parent->child(row, column)->setData(foreground, Qt::ForegroundRole);
         }
         if (rebuild || node.previous.size != total.size)
             parent->child(row, Size)->setText(QString::fromStdString(tgui::formatSize(total.size)));

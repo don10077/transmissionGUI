@@ -123,6 +123,17 @@ void MainWindow::createActions()
     m_actAbout->setIcon(tgui::theme::icon(Icon::About));
     connect(m_actAbout, &QAction::triggered, this, &MainWindow::onAbout);
 
+    // Переключение светлой/тёмной схемы (иконка — крайняя справа в тулбаре).
+    m_actTheme = new QAction(tr("Dark theme"), this);
+    m_actTheme->setCheckable(true);
+    m_actTheme->setChecked(tgui::theme::scheme() == tgui::theme::Scheme::Dark);
+    updateThemeAction();
+    connect(m_actTheme, &QAction::toggled, this, [this](bool dark) {
+        tgui::theme::setScheme(dark ? tgui::theme::Scheme::Dark : tgui::theme::Scheme::Light);
+        QSettings().setValue(QStringLiteral("ui/theme"),
+                             dark ? QStringLiteral("dark") : QStringLiteral("light"));
+    });
+
     // Панель инструментов по design/mockup.html.
     m_toolBar = addToolBar(tr("Main"));
     m_toolBar->setObjectName(QStringLiteral("mainToolBar"));
@@ -252,6 +263,15 @@ void MainWindow::createActions()
         if (accepted)
             m_searchEdit->setText(text);
     });
+    // Тема — крайняя правая кнопка после поиска, всегда только иконка.
+    m_toolBar->addAction(m_actTheme);
+    if (auto* themeButton = qobject_cast<QToolButton*>(m_toolBar->widgetForAction(m_actTheme))) {
+        themeButton->setObjectName(QStringLiteral("themeButton"));
+        themeButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        // TabFocus: кнопка доступна с клавиатуры, но клик мышью не оставляет
+        // вокруг неё рамку фокуса.
+        themeButton->setFocusPolicy(Qt::TabFocus);
+    }
     applyToolbarStyle(QSettings().value("ui/toolbarButtonStyle", 2).toInt());
     m_toolBar->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_toolBar, &QWidget::customContextMenuRequested, this, [this](const QPoint& point) {
@@ -274,6 +294,17 @@ void MainWindow::createActions()
         menu.exec(m_toolBar->mapToGlobal(point));
     });
 
+}
+
+/** Синхронизирует значок и подсказку кнопки темы с текущей схемой. */
+void MainWindow::updateThemeAction()
+{
+    if (!m_actTheme)
+        return;
+    using tgui::theme::Icon;
+    const bool dark = tgui::theme::scheme() == tgui::theme::Scheme::Dark;
+    m_actTheme->setIcon(tgui::theme::icon(dark ? Icon::ThemeLight : Icon::ThemeDark));
+    m_actTheme->setToolTip(dark ? tr("Switch to light theme") : tr("Switch to dark theme"));
 }
 
 /** Применяет режим кнопок, размеры значков и отступы панели инструментов. */
@@ -487,6 +518,9 @@ void MainWindow::createMenus()
         statusBar()->setVisible(on);
         QSettings().setValue("ui/statusBar", on);
     });
+
+    mView->addSeparator();
+    mView->addAction(m_actTheme);
 
     // «Menu» убран из видимого меню, но остаётся действием с Shift+F12,
     // чтобы скрытое меню можно было вернуть.

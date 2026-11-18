@@ -17,6 +17,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QStyleHints>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QTranslator>
@@ -163,7 +164,20 @@ int main(int argc, char* argv[])
         recoveredSettings = true;
     }
 
-    tgui::theme::apply(app);
+    // Оформление: сохранённый выбор пользователя, иначе — схема ОС.
+    auto themeScheme = tgui::theme::Scheme::Light;
+    {
+        const QString stored = QSettings().value(QStringLiteral("ui/theme")).toString();
+        if (stored == QLatin1String("dark")) {
+            themeScheme = tgui::theme::Scheme::Dark;
+        } else if (stored != QLatin1String("light")) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+            if (QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark)
+                themeScheme = tgui::theme::Scheme::Dark;
+#endif
+        }
+    }
+    tgui::theme::apply(app, themeScheme);
     app.setWindowIcon(tgui::theme::icon(tgui::theme::Icon::App));
 
     // Масштаб интерфейса (W07): ui/scale в %; применяется к базовому шрифту до создания окна.

@@ -22,6 +22,9 @@ class QWidget;
 //   значения живут только в определениях палитр.
 namespace tgui::theme {
 
+/** Варианты оформления приложения. */
+enum class Scheme { Light, Dark };
+
 enum class Icon {
     App,
     Connect,
@@ -79,6 +82,8 @@ enum class Icon {
     TabPeers,
     TabFiles,
     TabStatistics,
+    ThemeDark,
+    ThemeLight,
 };
 
 /** Цветовые токены оформления по design/mockup.html. */
@@ -135,6 +140,7 @@ struct Palette {
     QColor highlightText; // QPalette::HighlightedText
     // Новые элементы (Фазы 8–9)
     QColor toastBackground;
+    QColor toastText;    // текст всплывающего уведомления
     QColor groupRow;     // .gr
     QColor toolbarBg;
     QColor toolbarSep;  // разделитель тулбара
@@ -173,8 +179,17 @@ struct Palette {
     QColor dialogTabBorder;
 };
 
-/** Возвращает палитру приложения по design/mockup.html. */
+/** Возвращает активную палитру приложения (светлую или тёмную). */
 const Palette& palette();
+
+/** Возвращает текущую схему оформления. */
+Scheme scheme();
+
+/**
+ * Переключает оформление на лету: палитра, QPalette, QSS и кэш иконок.
+ * @param scheme Новая схема.
+ */
+void setScheme(Scheme scheme);
 
 /** Состояния, по которым выбирается цвет заполнения шкалы. */
 enum class ProgressState { Downloading, Seeding, Finished, Waiting, Verifying, Paused, Error, Count };
@@ -233,8 +248,9 @@ inline const QColor& purple = palette().purple;
 /**
  * Устанавливает Fusion, шрифт, палитру и QSS.
  * @param app Приложение Qt.
+ * @param scheme Схема оформления; по умолчанию светлая.
  */
-void apply(QApplication& app);
+void apply(QApplication& app, Scheme scheme = Scheme::Light);
 
 /**
  * Оформляет диалог как в макете (DLG): своя белая шапка с названием и «✕»,

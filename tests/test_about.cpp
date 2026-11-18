@@ -61,7 +61,8 @@ TEST(AboutDialog, Donation)
     ASSERT_NE(qr, nullptr);
     const auto image = qr->pixmap().toImage();
     ASSERT_FALSE(image.isNull());
-    EXPECT_EQ(image.pixelColor(0, 0).alpha(), 0);
+    // QR должен оставаться чёрно-белым (без прозрачного фона) в обеих темах.
+    EXPECT_EQ(image.pixelColor(0, 0), QColor(Qt::white));
     EXPECT_EQ(image.pixelColor(image.width() / 8, image.height() / 8), QColor(Qt::black));
 
     auto* button = dlg.findChild<QPushButton*>(QStringLiteral("donateButton"));
