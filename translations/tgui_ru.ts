@@ -4,12 +4,12 @@
 <context>
     <name>AboutDialog</name>
     <message>
-        <location filename="../app/src/aboutdialog.cpp" line="110"/>
+        <location filename="../app/src/aboutdialog.cpp" line="111"/>
         <source>About</source>
         <translation>О программе</translation>
     </message>
     <message>
-        <location filename="../app/src/aboutdialog.cpp" line="92"/>
+        <location filename="../app/src/aboutdialog.cpp" line="93"/>
         <source>Remote control for the Transmission daemon. Rewritten in C++/Qt.</source>
         <translation>Удалённое управление службой Transmission. Переписано на C++/Qt.</translation>
     </message>
@@ -19,42 +19,42 @@
         <translation>Версия %1</translation>
     </message>
     <message>
-        <location filename="../app/src/aboutdialog.cpp" line="155"/>
+        <location filename="../app/src/aboutdialog.cpp" line="156"/>
         <source>Support the project</source>
         <translation>Поддержка проекта</translation>
     </message>
     <message>
-        <location filename="../app/src/aboutdialog.cpp" line="166"/>
+        <location filename="../app/src/aboutdialog.cpp" line="167"/>
         <source>Scan the QR code with your phone to open the donation page</source>
         <translation>Отсканируйте QR-код телефоном, чтобы открыть страницу доната</translation>
     </message>
     <message>
-        <location filename="../app/src/aboutdialog.cpp" line="182"/>
+        <location filename="../app/src/aboutdialog.cpp" line="183"/>
         <source>If the program is useful to you, you can support its development. Scan the QR code with your phone or open the link below.</source>
         <translation>Если программа вам полезна, вы можете поддержать её развитие. Отсканируйте QR-код телефоном или откройте ссылку ниже.</translation>
     </message>
     <message>
-        <location filename="../app/src/aboutdialog.cpp" line="195"/>
+        <location filename="../app/src/aboutdialog.cpp" line="196"/>
         <source>Donate</source>
         <translation>Поддержать</translation>
     </message>
     <message>
-        <location filename="../app/src/aboutdialog.cpp" line="207"/>
+        <location filename="../app/src/aboutdialog.cpp" line="208"/>
         <source>Project on GitHub</source>
         <translation>Проект на GitHub</translation>
     </message>
     <message>
-        <location filename="../app/src/aboutdialog.cpp" line="214"/>
+        <location filename="../app/src/aboutdialog.cpp" line="215"/>
         <source>License (GPL v3)</source>
         <translation>Лицензия (GPL v3)</translation>
     </message>
     <message>
-        <location filename="../app/src/aboutdialog.cpp" line="246"/>
+        <location filename="../app/src/aboutdialog.cpp" line="247"/>
         <source>Close</source>
         <translation>Закрыть</translation>
     </message>
     <message>
-        <location filename="../app/src/aboutdialog.cpp" line="97"/>
+        <location filename="../app/src/aboutdialog.cpp" line="98"/>
         <source>This program is free software under the GNU General Public License, version 3 (or any later version). It is provided &quot;as is&quot;, without a warranty of any kind. See https://www.gnu.org/licenses/gpl-3.0.html for the full license text.</source>
         <translation>Эта программа — свободное ПО под GNU General Public License версии 3 (или более поздней). Она предоставляется «как есть», без каких-либо гарантий. Полный текст лицензии: https://www.gnu.org/licenses/gpl-3.0.html.</translation>
     </message>
@@ -751,7 +751,7 @@
 <context>
     <name>Dialog</name>
     <message>
-        <location filename="../app/src/theme.cpp" line="1341"/>
+        <location filename="../app/src/theme.cpp" line="1470"/>
         <source>Close</source>
         <translation>Закрыть</translation>
     </message>
@@ -1009,12 +1009,12 @@
         <translation>Приоритет</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="567"/>
+        <location filename="../app/src/detailmodels.cpp" line="570"/>
         <source>Mixed</source>
         <translation>Разный</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="568"/>
+        <location filename="../app/src/detailmodels.cpp" line="571"/>
         <source>Skip</source>
         <translation>Пропустить</translation>
     </message>
@@ -1171,12 +1171,12 @@
         <translation>Свернуть всё</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="404"/>
+        <location filename="../app/src/mainwindowui.cpp" line="411"/>
         <source>Export torrent list…</source>
         <translation>Экспорт списка торрентов…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="406"/>
+        <location filename="../app/src/mainwindowui.cpp" line="413"/>
         <source>Import torrent list…</source>
         <translation>Импорт списка торрентов…</translation>
     </message>
@@ -1217,12 +1217,12 @@
         <translation>В файле должна быть одна magnet-ссылка на строку.</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="438"/>
+        <location filename="../app/src/mainwindow.cpp" line="445"/>
         <source>Could not write the settings backup.</source>
         <translation>Не удалось записать резервную копию настроек.</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="178"/>
+        <location filename="../app/src/mainwindowui.cpp" line="172"/>
         <source>Connect to the current connection (Ctrl+K)</source>
         <translation>Подключиться к текущему серверу (Ctrl+K)</translation>
     </message>
@@ -1368,12 +1368,12 @@
         <translation>Изменить каталог меток…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="452"/>
+        <location filename="../app/src/mainwindow.cpp" line="459"/>
         <source>The file is not a supported TransmissionGUI settings backup.</source>
         <translation>Формат резервной копии настроек TransmissionGUI не распознан.</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="464"/>
+        <location filename="../app/src/mainwindow.cpp" line="471"/>
         <source>Could not apply the settings backup.</source>
         <translation>Не удалось применить резервную копию настроек.</translation>
     </message>
@@ -1497,84 +1497,84 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Пароль клиентского сертификата или ключа:</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="271"/>
+        <location filename="../app/src/mainwindow.cpp" line="278"/>
         <source>Reconnecting…</source>
         <translation>Переподключение…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="272"/>
+        <location filename="../app/src/mainwindow.cpp" line="279"/>
         <source>Retrying in %1 s: %2</source>
         <translation>Повторное подключение через %1 с: %2</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="158"/>
+        <location filename="../app/src/mainwindowui.cpp" line="152"/>
         <source>Add</source>
         <translation>Добавить</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="159"/>
+        <location filename="../app/src/mainwindowui.cpp" line="153"/>
         <source>Link</source>
         <translation>Ссылка</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="171"/>
+        <location filename="../app/src/mainwindowui.cpp" line="165"/>
         <source>Connection profiles (Ctrl+K)</source>
         <translation>Профили подключения (Ctrl+K)</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="296"/>
+        <location filename="../app/src/mainwindowui.cpp" line="292"/>
         <source>Hide toolbar</source>
         <translation>Скрыть панель инструментов</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="392"/>
+        <location filename="../app/src/mainwindowui.cpp" line="399"/>
         <location filename="../app/src/torrentlistcontroller.cpp" line="453"/>
         <source>Rename display name…</source>
         <translation>Переименовать отображаемое имя…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="395"/>
+        <location filename="../app/src/mainwindowui.cpp" line="402"/>
         <location filename="../app/src/torrentlistcontroller.cpp" line="457"/>
         <source>Rename on disk…</source>
         <translation>Переименовать на диске…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="480"/>
+        <location filename="../app/src/mainwindowui.cpp" line="487"/>
         <source>Expand all sections</source>
         <translation>Развернуть все разделы</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="482"/>
+        <location filename="../app/src/mainwindowui.cpp" line="489"/>
         <source>Hide filter panel</source>
         <translation>Скрыть панель фильтров</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="164"/>
+        <location filename="../app/src/mainwindowui.cpp" line="158"/>
         <source>Limit</source>
         <translation>Лимит</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="216"/>
+        <location filename="../app/src/mainwindowui.cpp" line="210"/>
         <source>Change queue position</source>
         <translation>Изменить позицию в очереди</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="284"/>
+        <location filename="../app/src/mainwindowui.cpp" line="280"/>
         <source>Icons only</source>
         <translation>Только значки</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="284"/>
+        <location filename="../app/src/mainwindowui.cpp" line="280"/>
         <source>Text beside icons</source>
         <translation>Текст рядом со значками</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="284"/>
+        <location filename="../app/src/mainwindowui.cpp" line="280"/>
         <source>Text under icons</source>
         <translation>Текст под значками</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="161"/>
+        <location filename="../app/src/mainwindowui.cpp" line="155"/>
         <location filename="../app/src/torrentlistcontroller.cpp" line="400"/>
         <location filename="../app/src/torrentactions.cpp" line="87"/>
         <source>Pause</source>
@@ -1607,17 +1607,17 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Загрузка завершена</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="140"/>
-        <location filename="../app/src/mainwindow.cpp" line="259"/>
-        <location filename="../app/src/mainwindow.cpp" line="265"/>
-        <location filename="../app/src/mainwindow.cpp" line="276"/>
+        <location filename="../app/src/mainwindow.cpp" line="147"/>
+        <location filename="../app/src/mainwindow.cpp" line="266"/>
+        <location filename="../app/src/mainwindow.cpp" line="272"/>
+        <location filename="../app/src/mainwindow.cpp" line="283"/>
         <location filename="../app/src/statusbarcontroller.cpp" line="139"/>
         <location filename="../app/src/statusbarcontroller.cpp" line="248"/>
         <source>Disconnected</source>
         <translation>Отключено</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="261"/>
+        <location filename="../app/src/mainwindow.cpp" line="268"/>
         <source>Add queue cleared. Torrents not added: %1.</source>
         <translation>Очередь добавления очищена. Не добавлено торрентов: %1.</translation>
     </message>
@@ -1665,7 +1665,7 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Статистика</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="188"/>
+        <location filename="../app/src/mainwindow.cpp" line="195"/>
         <location filename="../app/src/mainwindowui.cpp" line="54"/>
         <source>Connect</source>
         <translation>Подключить</translation>
@@ -1676,7 +1676,7 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Добавить торрент…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="160"/>
+        <location filename="../app/src/mainwindowui.cpp" line="154"/>
         <location filename="../app/src/torrentlistcontroller.cpp" line="392"/>
         <location filename="../app/src/torrentactions.cpp" line="41"/>
         <location filename="../app/src/torrentactions.cpp" line="81"/>
@@ -1696,8 +1696,8 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Новое имя:</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="518"/>
-        <location filename="../app/src/mainwindowui.cpp" line="167"/>
+        <location filename="../app/src/mainwindow.cpp" line="525"/>
+        <location filename="../app/src/mainwindowui.cpp" line="161"/>
         <source>Options</source>
         <translation>Параметры</translation>
     </message>
@@ -1812,7 +1812,7 @@ Name on disk: %2</source>
         <translation>Старт всех</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="162"/>
+        <location filename="../app/src/mainwindowui.cpp" line="156"/>
         <location filename="../app/src/torrentactions.cpp" line="44"/>
         <location filename="../app/src/torrentactions.cpp" line="103"/>
         <location filename="../app/src/torrentactions.cpp" line="327"/>
@@ -1843,26 +1843,26 @@ Name on disk: %2</source>
         <translation>О программе</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="144"/>
+        <location filename="../app/src/mainwindowui.cpp" line="138"/>
         <source>Main</source>
         <translation>Главное</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="246"/>
+        <location filename="../app/src/mainwindow.cpp" line="253"/>
         <source>Connecting to %1…</source>
         <translation>Подключение к %1…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="196"/>
-        <location filename="../app/src/mainwindow.cpp" line="197"/>
-        <location filename="../app/src/mainwindow.cpp" line="374"/>
+        <location filename="../app/src/mainwindow.cpp" line="203"/>
+        <location filename="../app/src/mainwindow.cpp" line="204"/>
         <location filename="../app/src/mainwindow.cpp" line="381"/>
+        <location filename="../app/src/mainwindow.cpp" line="388"/>
         <location filename="../app/src/statusbarcontroller.cpp" line="248"/>
         <source>Connected</source>
         <translation>подключено</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="275"/>
+        <location filename="../app/src/mainwindow.cpp" line="282"/>
         <location filename="../app/src/connectioncontroller.cpp" line="179"/>
         <source>Connection failed</source>
         <translation>Ошибка подключения</translation>
@@ -1904,7 +1904,7 @@ Reason: %2</source>
         <translation>Удалить вместе с данными</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="163"/>
+        <location filename="../app/src/mainwindowui.cpp" line="157"/>
         <location filename="../app/src/torrentactions.cpp" line="47"/>
         <source>Move</source>
         <translation>Переместить</translation>
@@ -1930,13 +1930,13 @@ Reason: %2</source>
         <translation>Удалить…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="417"/>
+        <location filename="../app/src/mainwindowui.cpp" line="424"/>
         <location filename="../app/src/torrentlistcontroller.cpp" line="491"/>
         <source>Select all</source>
         <translation>Выбрать все</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="357"/>
+        <location filename="../app/src/mainwindowui.cpp" line="364"/>
         <location filename="../app/src/torrentlistcontroller.cpp" line="416"/>
         <source>Priority</source>
         <translation>Приоритет</translation>
@@ -1957,8 +1957,8 @@ Reason: %2</source>
         <translation>Низкий</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="215"/>
-        <location filename="../app/src/mainwindowui.cpp" line="368"/>
+        <location filename="../app/src/mainwindowui.cpp" line="209"/>
+        <location filename="../app/src/mainwindowui.cpp" line="375"/>
         <location filename="../app/src/torrentlistcontroller.cpp" line="425"/>
         <source>Queue</source>
         <translation>Очередь</translation>
@@ -1969,15 +1969,15 @@ Reason: %2</source>
         <translation>Наверх</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="220"/>
-        <location filename="../app/src/mainwindowui.cpp" line="371"/>
+        <location filename="../app/src/mainwindowui.cpp" line="214"/>
+        <location filename="../app/src/mainwindowui.cpp" line="378"/>
         <location filename="../app/src/torrentlistcontroller.cpp" line="428"/>
         <source>Move up</source>
         <translation>Выше</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="221"/>
-        <location filename="../app/src/mainwindowui.cpp" line="373"/>
+        <location filename="../app/src/mainwindowui.cpp" line="215"/>
+        <location filename="../app/src/mainwindowui.cpp" line="380"/>
         <location filename="../app/src/torrentlistcontroller.cpp" line="429"/>
         <source>Move down</source>
         <translation>Ниже</translation>
@@ -1988,12 +1988,12 @@ Reason: %2</source>
         <translation>Проверить…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="507"/>
+        <location filename="../app/src/mainwindowui.cpp" line="514"/>
         <source>Status bar</source>
         <translation>Строка состояния</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="526"/>
+        <location filename="../app/src/mainwindow.cpp" line="533"/>
         <source>Daemon options</source>
         <translation>Параметры демона</translation>
     </message>
@@ -2003,15 +2003,15 @@ Reason: %2</source>
         <translation>Путь не найден: %1</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="177"/>
-        <location filename="../app/src/mainwindowui.cpp" line="332"/>
+        <location filename="../app/src/mainwindowui.cpp" line="171"/>
+        <location filename="../app/src/mainwindowui.cpp" line="339"/>
         <location filename="../app/src/connectioncontroller.cpp" line="224"/>
         <source>Connect to Transmission</source>
         <translation>Подключение к Transmission</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="193"/>
-        <location filename="../app/src/mainwindowui.cpp" line="335"/>
+        <location filename="../app/src/mainwindowui.cpp" line="187"/>
+        <location filename="../app/src/mainwindowui.cpp" line="342"/>
         <source>Manage connections…</source>
         <translation>Управление соединениями…</translation>
     </message>
@@ -2032,7 +2032,7 @@ Reason: %2</source>
         <translation>Изменить расположение данных…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="382"/>
+        <location filename="../app/src/mainwindowui.cpp" line="389"/>
         <source>Reannounce (get more peers)</source>
         <translation>Обновить список пиров</translation>
     </message>
@@ -2052,23 +2052,23 @@ Reason: %2</source>
         <translation>Использовать альтернативный лимит скорости</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="546"/>
+        <location filename="../app/src/mainwindowui.cpp" line="553"/>
         <location filename="../app/src/updatechecker.cpp" line="90"/>
         <source>Check for updates</source>
         <translation>Проверить обновления</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="424"/>
+        <location filename="../app/src/mainwindowui.cpp" line="431"/>
         <source>Folder grouping</source>
         <translation>Группировка по папкам</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="442"/>
+        <location filename="../app/src/mainwindowui.cpp" line="449"/>
         <source>Tracker grouping</source>
         <translation>Группировка по трекерам</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="420"/>
+        <location filename="../app/src/mainwindowui.cpp" line="427"/>
         <location filename="../app/src/torrentlistcontroller.cpp" line="484"/>
         <location filename="../app/src/detailspanel.cpp" line="600"/>
         <location filename="../app/src/detailspanel.cpp" line="693"/>
@@ -2077,37 +2077,37 @@ Reason: %2</source>
         <translation>Настроить колонки…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="358"/>
+        <location filename="../app/src/mainwindowui.cpp" line="365"/>
         <location filename="../app/src/detailspanel.cpp" line="585"/>
         <source>High priority</source>
         <translation>Высокий приоритет</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="360"/>
+        <location filename="../app/src/mainwindowui.cpp" line="367"/>
         <location filename="../app/src/detailspanel.cpp" line="586"/>
         <source>Normal priority</source>
         <translation>Обычный приоритет</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="362"/>
+        <location filename="../app/src/mainwindowui.cpp" line="369"/>
         <location filename="../app/src/detailspanel.cpp" line="587"/>
         <source>Low priority</source>
         <translation>Низкий приоритет</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="219"/>
-        <location filename="../app/src/mainwindowui.cpp" line="369"/>
+        <location filename="../app/src/mainwindowui.cpp" line="213"/>
+        <location filename="../app/src/mainwindowui.cpp" line="376"/>
         <source>Move top</source>
         <translation>Наверх</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="222"/>
-        <location filename="../app/src/mainwindowui.cpp" line="375"/>
+        <location filename="../app/src/mainwindowui.cpp" line="216"/>
+        <location filename="../app/src/mainwindowui.cpp" line="382"/>
         <source>Move bottom</source>
         <translation>Вниз</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="384"/>
+        <location filename="../app/src/mainwindowui.cpp" line="391"/>
         <location filename="../app/src/torrentactions.cpp" line="48"/>
         <location filename="../app/src/torrentactions.cpp" line="551"/>
         <source>Verify</source>
@@ -2234,36 +2234,36 @@ Are you sure to start verification?</source>
         <translation>Тёмная тема</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="133"/>
+        <location filename="../app/src/mainwindowui.cpp" line="307"/>
         <source>Switch to light theme</source>
         <translation>Переключить на светлую тему</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="133"/>
+        <location filename="../app/src/mainwindowui.cpp" line="307"/>
         <source>Switch to dark theme</source>
         <translation>Переключить на тёмную тему</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="245"/>
-        <location filename="../app/src/mainwindowui.cpp" line="246"/>
-        <location filename="../app/src/mainwindowui.cpp" line="255"/>
-        <location filename="../app/src/mainwindowui.cpp" line="267"/>
-        <location filename="../app/src/mainwindowui.cpp" line="267"/>
+        <location filename="../app/src/mainwindowui.cpp" line="239"/>
+        <location filename="../app/src/mainwindowui.cpp" line="240"/>
+        <location filename="../app/src/mainwindowui.cpp" line="249"/>
+        <location filename="../app/src/mainwindowui.cpp" line="261"/>
+        <location filename="../app/src/mainwindowui.cpp" line="261"/>
         <source>Search torrents</source>
         <translation>Поиск торрентов</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="248"/>
+        <location filename="../app/src/mainwindow.cpp" line="255"/>
         <source>Connecting…</source>
         <translation>Подключение…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="279"/>
+        <location filename="../app/src/mainwindow.cpp" line="286"/>
         <source>Authentication required</source>
         <translation>Требуется аутентификация</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="345"/>
+        <location filename="../app/src/mainwindowui.cpp" line="352"/>
         <location filename="../app/src/torrentlistcontroller.cpp" line="396"/>
         <source>Force start</source>
         <translation>Запустить принудительно</translation>
@@ -2294,12 +2294,12 @@ Are you sure to start verification?</source>
         <translation>Задать расположение…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="329"/>
+        <location filename="../app/src/mainwindowui.cpp" line="336"/>
         <source>&amp;Torrent</source>
         <translation>&amp;Торрент</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="352"/>
+        <location filename="../app/src/mainwindowui.cpp" line="359"/>
         <source>Remove torrent and Data</source>
         <translation>Удалить торрент и данные</translation>
     </message>
@@ -2314,37 +2314,37 @@ Are you sure to start verification?</source>
         <translation>Переименовать</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="409"/>
+        <location filename="../app/src/mainwindowui.cpp" line="416"/>
         <source>E&amp;xit</source>
         <translation>В&amp;ыход</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="415"/>
+        <location filename="../app/src/mainwindowui.cpp" line="422"/>
         <source>&amp;View</source>
         <translation>&amp;Вид</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="434"/>
+        <location filename="../app/src/mainwindowui.cpp" line="441"/>
         <source>Label grouping</source>
         <translation>Группировка по меткам</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="498"/>
+        <location filename="../app/src/mainwindowui.cpp" line="505"/>
         <source>Toolbar</source>
         <translation>Панель инструментов</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="533"/>
+        <location filename="../app/src/mainwindowui.cpp" line="540"/>
         <source>T&amp;ools</source>
         <translation>&amp;Инструменты</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="540"/>
+        <location filename="../app/src/mainwindowui.cpp" line="547"/>
         <source>Update blocklist</source>
         <translation>Обновить блок-лист</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="542"/>
+        <location filename="../app/src/mainwindowui.cpp" line="549"/>
         <location filename="../app/src/geoipupdater.cpp" line="44"/>
         <location filename="../app/src/geoipupdater.cpp" line="79"/>
         <location filename="../app/src/geoipupdater.cpp" line="95"/>
@@ -2389,23 +2389,23 @@ Download this database now?</source>
         <translation>База GeoIP загружена.</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="545"/>
+        <location filename="../app/src/mainwindowui.cpp" line="552"/>
         <source>&amp;Help</source>
         <translation>&amp;Справка</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="548"/>
+        <location filename="../app/src/mainwindowui.cpp" line="555"/>
         <source>Visit home page</source>
         <translation>Посетить домашнюю страницу</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="550"/>
+        <location filename="../app/src/mainwindowui.cpp" line="557"/>
         <source>Development site</source>
         <translation>Сайт разработки</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="432"/>
-        <location filename="../app/src/mainwindow.cpp" line="447"/>
+        <location filename="../app/src/mainwindow.cpp" line="439"/>
+        <location filename="../app/src/mainwindow.cpp" line="454"/>
         <source>INI files (*.ini)</source>
         <translation>INI-файлы (*.ini)</translation>
     </message>
@@ -2430,23 +2430,23 @@ Download this database now?</source>
         <translation>Для сервера «%1» не задан адрес (host).</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="526"/>
+        <location filename="../app/src/mainwindow.cpp" line="533"/>
         <location filename="../app/src/addtorrentcoordinator.cpp" line="177"/>
         <source>Not connected to the daemon.</source>
         <translation>Нет подключения к демону.</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="539"/>
+        <location filename="../app/src/mainwindow.cpp" line="546"/>
         <source>Applying daemon options…</source>
         <translation>Применение параметров демона…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="535"/>
+        <location filename="../app/src/mainwindow.cpp" line="542"/>
         <source>No changes to apply.</source>
         <translation>Нет изменений для применения.</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="519"/>
+        <location filename="../app/src/mainwindow.cpp" line="526"/>
         <source>Language or interface scale changed. Restart the application to apply the new value.</source>
         <translation>Изменены язык или масштаб интерфейса. Перезапустите приложение, чтобы применить новое значение.</translation>
     </message>
@@ -2457,7 +2457,7 @@ Download this database now?</source>
         <translation>Отключиться от Transmission</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="388"/>
+        <location filename="../app/src/mainwindowui.cpp" line="395"/>
         <source>Choose label…</source>
         <translation>Выбрать метку…</translation>
     </message>
@@ -2467,58 +2467,58 @@ Download this database now?</source>
         <translation>Метка: %1</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="400"/>
+        <location filename="../app/src/mainwindowui.cpp" line="407"/>
         <source>Export settings…</source>
         <translation>Экспорт настроек…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="431"/>
         <location filename="../app/src/mainwindow.cpp" line="438"/>
+        <location filename="../app/src/mainwindow.cpp" line="445"/>
         <source>Export settings</source>
         <translation>Экспорт настроек</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="402"/>
+        <location filename="../app/src/mainwindowui.cpp" line="409"/>
         <source>Import settings…</source>
         <translation>Импорт настроек…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="447"/>
-        <location filename="../app/src/mainwindow.cpp" line="452"/>
-        <location filename="../app/src/mainwindow.cpp" line="455"/>
-        <location filename="../app/src/mainwindow.cpp" line="464"/>
+        <location filename="../app/src/mainwindow.cpp" line="454"/>
+        <location filename="../app/src/mainwindow.cpp" line="459"/>
+        <location filename="../app/src/mainwindow.cpp" line="462"/>
+        <location filename="../app/src/mainwindow.cpp" line="471"/>
         <source>Import settings</source>
         <translation>Импорт настроек</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="441"/>
+        <location filename="../app/src/mainwindow.cpp" line="448"/>
         <source>Settings exported to: %1</source>
         <translation>Настройки экспортированы: %1</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="473"/>
+        <location filename="../app/src/mainwindow.cpp" line="480"/>
         <source>Settings imported. Restart to apply.</source>
         <translation>Настройки импортированы. Перезапустите для применения.</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="456"/>
+        <location filename="../app/src/mainwindow.cpp" line="463"/>
         <source>Import settings from file? Current settings will be overwritten.
 Restart the application to apply the changes.</source>
         <translation>Импортировать настройки из файла? Текущие настройки будут перезаписаны.
 Перезапустите приложение, чтобы применить изменения.</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="466"/>
+        <location filename="../app/src/mainwindowui.cpp" line="473"/>
         <source>Filter panel</source>
         <translation>Панель фильтров</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="487"/>
+        <location filename="../app/src/mainwindowui.cpp" line="494"/>
         <source>Info panel</source>
         <translation>Панель информации</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindowui.cpp" line="520"/>
+        <location filename="../app/src/mainwindowui.cpp" line="527"/>
         <source>Menu</source>
         <translation>Меню</translation>
     </message>
