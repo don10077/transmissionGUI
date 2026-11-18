@@ -18,6 +18,7 @@ add_executable(tgui_tests
     test_rpcclient.cpp
     test_addlinkdialog.cpp
     test_fileselectdialog.cpp
+    test_displaynames.cpp
     test_torrentreplacement.cpp
     test_i18n.cpp
     test_optionsdialog.cpp

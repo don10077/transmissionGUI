@@ -92,7 +92,7 @@ inline std::optional<QVariantMap> read(const QString& path)
     if (values.isEmpty())
         return std::nullopt;
     const QStringList groups{"ui/", "connection/", "daemons/", "paths/", "downloads/",
-                             "columns/", "files/", "trackers/", "peers/", "labels/"};
+                             "columns/", "files/", "trackers/", "peers/", "labels/", "displayNames/"};
     for (auto it = values.cbegin(); it != values.cend(); ++it) {
         if (!it.value().isValid() || (it.key() != "lastAddLink" &&
             std::none_of(groups.cbegin(), groups.cend(), [&](const auto& group) { return it.key().startsWith(group); })))

@@ -62,7 +62,12 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
                     else if (refresh == TorrentActions::RefreshAfter::Properties)
                         m_details.refreshFilesDetails();
                 },
-                [this] { m_list.updateFilterPanel(m_list.model().torrents()); })
+                [this] { m_list.updateFilterPanel(m_list.model().torrents()); },
+                [this] {
+                    m_list.refreshDisplayNames();
+                    m_details.applySnapshot(currentId(), m_connection.isReconnecting());
+                    m_status.updateStatusBarTotals();
+                })
     , m_add(*this, m_connection, m_list.model(), m_watchService, [this] { return currentId(); })
     , m_clipboard(*this, m_list.model(), [this] { return m_connection.isConnected() ? m_connection.client() : nullptr; },
                   [this](const auto& params) { m_add.startAdd(params); })
@@ -87,6 +92,12 @@ MainWindow::MainWindow(QWidget* parent, const tgui::RpcClient::Options& startupO
                        [this] { m_status.updateStatusBarTotals(); },
                        [this] { updateLabelUi(); },
                        [this](const QString& message) { emit downloadNotification(message); });
+    const auto refreshDisplayNames = [this] {
+        m_list.refreshDisplayNames();
+        m_details.applySnapshot(currentId(), m_connection.isReconnecting());
+        m_status.updateStatusBarTotals();
+    };
+    connect(&m_add, &AddTorrentCoordinator::displayNamesChanged, this, refreshDisplayNames);
     m_list.updateFilterPanel(m_list.model().torrents());
     m_tray = std::make_unique<TrayController>(*this, m_status, *m_actions.startAllAction(), *m_actions.stopAllAction(), *m_actRefresh);
     connect(this, &MainWindow::downloadNotification, m_tray.get(), &TrayController::downloadCompleted);

@@ -28,6 +28,7 @@
 #include <cmath>
 
 #include "theme.h"
+#include "displaynames.h"
 #include "torrentlabels.h"
 #include "torrentmodel.h"
 #include "tgui/util.h"
@@ -601,12 +602,13 @@ void PropsForm::rebuild()
     QString name = t.name.value_or(dash());
     if (t.downloadDir.has_value() && !t.downloadDir->isEmpty())
         name = *t.downloadDir + QStringLiteral("/") + name;
-    makeCell(tgrid, 0, 0, tr("Name"), name);
+    makeCell(tgrid, 0, 0, tr("Display name"), displaynames::effectiveName(t));
+    makeCell(tgrid, 0, 2, tr("Name on disk"), name);
 
     QString created = fmtUnixTime(t.dateCreated.value_or(0));
     if (t.creator.has_value() && !t.creator->isEmpty())
         created = tr("%1 by %2").arg(created, *t.creator); // целая фраза (I18N-03)
-    makeCell(tgrid, 0, 2, tr("Created on"), created);
+    makeCell(tgrid, 1, 0, tr("Created on"), created);
 
     const QString totalSizeText = (swd > 0.0)
                                       ? QStringLiteral("%1 (%2 %3)")
@@ -614,7 +616,7 @@ void PropsForm::rebuild()
                                             .arg(fmtSize(swd - ltd))
                                             .arg(tr("done"))
                                       : dash();
-    makeCell(tgrid, 1, 0, tr("Total size"), totalSizeText);
+    makeCell(tgrid, 1, 2, tr("Total size"), totalSizeText);
 
     QString pieces = dash();
     if (t.pieceCount.has_value()) {
@@ -629,12 +631,12 @@ void PropsForm::rebuild()
                      .arg(tr("have"))
                      .arg(have >= 0 ? QString::number(have) : dash());
     }
-    makeCell(tgrid, 1, 2, tr("Pieces"), pieces);
+    makeCell(tgrid, 2, 0, tr("Pieces"), pieces);
 
-    makeCell(tgrid, 2, 0, tr("Hash"), t.hashString.value_or(dash()));
-    makeCell(tgrid, 2, 2, tr("Comment"), t.comment.value_or(dash()));
-    makeCell(tgrid, 3, 0, tr("Added on"), fmtUnixTime(t.addedDate.value_or(0)));
-    makeCell(tgrid, 3, 2, tr("Completed on"), fmtUnixTime(t.doneDate.value_or(0)));
+    makeCell(tgrid, 2, 2, tr("Hash"), t.hashString.value_or(dash()));
+    makeCell(tgrid, 3, 0, tr("Comment"), t.comment.value_or(dash()));
+    makeCell(tgrid, 3, 2, tr("Added on"), fmtUnixTime(t.addedDate.value_or(0)));
+    makeCell(tgrid, 4, 0, tr("Completed on"), fmtUnixTime(t.doneDate.value_or(0)));
     const QString magnetText = t.magnetLink.value_or(dash());
     const QUrl magnetUrl(magnetText, QUrl::StrictMode);
     const QUrl openMagnet = magnetUrl.isValid() && magnetUrl.scheme() == QStringLiteral("magnet")

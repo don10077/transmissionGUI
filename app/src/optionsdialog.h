@@ -22,6 +22,7 @@ class OptionsDialog : public QDialog {
 public:
     static constexpr char skipAddDialogKey[] = "downloads/skipAddDialog";
     static constexpr char deleteSourceTorrentKey[] = "downloads/deleteSourceTorrent";
+    static constexpr char showDisplayNameKey[] = "downloads/showDisplayName";
     static constexpr char clipboardLinksKey[] = "downloads/clipboardLinks";
     static constexpr char watchFolderKey[] = "downloads/watchFolder";
     static constexpr char watchDestinationKey[] = "downloads/watchDestination";
@@ -88,6 +89,7 @@ private:
     QCheckBox* m_autoSequential = nullptr;
     QCheckBox* m_skipAddDialog = nullptr;
     QCheckBox* m_deleteSourceTorrent = nullptr;
+    QCheckBox* m_showDisplayName = nullptr;
     QCheckBox* m_clipboardLinks = nullptr;
     QLineEdit* m_watchFolder = nullptr;
     QLineEdit* m_watchDestination = nullptr;

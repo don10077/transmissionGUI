@@ -61,6 +61,9 @@ struct Torrent {
     int id = 0;
 
     std::optional<QString> name;
+    // Пользовательское отображаемое имя (TransmissionGUI, не RPC). Хранится
+    // локально по info-hash и заполняется при получении списка торрентов.
+    QString displayName;
     std::optional<int> status;
     std::optional<QString> errorString;
     std::optional<double> recheckProgress;         // 0..1

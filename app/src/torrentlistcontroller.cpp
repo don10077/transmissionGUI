@@ -27,6 +27,7 @@
 #include "connectioncontroller.h"
 #include "delegates.h"
 #include "daemonprofile.h"
+#include "displaynames.h"
 #include "settingsbackup.h"
 #include "externalopen.h"
 #include "filterpanel.h"
@@ -163,6 +164,15 @@ void TorrentListController::clear()
     updateFilterPanel(m_model.torrents());
 }
 
+/** Перечитывает локальные отображаемые имена без запроса к демону. */
+void TorrentListController::refreshDisplayNames()
+{
+    auto torrents = m_model.torrents();
+    for (auto& torrent : torrents)
+        displaynames::apply(torrent);
+    m_model.setTorrents(torrents);
+}
+
 void TorrentListController::suspendLayoutSave()
 {
     m_saveSuspended = true;
@@ -171,14 +181,18 @@ void TorrentListController::suspendLayoutSave()
 
 TorrentListController::Selection TorrentListController::applySnapshot(const QVector<tgui::Torrent>& torrents, int prevId)
 {
+    QVector<tgui::Torrent> enriched = torrents;
+    for (auto& torrent : enriched)
+        displaynames::apply(torrent);
+
     if (QSettings().value("ui/trayNotify", false).toBool()) {
         QStringList completed;
-        for (const auto& torrent : torrents) {
+        for (const auto& torrent : enriched) {
             const auto* old = m_model.torrentById(torrent.id);
             if (old && old->status.value_or(-1) == static_cast<int>(tgui::TorrentStatus::Download) && old->leftUntilDone.value_or(0) > 0 &&
                 torrent.leftUntilDone && *torrent.leftUntilDone == 0 &&
                 torrent.sizeWhenDone.value_or(0) > 0 && torrent.status.value_or(-1) != 2) {
-                completed.append(torrent.name.value_or(QString::number(torrent.id)));
+                completed.append(displaynames::effectiveName(torrent));
             }
         }
         if (!completed.isEmpty())
@@ -189,7 +203,7 @@ TorrentListController::Selection TorrentListController::applySnapshot(const QVec
 
     const bool firstLoad = m_model.rowCount() == 0;
     m_refreshing = true;
-    m_model.setTorrents(torrents);
+    m_model.setTorrents(enriched);
     updateFilterPanel(m_model.torrents());
 
     auto* selection = m_view->selectionModel();
@@ -436,8 +450,12 @@ void TorrentListController::onContextMenu(const QPoint& pos)
     actMove->setShortcut(QKeySequence(Qt::Key_F6));
     actMove->setEnabled(hasSel);
     connectSelectionAction(actMove, [this] { m_actions->onMoveSelected(); });
-    auto* actRename = menu->addAction(tr("Rename…"));
-    actRename->setShortcut(QKeySequence(Qt::Key_F2));
+    auto* actDisplayName = menu->addAction(tr("Rename display name…"));
+    actDisplayName->setShortcut(QKeySequence(Qt::Key_F2));
+    actDisplayName->setEnabled(hasSel);
+    connectSelectionAction(actDisplayName, [this] { m_actions->onRenameDisplayNameSelected(); });
+    auto* actRename = menu->addAction(tr("Rename on disk…"));
+    actRename->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F2));
     actRename->setEnabled(hasSel);
     connectSelectionAction(actRename, [this] { m_actions->onRenameSelected(); });
     menu->addSeparator();

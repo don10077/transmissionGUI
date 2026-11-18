@@ -28,7 +28,7 @@ public:
     TorrentActions(QMainWindow& window, const ConnectionController& connection,
                    const TorrentModel& model, StatusBarController& status, QStringList& labels,
                    Selection selection, CurrentTorrent current, RefreshDetails refresh,
-                   std::function<void()> labelsChanged);
+                   std::function<void()> labelsChanged, std::function<void()> displayNamesChanged = {});
 
     /** Создаёт общие действия главного меню и панели инструментов. */
     void createActions();
@@ -76,6 +76,7 @@ public:
     void onStartForceSelected();
     void onUpdateBlocklist();
     void onRenameSelected();
+    void onRenameDisplayNameSelected();
     void onPriorityHigh();
     void onPriorityNormal();
     void onPriorityLow();
@@ -84,7 +85,8 @@ public:
                                                         RefreshAfter refresh, int id = -1,
                                                         const QString& successMessage = {});
     void runTorrentAction(const QString& method, const QVector<int>& ids,
-                          const QJsonObject& params = {});
+                          const QJsonObject& params = {},
+                          std::function<void()> onSuccess = {});
     /** Открывает свойства торрента на указанной вкладке. */
     void showProperties(int id, int page);
 
@@ -107,6 +109,7 @@ private:
     CurrentTorrent m_currentId;
     RefreshDetails m_refreshDetails;
     std::function<void()> m_labelsChanged;
+    std::function<void()> m_displayNamesChanged;
     // Ожидание подтверждённого нового downloadDir после переноса.
     QVector<int> m_movePendingIds;
     QString m_movePendingTarget;

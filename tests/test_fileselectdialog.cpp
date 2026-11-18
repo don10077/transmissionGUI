@@ -11,9 +11,12 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QSettings>
+#include <QTest>
 #include <QTreeWidget>
 
 #include "fileselectdialog.h"
+#include "optionsdialog.h"
 #include "tgui/util.h"
 
 namespace {
@@ -253,4 +256,45 @@ TEST(FileSelectDialog, StartAndSequentialOptions)
     ASSERT_NE(oldSequential, nullptr);
     EXPECT_FALSE(oldSequential->isEnabled());
     EXPECT_FALSE(old.sequentialDownload());
+}
+
+TEST(FileSelectDialog, DisplayNameFollowsSaveAsUntilEditedManually)
+{
+    QSettings().setValue(OptionsDialog::showDisplayNameKey, true);
+    auto details = makeDetails();
+    details.name = QStringLiteral("Original");
+    FileSelectDialog dlg(details, true, 18);
+
+    auto* saveAs = dlg.findChild<QLineEdit*>(QStringLiteral("saveAs"));
+    auto* display = dlg.findChild<QLineEdit*>(QStringLiteral("displayName"));
+    ASSERT_NE(saveAs, nullptr);
+    ASSERT_NE(display, nullptr);
+    EXPECT_EQ(display->text(), QStringLiteral("Original"));
+    EXPECT_FALSE(dlg.displayNameEdited());
+
+    // До ручной правки поле повторяет «Сохранить как».
+    saveAs->setText(QStringLiteral("Renamed"));
+    EXPECT_EQ(display->text(), QStringLiteral("Renamed"));
+    EXPECT_EQ(dlg.displayName(), QStringLiteral("Renamed"));
+
+    display->setCursorPosition(display->text().size());
+    QTest::keyClicks(display, QStringLiteral(" X"));
+    EXPECT_TRUE(dlg.displayNameEdited());
+    const QString edited = display->text();
+    saveAs->setText(QStringLiteral("Later"));
+    EXPECT_EQ(display->text(), edited);
+
+    display->setText(QStringLiteral("  spaced  "));
+    EXPECT_EQ(dlg.displayName(), QStringLiteral("spaced"));
+    QSettings().setValue(OptionsDialog::showDisplayNameKey, true);
+}
+
+TEST(FileSelectDialog, DisplayNameFieldCanBeHidden)
+{
+    QSettings().setValue(OptionsDialog::showDisplayNameKey, false);
+    FileSelectDialog dlg(makeDetails(), true, 18);
+    EXPECT_EQ(dlg.findChild<QLineEdit*>(QStringLiteral("displayName")), nullptr);
+    EXPECT_TRUE(dlg.displayName().isEmpty());
+    EXPECT_FALSE(dlg.displayNameEdited());
+    QSettings().setValue(OptionsDialog::showDisplayNameKey, true);
 }

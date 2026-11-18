@@ -36,6 +36,10 @@ public:
     bool sequentialDownload() const;
     tgui::RpcClient::AddTorrent options() const;
     QString saveAs() const;
+    /** Введённое отображаемое имя (обрезанное, до 255 символов). */
+    QString displayName() const;
+    /** Пользователь вручную менял поле отображаемого имени. */
+    bool displayNameEdited() const { return m_displayNameEdited; }
 
     QTreeWidget* tree() const { return m_tree; }
 
@@ -58,6 +62,7 @@ private:
     QComboBox* m_destination;
     QComboBox* m_label = nullptr;
     QLineEdit* m_saveAs;
+    QLineEdit* m_displayName = nullptr;
     QLineEdit* m_template;
     QSpinBox* m_peerLimit;
     QCheckBox* m_start;
@@ -69,4 +74,5 @@ private:
     QPointer<tgui::RpcClient> m_rpc;
     QVariantMap m_history;
     bool m_updating = false;
+    bool m_displayNameEdited = false;
 };

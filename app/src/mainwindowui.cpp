@@ -365,8 +365,11 @@ void MainWindow::createMenus()
     m_details.generalForm()->setEditLabelsAction(m_actChooseLabel);
     m_actChooseLabel->setShortcut(QKeySequence(Qt::Key_F7));
     connect(m_actChooseLabel, &QAction::triggered, &m_actions, &TorrentActions::onSetLabels);
-    auto* actRename = mTorrent->addAction(tr("Rename"));
-    actRename->setShortcut(QKeySequence(Qt::Key_F2));
+    auto* actDisplayName = mTorrent->addAction(tr("Rename display name…"));
+    actDisplayName->setShortcut(QKeySequence(Qt::Key_F2));
+    connect(actDisplayName, &QAction::triggered, &m_actions, &TorrentActions::onRenameDisplayNameSelected);
+    auto* actRename = mTorrent->addAction(tr("Rename on disk…"));
+    actRename->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F2));
     connect(actRename, &QAction::triggered, &m_actions, &TorrentActions::onRenameSelected);
     mTorrent->addAction(m_actions.propertiesAction());
     mTorrent->addSeparator();

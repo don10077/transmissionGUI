@@ -55,6 +55,8 @@ public:
 signals:
     void torrentAdded(int id);
     void readError(const QString& what, const QString& error);
+    /** Локальные отображаемые имена изменились. */
+    void displayNamesChanged();
 
 private:
     struct PendingAdd {
@@ -67,12 +69,15 @@ private:
         QString saveAs;
         QVector<int> unwanted;
         QVector<tgui::FileStat> files;
+        QString displayName;
+        bool displayNameEdited = false;
     };
     void addNextTorrent();
     void submitTorrent(PendingAdd pending, QByteArray sourceBytes = {},
                        std::optional<AddChoices> choices = {});
     void offerDuplicateUpdate(const tgui::RpcClient::AddTorrent& source,
-                              const QJsonObject& duplicate, const QByteArray& metainfo);
+                              const QJsonObject& duplicate, const QByteArray& metainfo,
+                              const QString& displayName = {});
     void finishAdd(const QPointer<tgui::RpcClient>& rpc, int selectedId = -1);
 
     QMainWindow& m_window;

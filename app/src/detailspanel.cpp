@@ -24,6 +24,7 @@
 #include "colsetup.h"
 #include "connectioncontroller.h"
 #include "delegates.h"
+#include "displaynames.h"
 #include "flagimageloader.h"
 #include "geoipupdater.h"
 #include "propsform.h"
@@ -334,14 +335,16 @@ void DetailsPanel::updateInfoTitleWithCount(qsizetype count)
         m_peerEmpty->setVisible(m_currentId >= 0 && m_peerModel.rowCount() == 0);
     if (!m_infoTitle)
         return;
-    QString title = torrent ? torrent->name.value_or(QString()) : QString();
+    QString title = torrent ? displaynames::effectiveName(*torrent) : QString();
     if (!title.isEmpty()) {
         if (count > 1)
             title += QLatin1Char(' ') + tr("(%1 more)").arg(count - 1); // без ведущего пробела в строке (I18N-03)
     }
     const int textWidth = qMax(0, qMin(360, this->width() * 45 / 100) - 16);
     m_infoTitle->setText(m_infoTitle->fontMetrics().elidedText(title, Qt::ElideRight, textWidth));
-    m_infoTitle->setToolTip(title);
+    const auto diskName = torrent ? torrent->name.value_or(QString()) : QString();
+    m_infoTitle->setToolTip(diskName.isEmpty() || diskName == displaynames::effectiveName(*torrent) ? title
+        : tr("%1\nName on disk: %2").arg(title, diskName));
 }
 
 void DetailsPanel::refreshFilesDetails()

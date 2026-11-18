@@ -1,4 +1,5 @@
 #include "fileselectdialog.h"
+#include "displaynames.h"
 #include "optionsdialog.h"
 #include "theme.h"
 #include "torrentlabels.h"
@@ -160,6 +161,22 @@ FileSelectDialog::FileSelectDialog(const tgui::TorrentDetails& details, bool sta
     m_saveAs->setObjectName(QStringLiteral("saveAs"));
     m_saveAs->setEnabled(rpcVersion >= tgui::kRpcFreeSpace && !details.files.isEmpty());
     tgui::theme::addFormRow(form, tr("Save as:"), m_saveAs);
+
+    if (QSettings().value(OptionsDialog::showDisplayNameKey, true).toBool()) {
+        m_displayName = new QLineEdit(details.name, this);
+        m_displayName->setObjectName(QStringLiteral("displayName"));
+        m_displayName->setMaxLength(displaynames::maxLength);
+        m_displayName->setToolTip(tr("Shown in the torrent list instead of the name on disk"));
+        tgui::theme::addFormRow(form, tr("Display name:"), m_displayName);
+        // Пока поле не правили вручную, оно повторяет «Сохранить как».
+        connect(m_saveAs, &QLineEdit::textChanged, this, [this](const QString& text) {
+            if (m_displayName && !m_displayNameEdited)
+                m_displayName->setText(text);
+        });
+        connect(m_displayName, &QLineEdit::textEdited, this, [this] {
+            m_displayNameEdited = true;
+        });
+    }
 
     // Порядок строк как в макете: «Сохранить как», «Метка», «Лимит пиров».
     const auto labels = torrentlabels::configured();
@@ -478,6 +495,8 @@ void FileSelectDialog::offerReplacement(const QVector<tgui::Torrent>& torrents, 
         m_destination->setEnabled(!checked && canChangeFolder);
         m_browse->setEnabled(!checked && canChangeFolder);
         m_saveAs->setEnabled(!checked && canRename);
+        if (m_displayName)
+            m_displayName->setEnabled(!checked);
         if (checked) {
             search->setFocus();
             search->selectAll();
@@ -540,6 +559,11 @@ tgui::RpcClient::AddTorrent FileSelectDialog::options() const
 QString FileSelectDialog::saveAs() const
 {
     return m_saveAs->isEnabled() ? m_saveAs->text().trimmed() : QString();
+}
+
+QString FileSelectDialog::displayName() const
+{
+    return m_displayName ? displaynames::normalize(m_displayName->text()) : QString{};
 }
 
 void FileSelectDialog::accept()

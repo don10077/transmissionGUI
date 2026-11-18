@@ -100,6 +100,10 @@ OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion, tgui::RpcClient* r
     m_deleteSourceTorrent->setObjectName(QStringLiteral("deleteSourceTorrent"));
     m_deleteSourceTorrent->setChecked(QSettings().value(deleteSourceTorrentKey, false).toBool());
     tgui::theme::addFullRow(addForm, m_deleteSourceTorrent);
+    m_showDisplayName = new QCheckBox(tr("Show the display name field when adding a torrent"), addGroup);
+    m_showDisplayName->setObjectName(QStringLiteral("showDisplayName"));
+    m_showDisplayName->setChecked(QSettings().value(showDisplayNameKey, true).toBool());
+    tgui::theme::addFullRow(addForm, m_showDisplayName);
     m_clipboardLinks = new QCheckBox(tr("Automatically add links from the clipboard"), addGroup);
     m_clipboardLinks->setObjectName(QStringLiteral("clipboardLinks"));
     m_clipboardLinks->setChecked(QSettings().value(clipboardLinksKey, false).toBool());
@@ -637,6 +641,7 @@ bool OptionsDialog::apply()
     // В макете флажок «Показывать окно…»; ключ хранит обратное значение.
     s.setValue(skipAddDialogKey, !m_skipAddDialog->isChecked());
     s.setValue(deleteSourceTorrentKey, m_deleteSourceTorrent->isChecked());
+    s.setValue(showDisplayNameKey, m_showDisplayName->isChecked());
     s.setValue(clipboardLinksKey, m_clipboardLinks->isChecked());
     s.setValue(watchFolderKey, m_watchFolder->text().trimmed());
     s.setValue(watchDestinationKey, m_watchDestination->text().trimmed());

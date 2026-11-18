@@ -54,6 +54,8 @@ public:
     void clear();
     /** Прекращает сохранение ширин после импорта настроек. */
     void suspendLayoutSave();
+    /** Обновляет отображаемые имена после локального изменения. */
+    void refreshDisplayNames();
 
     void updateFilterPanel(const QVector<tgui::Torrent>& torrents);
     QVector<int> selectedTorrentIds() const;

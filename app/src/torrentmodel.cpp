@@ -8,6 +8,7 @@
 #include <limits>
 #include <utility>
 
+#include "displaynames.h"
 #include "theme.h"
 #include "tgui/util.h"
 
@@ -333,6 +334,12 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
 
     if (role == Qt::ToolTipRole) {
         const QString error = tgui::torrentError(t);
+        if (col == ColName && !t.displayName.isEmpty() &&
+            t.displayName != t.name.value_or(QString())) {
+            const QString tooltip = tr("Display name: %1\nName on disk: %2")
+                                        .arg(t.displayName, t.name.value_or(QString()));
+            return error.isEmpty() ? tooltip : error + QLatin1Char('\n') + tooltip;
+        }
         if (col == ColLabels && t.labels && !t.labels->isEmpty()) {
             const QString labels = t.labels->join(QStringLiteral(", "));
             return error.isEmpty() ? labels : error + QLatin1Char('\n') + labels;
@@ -386,7 +393,7 @@ QVariant TorrentModel::data(const QModelIndex& index, int role) const
 
     switch (col) {
         case ColName:
-            return t.name.value_or(QString());
+            return displaynames::effectiveName(t);
         case ColSize:
             return t.totalSize
                        ? QString::fromStdString(tgui::formatSize(t.totalSize.value()))
@@ -546,7 +553,7 @@ QVariant TorrentModel::sortKey(const tgui::Torrent& t, int column)
 {
     switch (column) {
         case ColName:
-            return t.name.value_or(QString());
+            return displaynames::effectiveName(t);
         case ColSize:
             return t.totalSize.value_or(t.sizeWhenDone.value_or(0.0));
         case ColDone:
@@ -712,7 +719,8 @@ bool TorrentFilterProxy::filterAcceptsRow(int row, const QModelIndex& parent) co
         (t.trackerStats.isEmpty() || t.trackerStats.first().announce != m_tracker))
         return false;
     if (!m_search.isEmpty() &&
-        !t.name.value_or(QString()).contains(m_search, Qt::CaseInsensitive))
+        !t.name.value_or(QString()).contains(m_search, Qt::CaseInsensitive) &&
+        !t.displayName.contains(m_search, Qt::CaseInsensitive))
         return false;
     return true;
 }

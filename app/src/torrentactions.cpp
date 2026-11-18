@@ -20,6 +20,7 @@
 
 #include "connectioncontroller.h"
 #include "daemonprofile.h"
+#include "displaynames.h"
 #include "movedialog.h"
 #include "pathmap.h"
 #include "optionsdialog.h"
@@ -61,10 +62,11 @@ constexpr int kMoveDeadlineWithDataMs = 120000; // ожидание длител
 TorrentActions::TorrentActions(QMainWindow& window, const ConnectionController& connection,
                                const TorrentModel& model, StatusBarController& status, QStringList& labels,
                                Selection selection, CurrentTorrent current, RefreshDetails refresh,
-                               std::function<void()> labelsChanged)
+                               std::function<void()> labelsChanged, std::function<void()> displayNamesChanged)
     : m_window(window), m_connection(connection), m_model(model), m_status(status), m_labels(labels),
       m_selection(std::move(selection)), m_currentId(std::move(current)),
-      m_refreshDetails(std::move(refresh)), m_labelsChanged(std::move(labelsChanged))
+      m_refreshDetails(std::move(refresh)), m_labelsChanged(std::move(labelsChanged)),
+      m_displayNamesChanged(std::move(displayNamesChanged))
 {
     // После переноса демон может ответить раньше, чем обновится список.
     m_moveVerifyTimer.setSingleShot(true);
@@ -199,10 +201,17 @@ tgui::RpcClient::RequestCallback TorrentActions::afterTorrentChange(const QStrin
 
 /** Отправляет весь выбор одним RPC с обновлением списка по подтверждению. */
 void TorrentActions::runTorrentAction(const QString& method, const QVector<int>& ids,
-                                  const QJsonObject& params)
+                                  const QJsonObject& params, std::function<void()> onSuccess)
 {
-    if (m_connection.client() && m_connection.isConnected() && !ids.isEmpty())
-        m_connection.client()->torrentAction(method, ids, params, afterTorrentChange(method, RefreshAfter::List));
+    if (!m_connection.client() || !m_connection.isConnected() || ids.isEmpty())
+        return;
+    auto callback = afterTorrentChange(method, RefreshAfter::List);
+    m_connection.client()->torrentAction(method, ids, params,
+        [callback = std::move(callback), onSuccess = std::move(onSuccess)](const tgui::JsonRpcResult& result) {
+            if (result.ok && onSuccess)
+                onSuccess();
+            callback(result);
+        });
 }
 
 /** Открывает свойства конкретного торрента на указанной вкладке. */
@@ -219,7 +228,9 @@ void TorrentActions::showProperties(int id, int page)
             onReadError(tr("Properties"), tr("Torrent not found."));
             return;
         }
-        PropsDialog dialog(*detail, &m_window, rpc->rpcVersion(), page);
+        auto torrent = *detail;
+        displaynames::apply(torrent);
+        PropsDialog dialog(torrent, &m_window, rpc->rpcVersion(), page);
         if (dialog.exec() == QDialog::Accepted && rpc && rpc == m_connection.client() && m_connection.isConnected() &&
             !dialog.changes().isEmpty()) {
             rpc->torrentAction("torrent-set", {id}, dialog.changes(),
@@ -305,6 +316,10 @@ void TorrentActions::onRemoveSelected()
         return;
 
     const QPointer<tgui::RpcClient> rpc(m_connection.client());
+    QStringList hashes;
+    for (const int id : ids)
+        if (const auto* torrent = m_model.torrentById(id); torrent && torrent->hashString)
+            hashes.append(*torrent->hashString);
     QMessageBox box(QMessageBox::Question, tr("Remove torrents"),
                  tr("Remove %n torrent(s) from the daemon's list?", nullptr, static_cast<int>(ids.size())),
                  QMessageBox::Cancel, &m_window);
@@ -315,7 +330,10 @@ void TorrentActions::onRemoveSelected()
     box.setDefaultButton(QMessageBox::Cancel);
     box.exec();
     if (rpc && box.clickedButton() == remove)
-        runTorrentAction("torrent-remove", ids);
+        runTorrentAction("torrent-remove", ids, {}, [hashes] {
+            for (const auto& hash : hashes)
+                displaynames::remove(hash);
+        });
 }
 
 void TorrentActions::onShowProperties()
@@ -502,6 +520,10 @@ void TorrentActions::onRemoveWithDataSelected()
     if (ids.isEmpty())
         return;
     const QPointer<tgui::RpcClient> rpc(m_connection.client());
+    QStringList hashes;
+    for (const int id : ids)
+        if (const auto* torrent = m_model.torrentById(id); torrent && torrent->hashString)
+            hashes.append(*torrent->hashString);
     auto* box = new QMessageBox(&m_window);
     box->setWindowTitle(tr("Remove with data"));
     box->setIconPixmap(tgui::theme::icon(tgui::theme::Icon::Warning).pixmap(QSize(32, 32), m_window.devicePixelRatioF()));
@@ -514,7 +536,10 @@ void TorrentActions::onRemoveWithDataSelected()
     const int r = box->exec();
     box->deleteLater();
     if (rpc && r == QMessageBox::Yes)
-        runTorrentAction("torrent-remove", ids, {{"delete-local-data", true}});
+        runTorrentAction("torrent-remove", ids, {{"delete-local-data", true}}, [hashes] {
+            for (const auto& hash : hashes)
+                displaynames::remove(hash);
+        });
 }
 
 void TorrentActions::onVerifySelected()
@@ -595,6 +620,39 @@ void TorrentActions::onRenameSelected()
         return;
     rpc->renamePath(id, currentName, trimmed,
                     afterTorrentChange("torrent-rename-path", RefreshAfter::Properties, id));
+}
+
+/** Меняет только локальное имя в списке, не трогая файлы и данные демона. */
+void TorrentActions::onRenameDisplayNameSelected()
+{
+    const auto ids = m_selection();
+    if (ids.size() != 1) {
+        if (ids.size() > 1)
+            QMessageBox::warning(&m_window, tr("Rename display name"),
+                                 tr("Only one torrent can be renamed."));
+        return;
+    }
+    const tgui::Torrent* found = m_model.torrentById(ids.first());
+    if (!found || !found->hashString || found->hashString->isEmpty())
+        return;
+
+    const QString fallback = found->name.value_or(QString{});
+    const QString current = found->displayName.isEmpty() ? fallback : found->displayName;
+    bool ok = false;
+    const QString entered = QInputDialog::getText(
+        &m_window, tr("Rename display name"),
+        tr("Display name (leave empty to use the name on disk):"),
+        QLineEdit::Normal, current, &ok);
+    if (!ok)
+        return;
+
+    const QString name = displaynames::normalize(entered);
+    if (name.isEmpty() || name == displaynames::normalize(fallback))
+        displaynames::remove(*found->hashString);
+    else
+        displaynames::set(*found->hashString, name);
+    if (m_displayNamesChanged)
+        m_displayNamesChanged();
 }
 
 void TorrentActions::onPriorityHigh()

@@ -45,6 +45,7 @@ add_library(tgui_app_lib STATIC
     src/movedialog.cpp
     src/optionsdialog.cpp
     src/daemonprofile.cpp
+    src/displaynames.cpp
     src/secretstore.cpp
     src/connoptionsdialog.cpp
     src/daemonoptionsdialog.cpp

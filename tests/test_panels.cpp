@@ -2450,7 +2450,8 @@ TEST(W04Context, AltSpeedF8ChooseLabelF7AndContextMenuItems)
         {QStringLiteral("Move bottom"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_2)},
         {QStringLiteral("Reannounce (get more peers)"), QKeySequence(Qt::CTRL | Qt::Key_R)},
         {QStringLiteral("Remove torrent and Data"), QKeySequence(Qt::SHIFT | Qt::Key_Delete)},
-        {QStringLiteral("Rename"), QKeySequence(Qt::Key_F2)},
+        {QStringLiteral("Rename display name…"), QKeySequence(Qt::Key_F2)},
+        {QStringLiteral("Rename on disk…"), QKeySequence(Qt::SHIFT | Qt::Key_F2)},
     };
     for (auto it = expected.constBegin(); it != expected.constEnd(); ++it) {
         EXPECT_EQ(byShortcut.value(it.key()), it.value()) << it.key().toStdString();

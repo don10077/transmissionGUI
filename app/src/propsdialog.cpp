@@ -1,4 +1,5 @@
 #include "propsdialog.h"
+#include "displaynames.h"
 #include "theme.h"
 #include "torrentlabels.h"
 #include <QCheckBox>
@@ -20,7 +21,8 @@
 
 PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion, int page) : QDialog(parent)
 {
-    setWindowTitle(tr("Properties — %1").arg(t.name.value_or(tr("(no name)"))));
+    const auto shownName = displaynames::effectiveName(t);
+    setWindowTitle(tr("Properties — %1").arg(shownName.isEmpty() ? tr("(no name)") : shownName));
     resize(600, 430);
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(12, 12, 12, 12);
@@ -29,9 +31,13 @@ PropsDialog::PropsDialog(const tgui::Torrent& t, QWidget* parent, int rpcVersion
     auto* general = new QWidget(tabs);
     auto* form = tgui::theme::formGrid(general);
     form->setContentsMargins(16, 16, 16, 16);
-    auto* name = new QLineEdit(t.name.value_or(QString()), general);
+    auto* name = new QLineEdit(shownName, general);
     name->setReadOnly(true);
-    tgui::theme::addFormRow(form, tr("Name"), name);
+    tgui::theme::addFormRow(form, tr("Display name"), name);
+    auto* diskName = new QLineEdit(t.name.value_or(QString()), general);
+    diskName->setReadOnly(true);
+    diskName->setObjectName(QStringLiteral("diskName"));
+    tgui::theme::addFormRow(form, tr("Name on disk"), diskName);
     const auto initial = t.editableSettings;
     auto* peers = new QSpinBox(general);
     peers->setObjectName(QStringLiteral("peerLimit"));
