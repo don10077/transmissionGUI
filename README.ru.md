@@ -2,11 +2,11 @@
 
 [English](README.md) | **Русский**
 
-**Скачать** · [Релиз v1.0.1](https://github.com/don10077/transmissionGUI/releases/tag/v1.0.1) · [Все релизы](https://github.com/don10077/transmissionGUI/releases)
+**Скачать** · [Релиз v1.1.0](https://github.com/don10077/transmissionGUI/releases/tag/v1.1.0) · [Все релизы](https://github.com/don10077/transmissionGUI/releases)
 
-- Windows x64 — [Установщик (.exe)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.1/transmissiongui-1.0.1-windows-x64-setup.exe) · [Портативная версия (.zip)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.1/transmissiongui-windows-x64.zip)
-- macOS — [Образ диска (.dmg)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.1/transmissiongui-1.0.1-Darwin.dmg)
-- Debian / Ubuntu (amd64) — [Пакет (.deb)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.1/transmissiongui_1.0.1_amd64.deb)
+- Windows x64 — [Установщик (.exe)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.0/transmissiongui-1.1.0-windows-x64-setup.exe) · [Портативная версия (.zip)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.0/transmissiongui-windows-x64.zip)
+- macOS — [Образ диска (.dmg)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.0/transmissiongui-1.1.0-Darwin.dmg)
+- Debian / Ubuntu (amd64) — [Пакет (.deb)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.0/transmissiongui_1.1.0_amd64.deb)
 
 Нативный клиент и **GUI для Transmission** — битторент-демона **Transmission**, написанный
 на **C++23 / Qt 6**. Работает через штатный JSON-RPC API и даёт одно окно для управления
@@ -243,9 +243,10 @@ Linux (DEB), тесты с ASan/UBSan и macOS (DMG). Внутри Windows по�
 проверяются на отдельном чистом раннере: запуск portable, установка, обновление и удаление.
 
 Задача `Release` ждёт успешного завершения всех групп. Она публикует пакеты,
-`SHA256SUMS.txt` и автоматически сформированные примечания к выпуску только при push
+`SHA256SUMS.txt` и примечания к выпуску только при push
 тега `v<версия>`, совпадающего с `project(VERSION ...)` в `CMakeLists.txt`.
 При обычном push или pull request публикация пропускается; пакеты доступны в артефактах запуска.
+Примечания берутся из `docs/releases/<тег>.md`, если файл существует, иначе формируются автоматически.
 
 ## Структура проекта
 

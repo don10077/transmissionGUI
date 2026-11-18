@@ -2,11 +2,11 @@
 
 **English** | [Русский](README.ru.md)
 
-**Download** · [Release v1.0.1](https://github.com/don10077/transmissionGUI/releases/tag/v1.0.1) · [All releases](https://github.com/don10077/transmissionGUI/releases)
+**Download** · [Release v1.1.0](https://github.com/don10077/transmissionGUI/releases/tag/v1.1.0) · [All releases](https://github.com/don10077/transmissionGUI/releases)
 
-- Windows x64 — [Installer (.exe)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.1/transmissiongui-1.0.1-windows-x64-setup.exe) · [Portable (.zip)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.1/transmissiongui-windows-x64.zip)
-- macOS — [Disk image (.dmg)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.1/transmissiongui-1.0.1-Darwin.dmg)
-- Debian / Ubuntu (amd64) — [Package (.deb)](https://github.com/don10077/transmissionGUI/releases/download/v1.0.1/transmissiongui_1.0.1_amd64.deb)
+- Windows x64 — [Installer (.exe)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.0/transmissiongui-1.1.0-windows-x64-setup.exe) · [Portable (.zip)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.0/transmissiongui-windows-x64.zip)
+- macOS — [Disk image (.dmg)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.0/transmissiongui-1.1.0-Darwin.dmg)
+- Debian / Ubuntu (amd64) — [Package (.deb)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.0/transmissiongui_1.1.0_amd64.deb)
 
 A native desktop client and **Transmission GUI** for the **Transmission** BitTorrent daemon,
 written in **C++23 / Qt 6**. It talks to the daemon over its JSON-RPC API and gives you a
@@ -239,9 +239,10 @@ ASan/UBSan tests, and macOS (DMG). Inside the Windows workflow, a separate clean
 checks portable startup, installation, upgrade, and uninstallation after packaging.
 
 The `Release` job waits for every group to succeed. It publishes the packages,
-`SHA256SUMS.txt`, and generated release notes only when pushing a `v<version>` tag
+`SHA256SUMS.txt`, and release notes only when pushing a `v<version>` tag
 matching `project(VERSION ...)` in `CMakeLists.txt`. Publication is skipped for ordinary
-pushes and pull requests; packages remain available as workflow artifacts.
+pushes and pull requests; packages remain available as workflow artifacts. Release notes are read
+from `docs/releases/<tag>.md` when present, or generated automatically otherwise.
 
 ## Project layout
 
