@@ -391,6 +391,37 @@ TEST_F(RpcClientTest, GetTorrentsRpc18FieldsAndTable)
     EXPECT_EQ(fields, sorted);
 }
 
+// BUG: окно «Свойства» не показывало метку — scope Settings не запрашивал labels.
+TEST_F(RpcClientTest, PropertiesSettingsRequestsLabels)
+{
+    connectWith(16);
+    server.enqueue({200, R"({"result":"success","arguments":{"torrents":[
+        {"id":7,"hashString":"ab12","name":"movie","maxConnectedPeers":50,"labels":["Video"]}]}})", {}});
+
+    QEventLoop loop;
+    std::optional<Torrent> details;
+    QObject::connect(client.get(), &RpcClient::readError, &loop, &QEventLoop::quit);
+    client->getTorrentProperties(7, [&loop, &details](const std::optional<Torrent>& t) {
+        details = t;
+        loop.quit();
+    }, RpcClient::TorrentProperties::Settings);
+    QTimer::singleShot(5000, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    ASSERT_TRUE(details.has_value());
+    ASSERT_EQ(details->id, 7);
+    EXPECT_EQ(details->labels, std::optional<QStringList>{QStringList{"Video"}});
+    const auto req = server.requests().last();
+    EXPECT_EQ(req.rpcMethod, "torrent-get");
+    const QStringList fields = [&]() {
+        QStringList out;
+        for (const auto& v : req.arguments.value("fields").toArray())
+            out << v.toString();
+        return out;
+    }();
+    EXPECT_TRUE(fields.contains("labels"));
+}
+
 TEST_F(RpcClientTest, PollMergesChangedRowsAndRemovesMissingIds)
 {
     connectWith(16);

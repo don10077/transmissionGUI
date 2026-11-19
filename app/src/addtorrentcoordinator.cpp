@@ -488,6 +488,7 @@ void AddTorrentCoordinator::offerDuplicateUpdate(const tgui::RpcClient::AddTorre
         QCoreApplication::translate("MainWindow", "Add missing trackers and update the display name to “%1”?").arg(displayName) :
         QCoreApplication::translate("MainWindow", "Add missing trackers to the existing torrent?"));
     auto* update = box->addButton(QCoreApplication::translate("MainWindow", "Update trackers"), QMessageBox::AcceptRole);
+    tgui::theme::fitMessageBoxButtons(*box);
     box->setDefaultButton(QMessageBox::Cancel);
     box->setAttribute(Qt::WA_DeleteOnClose);
     connect(rpc.data(), &QObject::destroyed, box, &QDialog::reject);

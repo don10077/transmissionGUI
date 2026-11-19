@@ -232,6 +232,54 @@ TEST(DetailPeerModel, DataRendering)
               "192.168.0.9");
 }
 
+TEST(DetailPeerModel, SortingByProgressAndClient)
+{
+    PeerListModel m;
+    QVector<Peer> peers;
+    Peer a, b, c;
+    a.address = "10.0.0.1"; a.clientName = "qBittorrent/4.6"; a.progress = 80;
+    b.address = "10.0.0.2"; b.clientName = "Transmission/4.0"; b.progress = 10;
+    c.address = "10.0.0.3"; c.clientName = "aria2/1.36";     c.progress = 45;
+    peers << a << b << c;
+    m.setPeers(peers);
+
+    m.sort(PeerListModel::ColProgress, Qt::AscendingOrder);
+    EXPECT_EQ(m.data(m.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(), "10.0.0.2");
+    EXPECT_EQ(m.data(m.index(1, PeerListModel::ColAddress), Qt::DisplayRole).toString(), "10.0.0.3");
+    EXPECT_EQ(m.data(m.index(2, PeerListModel::ColAddress), Qt::DisplayRole).toString(), "10.0.0.1");
+
+    m.sort(PeerListModel::ColProgress, Qt::DescendingOrder);
+    EXPECT_EQ(m.data(m.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(), "10.0.0.1");
+
+    // Регистронезависимая сортировка по клиенту.
+    m.sort(PeerListModel::ColClient, Qt::AscendingOrder);
+    EXPECT_EQ(m.data(m.index(0, PeerListModel::ColClient), Qt::DisplayRole).toString(), "aria2/1.36");
+    EXPECT_EQ(m.data(m.index(1, PeerListModel::ColClient), Qt::DisplayRole).toString(), "qBittorrent/4.6");
+    EXPECT_EQ(m.data(m.index(2, PeerListModel::ColClient), Qt::DisplayRole).toString(), "Transmission/4.0");
+}
+
+TEST(DetailPeerModel, SortingSurvivesPeersRefresh)
+{
+    PeerListModel m;
+    QVector<Peer> peers;
+    Peer a, b;
+    a.address = "10.0.0.1"; a.progress = 80;
+    b.address = "10.0.0.2"; b.progress = 10;
+    peers << a << b;
+    m.setPeers(peers);
+    m.sort(PeerListModel::ColRateDown, Qt::AscendingOrder); // обе скорости 0 — порядок стабилен
+    m.sort(PeerListModel::ColProgress, Qt::DescendingOrder);
+    EXPECT_EQ(m.data(m.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(), "10.0.0.1");
+    // Обновление списка пиров (periodic refresh) сохраняет выбранный порядок.
+    m.setPeers(peers);
+    EXPECT_EQ(m.data(m.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(), "10.0.0.1");
+    EXPECT_EQ(m.data(m.index(1, PeerListModel::ColAddress), Qt::DisplayRole).toString(), "10.0.0.2");
+    // Без сортировки — как прислал демон.
+    PeerListModel fresh;
+    fresh.setPeers(peers);
+    EXPECT_EQ(fresh.data(fresh.index(0, PeerListModel::ColAddress), Qt::DisplayRole).toString(), "10.0.0.1");
+}
+
 TEST(DetailPeerModel, CountryColumnWithoutGeoIp)
 {
     PeerListModel m;

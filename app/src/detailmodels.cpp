@@ -2,6 +2,7 @@
 
 #include <QBrush>
 #include <algorithm>
+#include <numeric>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -180,6 +181,7 @@ void PeerListModel::setPeers(const QVector<tgui::Peer>& peers)
 {
     beginResetModel();
     m_peers = peers;
+    sortPeersInPlace(); // выбранный пользователем порядок сохраняется при обновлении
     endResetModel();
     if (m_resolveHost)
         startReverseLookups();
@@ -370,7 +372,100 @@ QVariant PeerListModel::headerData(int section, Qt::Orientation orientation, int
     return {};
 }
 
+/** Порядок сравнения пиров по выбранной колонке (совпадает с отображаемыми значениями). */
+bool PeerListModel::lessPeers(const tgui::Peer& a, const tgui::Peer& b) const
+{
+    switch (m_sortColumn) {
+        case ColAddress: {
+            const auto host = [this](const tgui::Peer& p) {
+                if (m_resolveHost) {
+                    const QString h = m_hostCache.value(p.address);
+                    if (!h.isEmpty())
+                        return h; // показываем hostname — по нему и сортируем
+                }
+                return p.address;
+            };
+            const QString ha = host(a), hb = host(b);
+            const int cmp = ha.compare(hb, Qt::CaseInsensitive);
+            if (cmp != 0)
+                return cmp < 0;
+            return a.port < b.port;
+        }
+        case ColCountry: {
+            const auto name = [this](const tgui::Peer& p) {
+                if (!m_geoip || !m_geoip->isLoaded())
+                    return QString();
+                const std::string code = m_geoip->countryFor(p.address.toStdString());
+                if (code.empty())
+                    return QString();
+                const std::string n = tgui::GeoIpDb::countryNameFor(code);
+                return n.empty() ? QString::fromStdString(code) : QString::fromStdString(n);
+            };
+            const QString na = name(a), nb = name(b);
+            if (na.isEmpty() != nb.isEmpty())
+                return nb.isEmpty(); // страна не определена — в конец
+            return na.compare(nb, Qt::CaseInsensitive) < 0;
+        }
+        case ColClient:
+            return QString::compare(a.clientName, b.clientName, Qt::CaseInsensitive) < 0;
+        case ColProgress:
+            return a.progress < b.progress;
+        case ColRateDown:
+            return a.rateToClient < b.rateToClient;
+        case ColRateUp:
+            return a.rateToPeer < b.rateToPeer;
+        case ColFlags:
+            return a.flagStr < b.flagStr;
+        case ColPort:
+            return a.port < b.port;
+    }
+    return false;
+}
+
+/** Сортирует m_peers по выбранной колонке (для режима сброса модели в setPeers). */
+void PeerListModel::sortPeersInPlace()
+{
+    if (m_sortColumn < 0 || m_peers.size() < 2)
+        return;
+    const bool desc = m_sortOrder == Qt::DescendingOrder;
+    std::stable_sort(m_peers.begin(), m_peers.end(), [this, desc](const tgui::Peer& a, const tgui::Peer& b) {
+        return desc ? lessPeers(b, a) : lessPeers(a, b);
+    });
+}
+
+/** Сортировка по клику на заголовок: перестановка строк с сохранением выделения. */
+void PeerListModel::sort(int column, Qt::SortOrder order)
+{
+    if (column < ColAddress || column >= ColumnCount)
+        return;
+    m_sortColumn = column;
+    m_sortOrder = order;
+    if (m_peers.size() < 2)
+        return;
+    emit layoutAboutToBeChanged();
+    QVector<int> permutation(m_peers.size());
+    std::iota(permutation.begin(), permutation.end(), 0);
+    const bool desc = order == Qt::DescendingOrder;
+    std::stable_sort(permutation.begin(), permutation.end(), [this, desc](int a, int b) {
+        return desc ? lessPeers(m_peers.at(b), m_peers.at(a)) : lessPeers(m_peers.at(a), m_peers.at(b));
+    });
+    QVector<tgui::Peer> sorted;
+    sorted.reserve(m_peers.size());
+    QVector<int> oldToNew(m_peers.size());
+    for (int i = 0; i < permutation.size(); ++i) {
+        sorted.append(m_peers.at(permutation.at(i)));
+        oldToNew[permutation.at(i)] = i;
+    }
+    m_peers = std::move(sorted);
+    const auto persistent = persistentIndexList();
+    for (const auto& index : persistent)
+        if (index.isValid())
+            changePersistentIndex(index, this->index(oldToNew.at(index.row()), index.column()));
+    emit layoutChanged();
+}
+
 // --- TrackerListModel ---
+
 
 TrackerListModel::TrackerListModel(QObject* parent) : QAbstractTableModel(parent) {}
 

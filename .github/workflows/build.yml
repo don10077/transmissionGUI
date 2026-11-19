@@ -89,6 +89,7 @@ jobs:
           mkdir -p build/portable
           hdiutil attach build/packages/*.dmg -readonly -nobrowse -mountpoint "$PWD/build/portable"
           trap 'hdiutil detach "$PWD/build/portable"' EXIT
+          codesign --verify --deep --strict --verbose=2 build/portable/transmissiongui.app
           QT_QPA_PLATFORM=cocoa build/portable/transmissiongui.app/Contents/MacOS/transmissiongui --smoke-test
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

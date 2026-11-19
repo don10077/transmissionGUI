@@ -16,6 +16,7 @@
 #include <QPointer>
 #include <QLabel>
 #include <QLayoutItem>
+#include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPalette>
@@ -1486,6 +1487,15 @@ void decorateDialog(QDialog* dialog)
 
     // Возврат в видимую область экрана и позиционирование grip (см. класс выше).
     dialog->installEventFilter(new DialogChromeFilter(dialog, body, grip));
+}
+
+void fitMessageBoxButtons(QMessageBox& box)
+{
+    // QSS с min-width не участвует в расчёте ширины окна QMessageBox: раскладка
+    // сжимает кнопку ниже её sizeHint («Открыть выпуск»), и текст обрезается.
+    // Фиксируем родной минимум кнопки — окно растянется под кнопки.
+    for (auto* button : box.findChildren<QPushButton*>())
+        button->setMinimumWidth(button->sizeHint().width());
 }
 
 } // namespace tgui::theme

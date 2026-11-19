@@ -11,6 +11,7 @@
 class QApplication;
 class QDialog;
 class QLayout;
+class QMessageBox;
 class QSettings;
 class QWidget;
 
@@ -259,6 +260,14 @@ void apply(QApplication& app, Scheme scheme = Scheme::Light);
  * @param dialog Диалог приложения.
  */
 void decorateDialog(QDialog* dialog);
+
+/**
+ * Фиксирует минимальную ширину кнопок QMessageBox по их sizeHint. Без этого
+ * общий QSS (min-width у QPushButton) не растягивает окно под длинный текст
+ * кнопки («Открыть выпуск»), и кнопка срезает его по краям.
+ * @param box Бокс сообщений, которому уже добавлены все кнопки.
+ */
+void fitMessageBoxButtons(QMessageBox& box);
 
 /**
  * Возвращает иконку темы с вариантами для разных размеров и масштаба.

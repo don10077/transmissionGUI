@@ -138,6 +138,9 @@ DetailsPanel::DetailsPanel(QWidget* parent, const ConnectionController& connecti
 
     auto* peersView = makeTable(&m_peerModel);
     peersView->setObjectName(QStringLiteral("peersView"));
+    // Сортировка по клику на заголовок (PeerListModel::sort), порядок
+    // сохраняется при периодических обновлениях списка пиров.
+    peersView->setSortingEnabled(true);
     peersView->setIconSize(QSize(18, 12));
     peersView->setItemDelegateForColumn(PeerListModel::ColProgress, new ProgressDelegate(peersView));
     m_peerEmpty = new QLabel(tr("No connected peers."), peersView->viewport());

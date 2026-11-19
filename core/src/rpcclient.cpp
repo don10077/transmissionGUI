@@ -416,6 +416,9 @@ void RpcClient::getTorrentProperties(int id, TorrentCallback callback, TorrentPr
                                   "seedRatioLimit", "seedIdleMode", "seedIdleLimit"});
             if (supports(kRpcSequential))
                 fields.append("sequential_download");
+            // Метки торрента нужны окну «Свойства» (виден выбранный выбор); RPC >= 16.
+            if (supports(kRpcLabels))
+                fields.append("labels");
             break;
         case TorrentProperties::Magnet:
             fields.append("magnetLink");

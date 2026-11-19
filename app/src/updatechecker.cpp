@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "tgui/util.h"
+#include "theme.h"
 
 namespace {
 constexpr int kUpdateCheckWakeMs = 24 * 60 * 60 * 1000;
@@ -126,6 +127,7 @@ void UpdateChecker::checkUpdate(bool requestedManually)
         QMessageBox box(QMessageBox::Information, title, tr("Version %1 is available.").arg(latest->toString()),
                         QMessageBox::Close, &m_window);
         auto* open = box.addButton(tr("Open release"), QMessageBox::AcceptRole);
+        tgui::theme::fitMessageBoxButtons(box);
         box.exec();
         if (box.clickedButton() == open)
             QDesktopServices::openUrl(QUrl::fromEncoded(

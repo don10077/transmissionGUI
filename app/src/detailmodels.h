@@ -93,9 +93,16 @@ public:
     int columnCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role) const override;
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
+    // Сортировка по клику на заголовок (вкладка «Пиры»); порядок применяется
+    // и к следующим обновлениям списка пиров.
+    void sort(int column, Qt::SortOrder order = Qt::AscendingOrder) override;
 
 private:
     QVector<tgui::Peer> m_peers;
+    int m_sortColumn = -1;
+    Qt::SortOrder m_sortOrder = Qt::AscendingOrder;
+    bool lessPeers(const tgui::Peer& a, const tgui::Peer& b) const;
+    void sortPeersInPlace();
     const tgui::GeoIpDb* m_geoip = nullptr;
     bool m_showFlags = false;
     QString m_flagsDirectory;
