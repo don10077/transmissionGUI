@@ -751,7 +751,7 @@
 <context>
     <name>Dialog</name>
     <message>
-        <location filename="../app/src/theme.cpp" line="1470"/>
+        <location filename="../app/src/theme.cpp" line="1471"/>
         <source>Close</source>
         <translation>Закрыть</translation>
     </message>
@@ -759,52 +759,52 @@
 <context>
     <name>FileListModel</name>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="72"/>
+        <location filename="../app/src/detailmodels.cpp" line="73"/>
         <source>Low</source>
         <translation>Низкий</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="74"/>
+        <location filename="../app/src/detailmodels.cpp" line="75"/>
         <source>High</source>
         <translation>Высокий</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="76"/>
+        <location filename="../app/src/detailmodels.cpp" line="77"/>
         <source>Normal</source>
         <translation>Обычный</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="108"/>
+        <location filename="../app/src/detailmodels.cpp" line="109"/>
         <source>on</source>
         <translation>да</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="108"/>
+        <location filename="../app/src/detailmodels.cpp" line="109"/>
         <source>skip</source>
         <translation>нет</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="119"/>
+        <location filename="../app/src/detailmodels.cpp" line="120"/>
         <source>Name</source>
         <translation>Имя</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="121"/>
+        <location filename="../app/src/detailmodels.cpp" line="122"/>
         <source>Size</source>
         <translation>Размер</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="123"/>
+        <location filename="../app/src/detailmodels.cpp" line="124"/>
         <source>Progress</source>
         <translation>Прогресс</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="125"/>
+        <location filename="../app/src/detailmodels.cpp" line="126"/>
         <source>Priority</source>
         <translation>Приоритет</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="127"/>
+        <location filename="../app/src/detailmodels.cpp" line="128"/>
         <source>Wanted</source>
         <translation>Нужен</translation>
     </message>
@@ -984,37 +984,37 @@
 <context>
     <name>FileTreeModel</name>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="483"/>
+        <location filename="../app/src/detailmodels.cpp" line="578"/>
         <source>Want</source>
         <translation>Скачать</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="483"/>
+        <location filename="../app/src/detailmodels.cpp" line="578"/>
         <source>File name</source>
         <translation>Имя файла</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="483"/>
+        <location filename="../app/src/detailmodels.cpp" line="578"/>
         <source>Size</source>
         <translation>Размер</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="483"/>
+        <location filename="../app/src/detailmodels.cpp" line="578"/>
         <source>Done</source>
         <translation>Готово</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="484"/>
+        <location filename="../app/src/detailmodels.cpp" line="579"/>
         <source>Priority</source>
         <translation>Приоритет</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="570"/>
+        <location filename="../app/src/detailmodels.cpp" line="665"/>
         <source>Mixed</source>
         <translation>Разный</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="571"/>
+        <location filename="../app/src/detailmodels.cpp" line="666"/>
         <source>Skip</source>
         <translation>Пропустить</translation>
     </message>
@@ -1156,17 +1156,17 @@
         <translation>Лимит (КБ/с):</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="143"/>
+        <location filename="../app/src/detailspanel.cpp" line="146"/>
         <source>No connected peers.</source>
         <translation>Нет подключённых пиров.</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="595"/>
+        <location filename="../app/src/detailspanel.cpp" line="598"/>
         <source>Expand all</source>
         <translation>Развернуть всё</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="596"/>
+        <location filename="../app/src/detailspanel.cpp" line="599"/>
         <source>Collapse all</source>
         <translation>Свернуть всё</translation>
     </message>
@@ -1227,7 +1227,7 @@
         <translation>Подключиться к текущему серверу (Ctrl+K)</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="341"/>
+        <location filename="../app/src/detailspanel.cpp" line="344"/>
         <source>(%1 more)</source>
         <translation>(ещё %1)</translation>
     </message>
@@ -1430,38 +1430,38 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Не удалось сохранить.</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="69"/>
+        <location filename="../app/src/updatechecker.cpp" line="70"/>
         <source>Checking for updates…</source>
         <translation>Проверка обновлений…</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="95"/>
+        <location filename="../app/src/updatechecker.cpp" line="96"/>
         <source>No published release was found.</source>
         <translation>Опубликованные выпуски не найдены.</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="101"/>
+        <location filename="../app/src/updatechecker.cpp" line="102"/>
         <source>Could not check for updates: %1</source>
         <translation>Не удалось проверить обновления: %1</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="109"/>
+        <location filename="../app/src/updatechecker.cpp" line="110"/>
         <source>Could not read the published version.</source>
         <translation>Не удалось определить опубликованную версию.</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="118"/>
+        <location filename="../app/src/updatechecker.cpp" line="119"/>
         <source>You have the latest version.</source>
         <translation>Установлена актуальная версия.</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="122"/>
-        <location filename="../app/src/updatechecker.cpp" line="126"/>
+        <location filename="../app/src/updatechecker.cpp" line="123"/>
+        <location filename="../app/src/updatechecker.cpp" line="127"/>
         <source>Version %1 is available.</source>
         <translation>Доступна версия %1.</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="128"/>
+        <location filename="../app/src/updatechecker.cpp" line="129"/>
         <source>Open release</source>
         <translation>Открыть выпуск</translation>
     </message>
@@ -1622,45 +1622,45 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Очередь добавления очищена. Не добавлено торрентов: %1.</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="588"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="589"/>
         <source>Interrupted torrent add</source>
         <translation>Добавление торрента прервано</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="594"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="595"/>
         <source>A torrent add was interrupted. Check the list before adding it again.</source>
         <translation>Добавление торрента прервано. Проверьте список перед повторным добавлением.</translation>
     </message>
     <message>
         <location filename="../app/src/torrentlistcontroller.cpp" line="352"/>
-        <location filename="../app/src/detailspanel.cpp" line="642"/>
-        <location filename="../app/src/detailspanel.cpp" line="706"/>
-        <location filename="../app/src/detailspanel.cpp" line="884"/>
+        <location filename="../app/src/detailspanel.cpp" line="645"/>
+        <location filename="../app/src/detailspanel.cpp" line="709"/>
+        <location filename="../app/src/detailspanel.cpp" line="887"/>
         <source>Column layout updated.</source>
         <translation>Раскладка колонок обновлена.</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="215"/>
+        <location filename="../app/src/detailspanel.cpp" line="218"/>
         <source>General</source>
         <translation>Общие</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="217"/>
+        <location filename="../app/src/detailspanel.cpp" line="220"/>
         <source>Trackers</source>
         <translation>Трекеры</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="219"/>
+        <location filename="../app/src/detailspanel.cpp" line="222"/>
         <source>Peers</source>
         <translation>Пиры</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="221"/>
+        <location filename="../app/src/detailspanel.cpp" line="224"/>
         <source>Files</source>
         <translation>Файлы</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="223"/>
+        <location filename="../app/src/detailspanel.cpp" line="226"/>
         <source>Statistics</source>
         <translation>Статистика</translation>
     </message>
@@ -1690,7 +1690,7 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Переименовать можно только один торрент.</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="806"/>
+        <location filename="../app/src/detailspanel.cpp" line="809"/>
         <location filename="../app/src/torrentactions.cpp" line="616"/>
         <source>New name:</source>
         <translation>Новое имя:</translation>
@@ -1702,107 +1702,107 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Параметры</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="576"/>
+        <location filename="../app/src/detailspanel.cpp" line="579"/>
         <source>Open</source>
         <translation>Открыть</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="578"/>
+        <location filename="../app/src/detailspanel.cpp" line="581"/>
         <source>Open containing folder</source>
         <translation>Открыть содержащую папку</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="582"/>
+        <location filename="../app/src/detailspanel.cpp" line="585"/>
         <source>Copy file path to clipboard</source>
         <translation>Копировать путь файла в буфер</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="592"/>
+        <location filename="../app/src/detailspanel.cpp" line="595"/>
         <source>Don&apos;t download</source>
         <translation>Не скачивать</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="727"/>
+        <location filename="../app/src/detailspanel.cpp" line="730"/>
         <source>Marked for download</source>
         <translation>Отмечено к скачиванию</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="727"/>
+        <location filename="../app/src/detailspanel.cpp" line="730"/>
         <source>Marked to skip</source>
         <translation>Отмечено пропуском</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="792"/>
+        <location filename="../app/src/detailspanel.cpp" line="795"/>
         <source>File path copied</source>
         <translation>Путь файла скопирован</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="843"/>
+        <location filename="../app/src/detailspanel.cpp" line="846"/>
         <source>Add tracker…</source>
         <translation>Добавить трекер…</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="844"/>
+        <location filename="../app/src/detailspanel.cpp" line="847"/>
         <source>Edit tracker…</source>
         <translation>Изменить трекер…</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="845"/>
+        <location filename="../app/src/detailspanel.cpp" line="848"/>
         <source>Remove tracker…</source>
         <translation>Удалить трекер…</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="846"/>
+        <location filename="../app/src/detailspanel.cpp" line="849"/>
         <source>Edit tracker list…</source>
         <translation>Редактировать список трекеров…</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="811"/>
+        <location filename="../app/src/detailspanel.cpp" line="814"/>
         <source>Specify a valid file or folder name.</source>
         <translation>Укажите допустимое имя файла или папки.</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="347"/>
+        <location filename="../app/src/detailspanel.cpp" line="350"/>
         <source>%1
 Name on disk: %2</source>
         <translation>%1
 Имя на диске: %2</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="920"/>
-        <location filename="../app/src/detailspanel.cpp" line="926"/>
+        <location filename="../app/src/detailspanel.cpp" line="923"/>
+        <location filename="../app/src/detailspanel.cpp" line="929"/>
         <source>Add tracker</source>
         <translation>Добавить трекер</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="920"/>
+        <location filename="../app/src/detailspanel.cpp" line="923"/>
         <source>Tracker URL:</source>
         <translation>URL трекера:</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="926"/>
-        <location filename="../app/src/detailspanel.cpp" line="946"/>
+        <location filename="../app/src/detailspanel.cpp" line="929"/>
+        <location filename="../app/src/detailspanel.cpp" line="949"/>
         <source>No tracker URL was specified.</source>
         <translation>URL трекера не указан.</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="940"/>
-        <location filename="../app/src/detailspanel.cpp" line="946"/>
+        <location filename="../app/src/detailspanel.cpp" line="943"/>
+        <location filename="../app/src/detailspanel.cpp" line="949"/>
         <source>Edit tracker</source>
         <translation>Изменение трекера</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="940"/>
+        <location filename="../app/src/detailspanel.cpp" line="943"/>
         <source>New tracker URL:</source>
         <translation>Новый URL трекера:</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="959"/>
+        <location filename="../app/src/detailspanel.cpp" line="962"/>
         <source>Remove tracker</source>
         <translation>Удаление трекера</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="959"/>
+        <location filename="../app/src/detailspanel.cpp" line="962"/>
         <source>Remove tracker “%1”?</source>
         <translation>Удалить трекер «%1»?</translation>
     </message>
@@ -2053,7 +2053,7 @@ Reason: %2</source>
     </message>
     <message>
         <location filename="../app/src/mainwindowui.cpp" line="553"/>
-        <location filename="../app/src/updatechecker.cpp" line="90"/>
+        <location filename="../app/src/updatechecker.cpp" line="91"/>
         <source>Check for updates</source>
         <translation>Проверить обновления</translation>
     </message>
@@ -2070,27 +2070,27 @@ Reason: %2</source>
     <message>
         <location filename="../app/src/mainwindowui.cpp" line="427"/>
         <location filename="../app/src/torrentlistcontroller.cpp" line="484"/>
-        <location filename="../app/src/detailspanel.cpp" line="600"/>
-        <location filename="../app/src/detailspanel.cpp" line="693"/>
-        <location filename="../app/src/detailspanel.cpp" line="848"/>
+        <location filename="../app/src/detailspanel.cpp" line="603"/>
+        <location filename="../app/src/detailspanel.cpp" line="696"/>
+        <location filename="../app/src/detailspanel.cpp" line="851"/>
         <source>Setup columns…</source>
         <translation>Настроить колонки…</translation>
     </message>
     <message>
         <location filename="../app/src/mainwindowui.cpp" line="365"/>
-        <location filename="../app/src/detailspanel.cpp" line="585"/>
+        <location filename="../app/src/detailspanel.cpp" line="588"/>
         <source>High priority</source>
         <translation>Высокий приоритет</translation>
     </message>
     <message>
         <location filename="../app/src/mainwindowui.cpp" line="367"/>
-        <location filename="../app/src/detailspanel.cpp" line="586"/>
+        <location filename="../app/src/detailspanel.cpp" line="589"/>
         <source>Normal priority</source>
         <translation>Обычный приоритет</translation>
     </message>
     <message>
         <location filename="../app/src/mainwindowui.cpp" line="369"/>
-        <location filename="../app/src/detailspanel.cpp" line="587"/>
+        <location filename="../app/src/detailspanel.cpp" line="590"/>
         <source>Low priority</source>
         <translation>Низкий приоритет</translation>
     </message>
@@ -2304,9 +2304,9 @@ Are you sure to start verification?</source>
         <translation>Удалить торрент и данные</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="580"/>
-        <location filename="../app/src/detailspanel.cpp" line="806"/>
-        <location filename="../app/src/detailspanel.cpp" line="811"/>
+        <location filename="../app/src/detailspanel.cpp" line="583"/>
+        <location filename="../app/src/detailspanel.cpp" line="809"/>
+        <location filename="../app/src/detailspanel.cpp" line="814"/>
         <location filename="../app/src/torrentactions.cpp" line="46"/>
         <location filename="../app/src/torrentactions.cpp" line="603"/>
         <location filename="../app/src/torrentactions.cpp" line="616"/>
@@ -2359,17 +2359,17 @@ Download this database now?</source>
 Скачать базу сейчас?</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="667"/>
+        <location filename="../app/src/detailspanel.cpp" line="670"/>
         <source>Resolve Country</source>
         <translation>Определять страну</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="658"/>
+        <location filename="../app/src/detailspanel.cpp" line="661"/>
         <source>Resolve Host</source>
         <translation>Определять хост</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="680"/>
+        <location filename="../app/src/detailspanel.cpp" line="683"/>
         <source>Show Country Flag</source>
         <translation>Показывать флаг страны</translation>
     </message>
@@ -2544,8 +2544,8 @@ Restart the application to apply the changes.</source>
     </message>
     <message>
         <location filename="../app/src/addtorrentcoordinator.cpp" line="483"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="512"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="538"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="513"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="539"/>
         <source>Update torrent</source>
         <translation>Обновить торрент</translation>
     </message>
@@ -2570,12 +2570,12 @@ Restart the application to apply the changes.</source>
         <translation>Обновить трекеры</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="514"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="515"/>
         <source>Torrent trackers updated.</source>
         <translation>Трекеры торрента обновлены.</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="515"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="516"/>
         <source>No new trackers to add.</source>
         <translation>Новых трекеров нет.</translation>
     </message>
@@ -3074,42 +3074,42 @@ Used when opening files/folders with double-click.</source>
 <context>
     <name>PeerListModel</name>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="354"/>
+        <location filename="../app/src/detailmodels.cpp" line="356"/>
         <source>Host</source>
         <translation>Хост</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="356"/>
+        <location filename="../app/src/detailmodels.cpp" line="358"/>
         <source>Country</source>
         <translation>Страна</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="358"/>
+        <location filename="../app/src/detailmodels.cpp" line="360"/>
         <source>Flags</source>
         <translation>Флаги</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="360"/>
+        <location filename="../app/src/detailmodels.cpp" line="362"/>
         <source>Port</source>
         <translation>Порт</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="362"/>
+        <location filename="../app/src/detailmodels.cpp" line="364"/>
         <source>Client</source>
         <translation>Клиент</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="364"/>
+        <location filename="../app/src/detailmodels.cpp" line="366"/>
         <source>Have</source>
         <translation>Есть</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="366"/>
+        <location filename="../app/src/detailmodels.cpp" line="368"/>
         <source>Down speed</source>
         <translation>Скорость скач.</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="368"/>
+        <location filename="../app/src/detailmodels.cpp" line="370"/>
         <source>Up speed</source>
         <translation>Скорость отдачи</translation>
     </message>
@@ -4000,43 +4000,43 @@ Replace the old entry and keep its files?</source>
 <context>
     <name>TrackerListModel</name>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="420"/>
-        <location filename="../app/src/detailmodels.cpp" line="422"/>
+        <location filename="../app/src/detailmodels.cpp" line="515"/>
+        <location filename="../app/src/detailmodels.cpp" line="517"/>
         <source>—</source>
         <translation>—</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="425"/>
+        <location filename="../app/src/detailmodels.cpp" line="520"/>
         <source>Updating...</source>
         <translation>Обновление...</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="444"/>
+        <location filename="../app/src/detailmodels.cpp" line="539"/>
         <source>Tracker</source>
         <translation>Трекер</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="446"/>
+        <location filename="../app/src/detailmodels.cpp" line="541"/>
         <source>Tier</source>
         <translation>Тир</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="448"/>
+        <location filename="../app/src/detailmodels.cpp" line="543"/>
         <source>Seeds</source>
         <translation>Сиды</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="450"/>
+        <location filename="../app/src/detailmodels.cpp" line="545"/>
         <source>Leechers</source>
         <translation>Личеры</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="452"/>
+        <location filename="../app/src/detailmodels.cpp" line="547"/>
         <source>Status</source>
         <translation>Статус</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="454"/>
+        <location filename="../app/src/detailmodels.cpp" line="549"/>
         <source>Update in</source>
         <translation>Обновление через</translation>
     </message>
