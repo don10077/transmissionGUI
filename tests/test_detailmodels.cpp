@@ -476,6 +476,44 @@ TEST(FileTree, SingleFileVerificationMatchesTorrentWithoutPieceRanges)
     EXPECT_DOUBLE_EQ(model.index(0, FileTreeModel::Progress, folder).data().toDouble(), 100.0);
 }
 
+TEST(FileTree, CompletedFileCheckShowsMatchedDataWhileOtherFilesAreStillVerifying)
+{
+    for (const double matched : {0.0, 0.25, 1.0}) {
+        SCOPED_TRACE(matched);
+        auto files = makeFiles();
+        files[0].completion = matched;
+        files[0].beginPiece = 0;
+        files[0].endPiece = 10;
+        files[1].completion = 0.0;
+        files[1].beginPiece = 10;
+        files[1].endPiece = 20;
+        applyCheckProgress(files, static_cast<int>(TorrentStatus::Check), 0.75, 20);
+        ASSERT_DOUBLE_EQ(files[0].checkProgress, 1.0);
+        ASSERT_DOUBLE_EQ(files[1].checkProgress, 0.5);
+
+        FileListModel list;
+        list.setFiles(files);
+        EXPECT_EQ(list.index(0, FileListModel::ColProgress).data().toString(),
+                  QString::number(matched * 100.0, 'f', 1) + "%");
+        EXPECT_EQ(list.index(1, FileListModel::ColProgress).data().toString(), "50.0%");
+
+        FileTreeModel tree;
+        tree.setFiles(files);
+        const auto folder = tree.index(0, FileTreeModel::Want);
+        EXPECT_DOUBLE_EQ(tree.index(0, FileTreeModel::Progress, folder).data().toDouble(), matched * 100.0);
+        EXPECT_DOUBLE_EQ(tree.index(1, FileTreeModel::Progress, folder).data().toDouble(), 50.0);
+        EXPECT_NEAR(tree.index(0, FileTreeModel::Progress).data().toDouble(),
+                    (1000.0 * matched + 2048.0 * 0.5) * 100.0 / 3048.0, 0.01);
+
+        // Когда закончил проверяться последний файл, вся папка показывает результат.
+        applyCheckProgress(files, static_cast<int>(TorrentStatus::Check), 1.0, 20);
+        tree.setFiles(files);
+        EXPECT_DOUBLE_EQ(tree.index(1, FileTreeModel::Progress, folder).data().toDouble(), 0.0);
+        EXPECT_NEAR(tree.index(0, FileTreeModel::Progress).data().toDouble(),
+                    1000.0 * matched * 100.0 / 3048.0, 0.01);
+    }
+}
+
 TEST(FileTree, AggregatesFoldersAndPreservesItemsOnRefresh)
 {
     FileTreeModel model;

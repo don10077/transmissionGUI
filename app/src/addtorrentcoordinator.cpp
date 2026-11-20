@@ -333,8 +333,10 @@ void AddTorrentCoordinator::addNextTorrent()
                 skippedPaths.insert(files.at(index).name);
             replaceTorrent(&m_window, rpc, oldHash, std::move(metainfo), dialog->options(), std::move(skippedPaths),
                            [this, rpc](int id) {
-                if (id >= 0)
+                if (id >= 0) {
+                    emit displayNamesChanged();
                     m_window.statusBar()->showMessage(QCoreApplication::translate("MainWindow", "Torrent replaced"), 5000);
+                }
                 finishAdd(rpc, id);
             });
             return;

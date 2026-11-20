@@ -19,6 +19,13 @@
 
 // --- FileListModel ---
 
+/** Показывает ход незавершённой проверки, затем долю подтверждённых данных файла. */
+static double displayedFileProgress(const tgui::FileStat& file)
+{
+    return file.checkProgress >= 0.0 && file.checkProgress < 1.0
+        ? file.checkProgress : file.completion;
+}
+
 FileListModel::FileListModel(QObject* parent) : QAbstractTableModel(parent) {}
 
 void FileListModel::setFiles(const QVector<tgui::FileStat>& files)
@@ -97,10 +104,9 @@ QVariant FileListModel::data(const QModelIndex& index, int role) const
         case ColSize:
             return QString::fromStdString(tgui::formatSize(f.size));
         case ColProgress: {
-            // Во время проверки показываем её прогресс, а не completion
-            // (у уже скачанного торрента bytesCompleted = 100%). Точность
-            // та же, что в списке торрентов (одна десятая процента).
-            const double progress = f.checkProgress >= 0.0 ? f.checkProgress : f.completion;
+            // После проверки файла показываем совпавшие данные, даже если
+            // остальные файлы торрента ещё проверяются.
+            const double progress = displayedFileProgress(f);
             return QString::number(progress * 100.0, 'f', f.checkProgress >= 0.0 ? 1 : 0) + "%";
         }
         case ColPriority:
@@ -627,7 +633,7 @@ void FileTreeModel::setFiles(const QVector<tgui::FileStat>& files)
         const auto& file = files.at(row);
         const double weight = file.checkProgress >= 0.0 ? qMax(1.0, file.size) : 0.0;
         const int priority = file.wanted ? file.priority : -2;
-        totals[node].add({file.size, file.size * file.completion, weight * file.checkProgress,
+        totals[node].add({file.size, file.size * file.completion, weight * displayedFileProgress(file),
                           weight, file.wanted ? 1 : 0, 1, priority, priority});
     }
 

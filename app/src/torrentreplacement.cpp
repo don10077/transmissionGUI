@@ -14,6 +14,7 @@
 
 #include "tgui/bencode.h"
 #include "tgui/util.h"
+#include "displaynames.h"
 
 namespace {
 
@@ -146,6 +147,7 @@ public:
             finish(-1, tr("Could not read the file list from the new .torrent."));
             return;
         }
+        m_metadataRoot = preview->name;
         for (const auto& file : preview->files)
             m_files.insert(file.name, file.size);
 
@@ -170,23 +172,29 @@ public:
     }
 
 private:
-    /** Проверяет совпадение файлов и переводит старую раздачу на паузу. */
+    /** Запоминает старые файлы и переводит раздачу на паузу перед проверкой новых метаданных. */
     void prepare(const TorrentDetails& old)
     {
-        bool hasData = false;
-        for (const auto& file : old.files) {
-            const auto match = m_files.constFind(file.name);
-            if (match == m_files.cend() || match.value() != file.size) {
-                finish(-1, tr("File paths or sizes differ. The old torrent was left unchanged."));
-                return;
-            }
-            m_oldFiles.insert(file.name, file);
-            hasData |= file.size > 0 && file.completion > 0;
-        }
-        if (!hasData || m_files.size() <= m_oldFiles.size()) {
-            finish(-1, tr("The new .torrent must contain the old files and at least one new file. The old torrent must have some downloaded data."));
+        m_savedRoot = old.files.first().name.section('/', 0, 0);
+        if (m_savedRoot.isEmpty() || std::ranges::any_of(old.files, [this](const auto& file) {
+                return file.name.section('/', 0, 0) != m_savedRoot;
+            })) {
+            finish(-1, tr("Transmission returned different file paths or sizes."));
             return;
         }
+        // Меняем только корень: вложенная структура берётся из нового .torrent.
+        QHash<QString, double> savedFiles;
+        QSet<QString> savedSkipped;
+        for (auto it = m_files.cbegin(); it != m_files.cend(); ++it) {
+            const auto savedPath = m_savedRoot + it.key().mid(m_metadataRoot.size());
+            savedFiles.insert(savedPath, it.value());
+            if (m_skippedPaths.contains(it.key()))
+                savedSkipped.insert(savedPath);
+        }
+        m_files = std::move(savedFiles);
+        m_skippedPaths = std::move(savedSkipped);
+        for (const auto& file : old.files)
+            m_oldFiles.insert(file.name, file);
 
         m_restartOld = old.status != static_cast<int>(TorrentStatus::Stopped);
         m_directory = old.downloadDir;
@@ -238,9 +246,6 @@ private:
         }
         if (old.peerLimit > 0)
             insert("peer-limit", old.peerLimit);
-        for (const auto& file : old.files)
-            if (file.priority != 0)
-                m_oldPriorities.insert(file.name, file.priority);
     }
 
     /** Дожидается остановки демона, прежде чем новая запись сможет проверить те же данные. */
@@ -292,13 +297,36 @@ private:
                 rollback();
                 return;
             }
-            m_progress->setLabelText(tr("Verifying downloaded files…"));
-            m_rpc->torrentActionByHash("torrent-verify", m_newHash, {}, [this](const JsonRpcResult& verified) {
-                if (verified.ok)
-                    waitForVerification();
-                else
-                    rollback(verified.error);
+            preserveRoot();
+        });
+    }
+
+    /** Применяет имя старой папки/файла до проверки данных новым торрентом. */
+    void preserveRoot()
+    {
+        if (m_metadataRoot == m_savedRoot) {
+            verifyNew();
+            return;
+        }
+        m_rpc->torrentActionByHash("torrent-rename-path", m_newHash,
+            {{"path", m_metadataRoot}, {"name", m_savedRoot}}, [this](const JsonRpcResult& result) {
+                if (!result.ok || m_cancelled) {
+                    rollback(result.ok ? QString{} : result.error);
+                    return;
+                }
+                verifyNew();
             });
+    }
+
+    /** Перепроверяет данные после восстановления имени корня. */
+    void verifyNew()
+    {
+        m_progress->setLabelText(tr("Verifying downloaded files…"));
+        m_rpc->torrentActionByHash("torrent-verify", m_newHash, {}, [this](const JsonRpcResult& verified) {
+            if (verified.ok)
+                waitForVerification();
+            else
+                rollback(verified.error);
         });
     }
 
@@ -336,8 +364,7 @@ private:
     /** Сопоставляет настройки по пути, а объём — по результату проверки на демоне. */
     void review(const TorrentDetails& details)
     {
-        QJsonArray skipped, selected;
-        QJsonObject priorities;
+        QJsonArray skipped, selected, highPriority, lowPriority;
         double reused = 0, remaining = 0;
         int newFiles = 0, recoveredFiles = 0;
         for (const auto& file : details.files) {
@@ -347,37 +374,34 @@ private:
                 return;
             }
             const auto old = m_oldFiles.constFind(file.name);
-            if (old != m_oldFiles.cend() && old->priority != 0)
-                priorities.insert(QString::number(file.index), old->priority);
+            if (old != m_oldFiles.cend()) {
+                if (old->priority > 0)
+                    highPriority.append(file.index);
+                else if (old->priority < 0)
+                    lowPriority.append(file.index);
+            }
             const double verified = file.size * std::clamp(file.completion, 0.0, 1.0);
-            if (m_skippedPaths.contains(file.name)) {
+            if (m_skippedPaths.contains(file.name) || (old != m_oldFiles.cend() && !old->wanted)) {
                 skipped.append(file.index);
             } else {
                 selected.append(file.index);
                 remaining += file.size - verified;
             }
-            if (old == m_oldFiles.cend()) {
-                ++newFiles;
-                continue;
-            }
-            if (old->completion > 0 && old->size > 0 && verified <= 0) {
-                rollback(tr("An existing file failed verification: %1").arg(file.name));
-                return;
-            }
             recoveredFiles += verified > 0;
             reused += verified;
-        }
-        if (reused <= 0) {
-            rollback(tr("Transmission did not verify any of the old data."));
-            return;
+            if (old == m_oldFiles.cend()) {
+                ++newFiles;
+            }
         }
 
         if (!skipped.isEmpty())
             m_settings.insert("files-unwanted", skipped);
         if (!selected.isEmpty())
             m_settings.insert("files-wanted", selected);
-        if (!priorities.isEmpty())
-            m_settings.insert("file-priorities", priorities);
+        if (!highPriority.isEmpty())
+            m_settings.insert("priority-high", highPriority);
+        if (!lowPriority.isEmpty())
+            m_settings.insert("priority-low", lowPriority);
         m_newId = details.id;
         m_verifiedFiles = details.files;
         m_progress->hide();
@@ -447,6 +471,9 @@ private:
                             finish(-1, tr("Could not confirm removal of the old entry. The new torrent was left paused."));
                             return;
                         }
+                        // Отображаемое имя хранится локально по хешу, а не на демоне.
+                        const auto displayName = displaynames::storedName(m_oldHash);
+                        displaynames::set(m_newHash, displayName.isEmpty() ? m_name : displayName);
                         if (!m_startNew) {
                             finish(m_newId);
                             return;
@@ -533,11 +560,12 @@ private:
     QString m_newHash;
     QString m_directory;
     QString m_name;
+    QString m_metadataRoot;
+    QString m_savedRoot;
     QByteArray m_bytes;
     QHash<QString, double> m_files;
     QSet<QString> m_skippedPaths;
     QHash<QString, tgui::FileStat> m_oldFiles;
-    QHash<QString, int> m_oldPriorities;
     QVector<tgui::FileStat> m_verifiedFiles;
     QJsonObject m_settings;
     std::function<void(int)> m_callback;
