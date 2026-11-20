@@ -5,6 +5,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Работает и в Windows PowerShell 5.1 с унаследованным от pwsh PSModulePath.
+function Get-SourceHash([string]$Path) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return [Convert]::ToBase64String($sha.ComputeHash([System.IO.File]::ReadAllBytes($Path)))
+    } finally {
+        $sha.Dispose()
+    }
+}
+
 $sourceRoot = Split-Path -Parent $PSScriptRoot
 Push-Location $sourceRoot
 try {
@@ -17,14 +28,14 @@ try {
 
     $before = @{}
     foreach ($file in Get-ChildItem -LiteralPath 'translations' -Filter '*.ts' -File) {
-        $before[$file.FullName] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+        $before[$file.FullName] = Get-SourceHash $file.FullName
     }
     & $CMake --build $BuildDir --target update_translations
     if ($LASTEXITCODE -ne 0) { throw 'Could not update translations.' }
 
     $changed = @()
     foreach ($file in Get-ChildItem -LiteralPath 'translations' -Filter '*.ts' -File) {
-        if ($before[$file.FullName] -ne (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash) {
+        if ($before[$file.FullName] -ne (Get-SourceHash $file.FullName)) {
             $changed += $file.Name
         }
         [xml]$translation = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8

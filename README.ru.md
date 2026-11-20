@@ -2,11 +2,11 @@
 
 [English](README.md) | **Русский**
 
-**Скачать** · [Релиз v1.1.2](https://github.com/don10077/transmissionGUI/releases/tag/v1.1.2) · [Все релизы](https://github.com/don10077/transmissionGUI/releases)
+**Скачать** · [Релиз v1.1.3](https://github.com/don10077/transmissionGUI/releases/tag/v1.1.3) · [Все релизы](https://github.com/don10077/transmissionGUI/releases)
 
-- Windows x64 — [Установщик (.exe)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.2/transmissiongui-1.1.2-windows-x64-setup.exe) · [Портативная версия (.zip)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.2/transmissiongui-windows-x64.zip)
-- macOS — [Образ диска (.dmg)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.2/transmissiongui-1.1.2-Darwin.dmg)
-- Debian / Ubuntu (amd64) — [Пакет (.deb)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.2/transmissiongui_1.1.2_amd64.deb)
+- Windows x64 — [Установщик (.exe)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.3/transmissiongui-1.1.3-windows-x64-setup.exe) · [Портативная версия (.zip)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.3/transmissiongui-windows-x64.zip)
+- macOS — [Образ диска (.dmg)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.3/transmissiongui-1.1.3-Darwin.dmg)
+- Debian / Ubuntu (amd64) — [Пакет (.deb)](https://github.com/don10077/transmissionGUI/releases/download/v1.1.3/transmissiongui_1.1.3_amd64.deb)
 
 Нативный клиент и **GUI для Transmission** — битторент-демона **Transmission**, написанный
 на **C++23 / Qt 6**. Работает через штатный JSON-RPC API и даёт одно окно для управления
