@@ -15,12 +15,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build-decision:
+    name: Check whether build is needed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.decision.outputs.build }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+        with:
+          persist-credentials: false
+          # Include annotated and lightweight tags pointing to the pushed commit.
+          fetch-depth: 0
+      - name: Skip branch build when a release tag exists
+        id: decision
+        shell: bash
+        run: |
+          build=true
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/* ]]; then
+            tags="$(git tag --points-at "$GITHUB_SHA" --list 'v*')"
+            if [[ -n "$tags" ]]; then
+              echo "Release tag found for this commit; the tag workflow will build it: $tags"
+              build=false
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
   # Both Windows jobs remain separate runners inside this reusable workflow.
   windows:
+    needs: build-decision
+    if: needs.build-decision.outputs.build == 'true'
     name: Windows (installer + portable)
     uses: ./.github/workflows/windows.yml
 
   linux:
+    needs: build-decision
+    if: needs.build-decision.outputs.build == 'true'
     name: Linux (DEB)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -51,6 +82,8 @@ jobs:
           if-no-files-found: error
 
   asan:
+    needs: build-decision
+    if: needs.build-decision.outputs.build == 'true'
     name: Tests (ASan + UBSan)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -69,6 +102,8 @@ jobs:
           ctest --preset asan
 
   macos:
+    needs: build-decision
+    if: needs.build-decision.outputs.build == 'true'
     name: macOS (DMG)
     runs-on: macos-15
     timeout-minutes: 60

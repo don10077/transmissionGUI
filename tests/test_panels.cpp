@@ -10,6 +10,7 @@
 #include <QClipboard>
 #include <QComboBox>
 #include <QContextMenuEvent>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDropEvent>
 #include <QEventLoop>
@@ -17,6 +18,7 @@
 #include <QHeaderView>
 #include <QImage>
 #include <QInputDialog>
+#include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -975,12 +977,11 @@ TEST_P(TorrentAddOutcome, HandlesResultAndOriginalFile)
     drop(magnet);
     ASSERT_TRUE(waitForSettings([&] { return duplicatePrompt() != nullptr; }));
     auto* box = duplicatePrompt();
-    const auto buttons = box->buttons();
-    const auto update = std::find_if(buttons.cbegin(), buttons.cend(),
-        [box](auto* button) { return box->buttonRole(button) == QMessageBox::AcceptRole; });
-    ASSERT_NE(update, buttons.cend());
-    (*update)->click();
-    ASSERT_TRUE(waitForSettings([&] { return window.currentId() == 1; }));
+    EXPECT_EQ(box->standardButtons(), QMessageBox::Ok);
+    EXPECT_EQ(window.findChild<FileSelectDialog*>(), nullptr);
+    const int beforeDismiss = server.requestCount();
+    box->button(QMessageBox::Ok)->click();
+    ASSERT_TRUE(waitForSettings([&] { return server.requestCount() > beforeDismiss; }));
 
     int adds = 0;
     for (const auto& request : server.requests()) {
@@ -1045,6 +1046,103 @@ protected:
     MockRpcServer server;
     QHash<QString, QVariant> saved;
 };
+
+TEST_F(MockDaemonWindow, DuplicateFileIsRejectedBeforeOptionsForExternalOpenAndDrop)
+{
+    const QByteArray info("d6:lengthi4e4:name3:New12:piece lengthi16384e6:pieces20:01234567890123456789e");
+    const QByteArray metainfo = "d4:info" + info + "e";
+    const auto hash = QString::fromLatin1(QCryptographicHash::hash(info, QCryptographicHash::Sha1).toHex()).toUpper();
+    auto response = QJsonDocument::fromJson(healthy.body).object();
+    auto arguments = response.value("arguments").toObject();
+    arguments.insert("torrents", QJsonArray{QJsonObject{{"id", 7}, {"name", "Existing"}, {"hashString", hash}}});
+    response.insert("arguments", arguments);
+    server.setDefault({200, QJsonDocument(response).toJson(), {}});
+    QTemporaryDir directory;
+    ASSERT_TRUE(directory.isValid());
+    QFile source(directory.filePath("different-name.torrent"));
+    ASSERT_TRUE(source.open(QIODevice::WriteOnly));
+    ASSERT_EQ(source.write(metainfo), metainfo.size());
+    source.close();
+    class DropWindow : public MainWindow {
+    public:
+        using MainWindow::dropEvent;
+    } window;
+    settings.setValue(OptionsDialog::skipAddDialogKey, false);
+    window.openExternalTorrents({source.fileName()});
+    ASSERT_NO_FATAL_FAILURE(connectWindow(window));
+    ASSERT_TRUE(waitForSettings([&] { return window.currentId() == 7; }));
+    QMessageBox* startupDuplicate = nullptr;
+    ASSERT_TRUE(waitForSettings([&] {
+        for (auto* box : window.findChildren<QMessageBox*>())
+            if (box->isVisible())
+                startupDuplicate = box;
+        return startupDuplicate != nullptr;
+    }));
+    EXPECT_EQ(window.findChild<FileSelectDialog*>(), nullptr);
+    EXPECT_TRUE(additions().isEmpty());
+    const int beforeStartupDismiss = server.requestCount();
+    startupDuplicate->button(QMessageBox::Ok)->click();
+    ASSERT_TRUE(waitForSettings([&] { return server.requestCount() > beforeStartupDismiss; }));
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    for (const bool skip : {false, true}) {
+        settings.setValue(OptionsDialog::skipAddDialogKey, skip);
+        for (const bool drop : {false, true}) {
+            if (drop) {
+                QMimeData mime;
+                mime.setUrls({QUrl::fromLocalFile(source.fileName())});
+                QDropEvent event(QPointF(), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+                window.dropEvent(&event);
+                EXPECT_TRUE(event.isAccepted());
+            } else {
+                window.openExternalTorrents({source.fileName()});
+            }
+            QMessageBox* duplicate = nullptr;
+            ASSERT_TRUE(waitForSettings([&] {
+                for (auto* box : window.findChildren<QMessageBox*>())
+                    if (box->isVisible())
+                        duplicate = box;
+                return duplicate != nullptr;
+            }));
+            EXPECT_EQ(window.findChild<FileSelectDialog*>(), nullptr);
+            EXPECT_EQ(duplicate->standardButtons(), QMessageBox::Ok);
+            EXPECT_TRUE(duplicate->text().contains("already exists"));
+            EXPECT_TRUE(additions().isEmpty());
+            const int before = server.requestCount();
+            duplicate->button(QMessageBox::Ok)->click();
+            ASSERT_TRUE(waitForSettings([&] { return server.requestCount() > before; }));
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        }
+    }
+    EXPECT_TRUE(QFile::exists(source.fileName()));
+    for (const auto& request : server.requests()) {
+        EXPECT_NE(request.rpcMethod, "torrent-set");
+        EXPECT_NE(request.rpcMethod, "torrent-remove");
+        EXPECT_NE(request.rpcMethod, "torrent-start");
+    }
+}
+
+TEST_F(MockDaemonWindow, ExternalFileBeforeConnectionOpensOptionsWithoutPendingConfirmation)
+{
+    settings.setValue(OptionsDialog::skipAddDialogKey, false);
+    QTemporaryDir directory;
+    ASSERT_TRUE(directory.isValid());
+    QFile source(directory.filePath("new.torrent"));
+    ASSERT_TRUE(source.open(QIODevice::WriteOnly));
+    const QByteArray bytes("d4:infod6:lengthi4e4:name3:New12:piece lengthi16384e6:pieces20:01234567890123456789ee");
+    ASSERT_EQ(source.write(bytes), bytes.size());
+    source.close();
+    MainWindow window;
+    window.openExternalTorrents({source.fileName()});
+    EXPECT_TRUE(window.findChildren<QMessageBox*>().isEmpty());
+    ASSERT_NO_FATAL_FAILURE(connectWindow(window));
+    ASSERT_TRUE(waitForSettings([&] {
+        auto* dialog = window.findChild<FileSelectDialog*>();
+        return dialog && dialog->isVisible();
+    }));
+    EXPECT_TRUE(window.findChildren<QMessageBox*>().isEmpty());
+    EXPECT_TRUE(additions().isEmpty());
+    window.findChild<FileSelectDialog*>()->reject();
+}
 
 TEST_F(MockDaemonWindow, ReconnectKeepsTorrentSnapshot)
 {

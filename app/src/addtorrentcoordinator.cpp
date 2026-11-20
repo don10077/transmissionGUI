@@ -1,13 +1,12 @@
 #include "addtorrentcoordinator.h"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QMainWindow>
 #include <QMessageBox>
-#include <QNetworkRequest>
-#include <QPushButton>
 #include <QSettings>
 #include <QStatusBar>
 
@@ -15,7 +14,6 @@
 #include <utility>
 
 #include "addlinkdialog.h"
-#include "boundeddownload.h"
 #include "connectioncontroller.h"
 #include "daemonprofile.h"
 #include "displaynames.h"
@@ -29,6 +27,7 @@
 #include "torrentreplacement.h"
 #include "watchfolderservice.h"
 #include "tgui/util.h"
+#include "tgui/bencode.h"
 
 namespace {
 /** Читает локальный .torrent, ограничивая размер даже при изменении файла. */
@@ -42,6 +41,31 @@ QByteArray readLocalTorrent(const QString& path)
     return bytes.size() <= tgui::kMaxTorrentFileBytes && file.error() == QFileDevice::NoError
         ? bytes : QByteArray{};
 }
+
+/** Вычисляет хеш исходной секции info, сохраняя её байтовое представление. */
+QString localTorrentHash(const QByteArray& bytes)
+{
+    auto input = bytes.toStdString();
+    tgui::bencode::Value root;
+    tgui::bencode::InfoSpan span;
+    if (!tgui::bencode::decode(input, root, nullptr, &span, false)) {
+        tgui::bencode::RepairResult repaired;
+        if (!tgui::bencode::repair(input, repaired))
+            return {};
+        input = std::move(repaired.fixedBytes);
+        if (!tgui::bencode::decode(input, root, nullptr, &span, false))
+            return {};
+    }
+    const auto* info = root.find("info");
+    if (!info || span.end <= span.begin)
+        return {};
+    const auto* version = info->find("meta version");
+    const bool v2Only = version && version->toInt() == 2 && !info->find("pieces");
+    const auto hash = QCryptographicHash::hash(
+        QByteArrayView(input.data() + span.begin, static_cast<qsizetype>(span.end - span.begin)),
+        v2Only ? QCryptographicHash::Sha256 : QCryptographicHash::Sha1);
+    return QString::fromLatin1(hash.first(20).toHex());
+}
 } // namespace
 
 AddTorrentCoordinator::AddTorrentCoordinator(QMainWindow& window, const ConnectionController& connection,
@@ -54,7 +78,10 @@ AddTorrentCoordinator::AddTorrentCoordinator(QMainWindow& window, const Connecti
 
 void AddTorrentCoordinator::openPendingExternalTorrents()
 {
+    m_torrentListReady = true;
     openExternalTorrents(std::exchange(m_pendingExternalTorrents, {}));
+    if (!m_addingTorrent)
+        addNextTorrent();
 }
 
 void AddTorrentCoordinator::addWatchedFile(const QString& path)
@@ -70,11 +97,13 @@ void AddTorrentCoordinator::addWatchedFile(const QString& path)
 
 bool AddTorrentCoordinator::canAcceptWatchedFile() const
 {
-    return m_connection.client() && m_connection.isConnected() && !m_addingTorrent && m_addQueue.isEmpty();
+    return m_connection.client() && m_connection.isConnected() && m_torrentListReady &&
+        !m_addingTorrent && m_addQueue.isEmpty();
 }
 
 void AddTorrentCoordinator::interrupt()
 {
+    m_torrentListReady = false;
     m_addInterrupted = m_addInterrupted || m_addingTorrent;
 }
 
@@ -85,6 +114,7 @@ void AddTorrentCoordinator::prepareRetry()
 
 qsizetype AddTorrentCoordinator::clear()
 {
+    m_torrentListReady = false;
     const auto discarded = m_addQueue.size();
     m_addQueue.clear();
     m_addingTorrent = false;
@@ -236,15 +266,14 @@ void AddTorrentCoordinator::startAdd(const tgui::RpcClient::AddTorrent& params, 
 
 void AddTorrentCoordinator::addNextTorrent()
 {
-    if (!m_connection.client() || !m_connection.isConnected() || m_addQueue.isEmpty())
+    if (!m_connection.client() || !m_connection.isConnected() || !m_torrentListReady || m_addQueue.isEmpty())
         return;
 
     m_addingTorrent = true;
     auto pending = m_addQueue.dequeue();
     const auto& params = pending.params;
     const QPointer<tgui::RpcClient> rpc(m_connection.client());
-    if (pending.origin == AddOrigin::WatchFolder || params.source != tgui::RpcClient::AddTorrent::Source::File ||
-        QSettings().value(OptionsDialog::skipAddDialogKey, false).toBool()) {
+    if (pending.origin == AddOrigin::WatchFolder || params.source != tgui::RpcClient::AddTorrent::Source::File) {
         submitTorrent(std::move(pending));
         return;
     }
@@ -255,6 +284,20 @@ void AddTorrentCoordinator::addNextTorrent()
             ? QCoreApplication::translate("MainWindow", "Torrent metadata exceeds the 32 MiB limit.")
             : QCoreApplication::translate("MainWindow", "Could not read the local torrent file: %1").arg(params.file));
         finishAdd(rpc);
+        return;
+    }
+    const auto hash = localTorrentHash(original);
+    const auto& torrents = m_model.torrents();
+    const auto duplicate = std::find_if(torrents.cbegin(), torrents.cend(), [&](const auto& torrent) {
+        return !hash.isEmpty() && torrent.hashString &&
+            torrent.hashString->compare(hash, Qt::CaseInsensitive) == 0;
+    });
+    if (duplicate != torrents.cend()) {
+        showDuplicate(duplicate->name.value_or(QString{}));
+        return;
+    }
+    if (QSettings().value(OptionsDialog::skipAddDialogKey, false).toBool()) {
+        submitTorrent(std::move(pending), std::move(original));
         return;
     }
     auto metainfo = original;
@@ -365,7 +408,7 @@ void AddTorrentCoordinator::submitTorrent(PendingAdd pending, QByteArray sourceB
                 m_window.statusBar()->showMessage(QCoreApplication::translate("MainWindow", "Torrent already exists: %1").arg(QFileInfo(params.file).fileName()), 5000);
                 finishAdd(rpc);
             } else {
-                offerDuplicateUpdate(params, duplicate.toObject(), metainfo, requestedName);
+                showDuplicate(duplicate.toObject().value("name").toString());
             }
             return;
         }
@@ -468,82 +511,18 @@ void AddTorrentCoordinator::submitTorrent(PendingAdd pending, QByteArray sourceB
     });
 }
 
-/** Offer to merge the incoming tracker URLs into an already registered torrent. */
-void AddTorrentCoordinator::offerDuplicateUpdate(const tgui::RpcClient::AddTorrent& source,
-                                      const QJsonObject& duplicate, const QByteArray& metainfo,
-                                      const QString& displayName)
+/** Сообщает о дубликате без открытия настроек и изменения существующего торрента. */
+void AddTorrentCoordinator::showDuplicate(const QString& name)
 {
     const QPointer<tgui::RpcClient> rpc(m_connection.client());
-    const QString name = duplicate.value("name").toString();
-    const QString hash = duplicate.value("hashString").toString();
-    const bool updateName = !displayName.isEmpty() && displayName != name &&
-        displayName != displaynames::storedName(hash);
     const QString message = name.isEmpty() ? QCoreApplication::translate("MainWindow", "Torrent already exists.") :
         QCoreApplication::translate("MainWindow", "The torrent “%1” already exists.").arg(name);
-    auto* box = new QMessageBox(QMessageBox::Question, QCoreApplication::translate("MainWindow", "Update torrent"), message,
-                                QMessageBox::Cancel, &m_window);
+    auto* box = new QMessageBox(QMessageBox::Information, QCoreApplication::translate("MainWindow", "Add torrent"),
+                                message, QMessageBox::Ok, &m_window);
     box->setTextFormat(Qt::PlainText);
-    box->setIconPixmap(tgui::theme::icon(tgui::theme::Icon::Information).pixmap(QSize(32, 32), m_window.devicePixelRatioF()));
-    box->setInformativeText(updateName ?
-        QCoreApplication::translate("MainWindow", "Add missing trackers and update the display name to “%1”?").arg(displayName) :
-        QCoreApplication::translate("MainWindow", "Add missing trackers to the existing torrent?"));
-    auto* update = box->addButton(QCoreApplication::translate("MainWindow", "Update trackers"), QMessageBox::AcceptRole);
-    tgui::theme::fitMessageBoxButtons(*box);
-    box->setDefaultButton(QMessageBox::Cancel);
     box->setAttribute(Qt::WA_DeleteOnClose);
     connect(rpc.data(), &QObject::destroyed, box, &QDialog::reject);
-    connect(box, &QDialog::finished, this, [this, rpc, box, update, duplicate, source, metainfo, hash, displayName,
-                                            updateName] {
-        if (!rpc || rpc != m_connection.client())
-            return;
-        if (box->clickedButton() != update) {
-            finishAdd(rpc);
-            return;
-        }
-        if (updateName && displaynames::set(hash, displayName))
-            emit displayNamesChanged();
-        const int id = duplicate.value("id").toInt(-1);
-        const auto merge = [this, rpc, id](const QString& magnet, const QByteArray& bytes,
-                                          const QString& expectedHash = {}) {
-            rpc->updateDuplicateTrackers(id, magnet, bytes, [this, rpc, id](const QString& error,
-                                                                            bool updated) {
-                if (!rpc || rpc != m_connection.client())
-                    return;
-                if (!error.isEmpty())
-                    emit readError(QCoreApplication::translate("MainWindow", "Update torrent"), error);
-                else
-                    m_window.statusBar()->showMessage(updated ? QCoreApplication::translate("MainWindow", "Torrent trackers updated.") :
-                                                         QCoreApplication::translate("MainWindow", "No new trackers to add."), 5000);
-                if (updated && m_currentId() >= 0 && (id < 0 || id == m_currentId()))
-                    rpc->getTrackers(m_currentId());
-                finishAdd(rpc, error.isEmpty() ? id : -1);
-            }, expectedHash);
-        };
-        const QUrl url(source.url);
-        if (source.source == tgui::RpcClient::AddTorrent::Source::Url &&
-            (url.scheme() == "http" || url.scheme() == "https")) {
-            QNetworkRequest request(url);
-            const int timeout = std::max(rpc->options().timeoutMs, 1);
-            request.setTransferTimeout(timeout);
-            request.setMaximumRedirectsAllowed(5);
-            auto* reply = m_nam.get(request);
-            boundDownload(reply, tgui::kMaxTorrentFileBytes, timeout);
-            const auto expectedHash = duplicate.value("hashString").toString();
-            connect(reply, &QNetworkReply::finished, this, [this, rpc, reply, merge, expectedHash] {
-                reply->deleteLater();
-                if (!rpc || rpc != m_connection.client() || !m_connection.isConnected())
-                    return;
-                if (reply->error() == QNetworkReply::NoError && reply->bytesAvailable() <= tgui::kMaxTorrentFileBytes) {
-                    merge({}, reply->readAll(), expectedHash);
-                } else {
-                    emit readError(QCoreApplication::translate("MainWindow", "Update torrent"), reply->errorString());
-                    finishAdd(rpc);
-                }
-            });
-        } else {
-            merge(url.scheme() == "magnet" ? source.url : QString(), metainfo);
-        }
-    });
+    connect(box, &QDialog::finished, this, [this, rpc] { finishAdd(rpc); });
     box->open();
 }
 

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <QNetworkAccessManager>
 #include <QPointer>
 #include <QQueue>
 
@@ -29,7 +28,7 @@ public:
 
     /** Принимает файлы и ссылки командной строки, Проводника и перетаскивания. */
     void openExternalTorrents(const QStringList& inputs);
-    /** Добавляет ожидавшие подключения файлы и ссылки. */
+    /** После обновления списка добавляет ожидавшие подключения файлы и ссылки. */
     void openPendingExternalTorrents();
     /** Открывает выбор файлов .torrent. */
     void onAddTorrent();
@@ -75,9 +74,7 @@ private:
     void addNextTorrent();
     void submitTorrent(PendingAdd pending, QByteArray sourceBytes = {},
                        std::optional<AddChoices> choices = {});
-    void offerDuplicateUpdate(const tgui::RpcClient::AddTorrent& source,
-                              const QJsonObject& duplicate, const QByteArray& metainfo,
-                              const QString& displayName = {});
+    void showDuplicate(const QString& name);
     void finishAdd(const QPointer<tgui::RpcClient>& rpc, int selectedId = -1);
 
     QMainWindow& m_window;
@@ -85,9 +82,9 @@ private:
     const TorrentModel& m_model;
     WatchFolderService& m_watchService;
     CurrentTorrent m_currentId;
-    QNetworkAccessManager m_nam;
     QQueue<PendingAdd> m_addQueue;
     QStringList m_pendingExternalTorrents;
+    bool m_torrentListReady = false;
     bool m_addingTorrent = false;
     bool m_addInterrupted = false;
     int m_unconfiguredTorrentId = -1;

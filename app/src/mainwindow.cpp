@@ -386,7 +386,6 @@ void MainWindow::onConnected(const tgui::SessionInfo& info)
     m_watchService.updateWatchFolder(m_connection.isConnected());
     m_actions.checkPendingMove();
     statusBar()->showMessage(tr("Connected"), 3000);
-    m_add.openPendingExternalTorrents();
 }
 
 void MainWindow::onRefresh()
@@ -424,6 +423,7 @@ void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
     updateSelectionActions(selection.count);
     if (m_connection.finishReconnect())
         m_add.resumeAddQueue(torrents);
+    m_add.openPendingExternalTorrents();
 }
 
 void MainWindow::onAbout()
