@@ -1085,8 +1085,8 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="255"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="343"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="284"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="386"/>
         <source>Torrent metadata exceeds the 32 MiB limit.</source>
         <translation>Метаданные торрента превышают лимит в 32 МиБ.</translation>
     </message>
@@ -1116,7 +1116,7 @@
         <translation>Не удалось сохранить профили подключения.</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="294"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="337"/>
         <source>Torrent replaced</source>
         <translation>Раздача заменена</translation>
     </message>
@@ -1188,10 +1188,10 @@
         <translation>Экспорт списка торрентов</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="177"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="182"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="188"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="222"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="207"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="212"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="218"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="252"/>
         <source>Import torrent list</source>
         <translation>Импорт списка торрентов</translation>
     </message>
@@ -1202,7 +1202,7 @@
     </message>
     <message>
         <location filename="../app/src/torrentlistcontroller.cpp" line="725"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="183"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="213"/>
         <source>Magnet lists (*.txt)</source>
         <translation>Списки magnet-ссылок (*.txt)</translation>
     </message>
@@ -1212,7 +1212,7 @@
         <translation>Не удалось записать список торрентов.</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="188"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="218"/>
         <source>The file must contain one magnet link per line.</source>
         <translation>В файле должна быть одна magnet-ссылка на строку.</translation>
     </message>
@@ -1333,12 +1333,12 @@
         <translation>Добавить ссылку на торрент</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="365"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="408"/>
         <source>Torrent already exists: %1</source>
         <translation>Торрент уже существует: %1</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="398"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="441"/>
         <source>Remove torrent</source>
         <translation>Удалить торрент</translation>
     </message>
@@ -1378,7 +1378,7 @@
         <translation>Не удалось применить резервную копию настроек.</translation>
     </message>
     <message numerus="yes">
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="223"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="253"/>
         <source>Add %n torrent link(s) to the connected daemon?</source>
         <translation>
             <numerusform>Добавить %n ссылку на торрент на подключённом демоне?</numerusform>
@@ -1622,12 +1622,12 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Очередь добавления очищена. Не добавлено торрентов: %1.</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="589"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="568"/>
         <source>Interrupted torrent add</source>
         <translation>Добавление торрента прервано</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="595"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="574"/>
         <source>A torrent add was interrupted. Check the list before adding it again.</source>
         <translation>Добавление торрента прервано. Проверьте список перед повторным добавлением.</translation>
     </message>
@@ -1882,9 +1882,10 @@ Reason: %2</source>
         <translation>%1: %2</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="254"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="343"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="379"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="283"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="386"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="422"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="520"/>
         <source>Add torrent</source>
         <translation>Добавить торрент</translation>
     </message>
@@ -2126,30 +2127,30 @@ Are you sure to start verification?</source>
         <translation>Без лимита</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="423"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="425"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="427"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="466"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="468"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="470"/>
         <source>Torrent added</source>
         <translation>Торрент добавлен</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="412"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="455"/>
         <source>Torrent added with incomplete settings</source>
         <translation>Торрент добавлен, но не все настройки применены</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="423"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="466"/>
         <source>Could not remove the original file: %1</source>
         <translation>Не удалось удалить исходный файл: %1</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="256"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="344"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="285"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="387"/>
         <source>Could not read the local torrent file: %1</source>
         <translation>Не удалось прочитать локальный торрент-файл: %1</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="119"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="149"/>
         <source>Connect to a daemon to add the files or links you opened.</source>
         <translation>Подключитесь к демону, чтобы добавить открытые файлы или ссылки.</translation>
     </message>
@@ -2431,7 +2432,7 @@ Download this database now?</source>
     </message>
     <message>
         <location filename="../app/src/mainwindow.cpp" line="533"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="177"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="207"/>
         <source>Not connected to the daemon.</source>
         <translation>Нет подключения к демону.</translation>
     </message>
@@ -2523,61 +2524,29 @@ Restart the application to apply the changes.</source>
         <translation>Меню</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="140"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="170"/>
         <source>Select a .torrent file</source>
         <translation>Выберите файл .torrent</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="141"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="171"/>
         <source>Torrent files (*.torrent);;All files (*)</source>
         <translation>Торрент-файлы (*.torrent);;Все файлы (*)</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="481"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="518"/>
         <source>Torrent already exists.</source>
         <translation>Торрент уже добавлен.</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="378"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="421"/>
         <source>Unable to add torrent.</source>
         <translation>Не удалось добавить торрент.</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="483"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="513"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="539"/>
-        <source>Update torrent</source>
-        <translation>Обновить торрент</translation>
-    </message>
-    <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="482"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="519"/>
         <source>The torrent “%1” already exists.</source>
         <translation>Торрент «%1» уже добавлен.</translation>
-    </message>
-    <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="488"/>
-        <source>Add missing trackers and update the display name to “%1”?</source>
-        <translation>Добавить недостающие трекеры и изменить отображаемое имя на «%1»?</translation>
-    </message>
-    <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="489"/>
-        <source>Add missing trackers to the existing torrent?</source>
-        <translation>Добавить недостающие трекеры к существующему торренту?</translation>
-    </message>
-    <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="490"/>
-        <source>Update trackers</source>
-        <translation>Обновить трекеры</translation>
-    </message>
-    <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="515"/>
-        <source>Torrent trackers updated.</source>
-        <translation>Трекеры торрента обновлены.</translation>
-    </message>
-    <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="516"/>
-        <source>No new trackers to add.</source>
-        <translation>Новых трекеров нет.</translation>
     </message>
 </context>
 <context>
