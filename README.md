@@ -112,8 +112,15 @@ the test suite:
 ```bat
 build.cmd
 build.cmd release
+build.cmd ci --no-pause
 build.cmd debug --no-pause --no-tests
 ```
+
+Before compilation, `build.cmd` runs the same theme token and translation freshness checks
+as Windows CI, including with `--no-tests`. If `lupdate` changes a `.ts` file, the build
+stops: review the changes, complete new translations, rerun the build and include the `.ts`
+file in your commit. The `ci` mode builds Release with warnings as errors and runs tests;
+packaging and installation checks remain separate steps.
 
 By default the script uses MSYS2 from `D:\Install\MSYS2`; set `MSYS2_ROOT` to use another
 installation. Install the packages from an **MSYS2 UCRT64** shell:

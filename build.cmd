@@ -1,26 +1,33 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
-rem Usage: build.cmd [debug^|release] [--no-pause] [--no-tests]
+rem Usage: build.cmd [debug^|release^|ci] [--no-pause] [--no-tests]
 rem MSYS2_ROOT overrides the default installation locations.
 set "BUILD_KIND=Debug"
 set "BUILD_DIR=win-debug"
 set "BUILD_PAUSE=1"
 set "BUILD_TESTS=1"
 set "BUILD_RESULT=1"
+set "BUILD_WARNINGS_AS_ERRORS=OFF"
 :args
 if "%~1"=="" goto setup
 if /I "%~1"=="debug" (
     set "BUILD_KIND=Debug"
     set "BUILD_DIR=win-debug"
+    set "BUILD_WARNINGS_AS_ERRORS=OFF"
 ) else if /I "%~1"=="release" (
     set "BUILD_KIND=Release"
     set "BUILD_DIR=win-release"
+    set "BUILD_WARNINGS_AS_ERRORS=OFF"
+) else if /I "%~1"=="ci" (
+    set "BUILD_KIND=Release"
+    set "BUILD_DIR=win-ci"
+    set "BUILD_WARNINGS_AS_ERRORS=ON"
 ) else if /I "%~1"=="--no-pause" (
     set "BUILD_PAUSE=0"
 ) else if /I "%~1"=="--no-tests" (
     set "BUILD_TESTS=0"
 ) else (
-    echo Usage: build.cmd [debug^|release] [--no-pause] [--no-tests]
+    echo Usage: build.cmd [debug^|release^|ci] [--no-pause] [--no-tests]
     exit /b 2
 )
 shift
@@ -43,7 +50,10 @@ set "PATH=%BUILD_BIN%;%PATH%"
 pushd "%~dp0"
 if errorlevel 1 goto finish
 echo Configuring %BUILD_KIND% with MSYS2 %BUILD_PROFILE%...
-"%BUILD_BIN%\cmake.exe" -S . -B "build/%BUILD_DIR%" -G Ninja -DCMAKE_BUILD_TYPE=%BUILD_KIND% -DCMAKE_C_COMPILER="%BUILD_BIN%/gcc.exe" -DCMAKE_CXX_COMPILER="%BUILD_BIN%/g++.exe" -DCMAKE_MAKE_PROGRAM="%BUILD_BIN%/ninja.exe"
+"%BUILD_BIN%\cmake.exe" -S . -B "build/%BUILD_DIR%" -G Ninja -DCMAKE_BUILD_TYPE=%BUILD_KIND% -DTGUI_WARNINGS_AS_ERRORS=%BUILD_WARNINGS_AS_ERRORS% -DCMAKE_C_COMPILER="%BUILD_BIN%/gcc.exe" -DCMAKE_CXX_COMPILER="%BUILD_BIN%/g++.exe" -DCMAKE_MAKE_PROGRAM="%BUILD_BIN%/ninja.exe"
+if errorlevel 1 goto failed
+echo Checking source consistency...
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/check-source.ps1 -BuildDir "build/%BUILD_DIR%" -CMake "%BUILD_BIN%/cmake.exe"
 if errorlevel 1 goto failed
 rem Close only our own executables from this build directory: a live exe locks the
 rem output file and breaks the link. Other copies (installed/portable) stay untouched.

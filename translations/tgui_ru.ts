@@ -759,52 +759,52 @@
 <context>
     <name>FileListModel</name>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="73"/>
+        <location filename="../app/src/detailmodels.cpp" line="80"/>
         <source>Low</source>
         <translation>Низкий</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="75"/>
+        <location filename="../app/src/detailmodels.cpp" line="82"/>
         <source>High</source>
         <translation>Высокий</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="77"/>
+        <location filename="../app/src/detailmodels.cpp" line="84"/>
         <source>Normal</source>
         <translation>Обычный</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="109"/>
+        <location filename="../app/src/detailmodels.cpp" line="115"/>
         <source>on</source>
         <translation>да</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="109"/>
+        <location filename="../app/src/detailmodels.cpp" line="115"/>
         <source>skip</source>
         <translation>нет</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="120"/>
+        <location filename="../app/src/detailmodels.cpp" line="126"/>
         <source>Name</source>
         <translation>Имя</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="122"/>
+        <location filename="../app/src/detailmodels.cpp" line="128"/>
         <source>Size</source>
         <translation>Размер</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="124"/>
+        <location filename="../app/src/detailmodels.cpp" line="130"/>
         <source>Progress</source>
         <translation>Прогресс</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="126"/>
+        <location filename="../app/src/detailmodels.cpp" line="132"/>
         <source>Priority</source>
         <translation>Приоритет</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="128"/>
+        <location filename="../app/src/detailmodels.cpp" line="134"/>
         <source>Wanted</source>
         <translation>Нужен</translation>
     </message>
@@ -984,37 +984,37 @@
 <context>
     <name>FileTreeModel</name>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="578"/>
+        <location filename="../app/src/detailmodels.cpp" line="584"/>
         <source>Want</source>
         <translation>Скачать</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="578"/>
+        <location filename="../app/src/detailmodels.cpp" line="584"/>
         <source>File name</source>
         <translation>Имя файла</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="578"/>
+        <location filename="../app/src/detailmodels.cpp" line="584"/>
         <source>Size</source>
         <translation>Размер</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="578"/>
+        <location filename="../app/src/detailmodels.cpp" line="584"/>
         <source>Done</source>
         <translation>Готово</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="579"/>
+        <location filename="../app/src/detailmodels.cpp" line="585"/>
         <source>Priority</source>
         <translation>Приоритет</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="665"/>
+        <location filename="../app/src/detailmodels.cpp" line="671"/>
         <source>Mixed</source>
         <translation>Разный</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="666"/>
+        <location filename="../app/src/detailmodels.cpp" line="672"/>
         <source>Skip</source>
         <translation>Пропустить</translation>
     </message>
@@ -1086,7 +1086,7 @@
     <name>MainWindow</name>
     <message>
         <location filename="../app/src/addtorrentcoordinator.cpp" line="284"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="386"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="388"/>
         <source>Torrent metadata exceeds the 32 MiB limit.</source>
         <translation>Метаданные торрента превышают лимит в 32 МиБ.</translation>
     </message>
@@ -1116,7 +1116,7 @@
         <translation>Не удалось сохранить профили подключения.</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="337"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="338"/>
         <source>Torrent replaced</source>
         <translation>Раздача заменена</translation>
     </message>
@@ -1333,12 +1333,12 @@
         <translation>Добавить ссылку на торрент</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="408"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="410"/>
         <source>Torrent already exists: %1</source>
         <translation>Торрент уже существует: %1</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="441"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="443"/>
         <source>Remove torrent</source>
         <translation>Удалить торрент</translation>
     </message>
@@ -1622,12 +1622,12 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Очередь добавления очищена. Не добавлено торрентов: %1.</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="568"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="570"/>
         <source>Interrupted torrent add</source>
         <translation>Добавление торрента прервано</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="574"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="576"/>
         <source>A torrent add was interrupted. Check the list before adding it again.</source>
         <translation>Добавление торрента прервано. Проверьте список перед повторным добавлением.</translation>
     </message>
@@ -1883,9 +1883,9 @@ Reason: %2</source>
     </message>
     <message>
         <location filename="../app/src/addtorrentcoordinator.cpp" line="283"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="386"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="422"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="520"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="388"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="424"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="522"/>
         <source>Add torrent</source>
         <translation>Добавить торрент</translation>
     </message>
@@ -2127,25 +2127,25 @@ Are you sure to start verification?</source>
         <translation>Без лимита</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="466"/>
         <location filename="../app/src/addtorrentcoordinator.cpp" line="468"/>
         <location filename="../app/src/addtorrentcoordinator.cpp" line="470"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="472"/>
         <source>Torrent added</source>
         <translation>Торрент добавлен</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="455"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="457"/>
         <source>Torrent added with incomplete settings</source>
         <translation>Торрент добавлен, но не все настройки применены</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="466"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="468"/>
         <source>Could not remove the original file: %1</source>
         <translation>Не удалось удалить исходный файл: %1</translation>
     </message>
     <message>
         <location filename="../app/src/addtorrentcoordinator.cpp" line="285"/>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="387"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="389"/>
         <source>Could not read the local torrent file: %1</source>
         <translation>Не удалось прочитать локальный торрент-файл: %1</translation>
     </message>
@@ -2534,17 +2534,17 @@ Restart the application to apply the changes.</source>
         <translation>Торрент-файлы (*.torrent);;Все файлы (*)</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="518"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="520"/>
         <source>Torrent already exists.</source>
         <translation>Торрент уже добавлен.</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="421"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="423"/>
         <source>Unable to add torrent.</source>
         <translation>Не удалось добавить торрент.</translation>
     </message>
     <message>
-        <location filename="../app/src/addtorrentcoordinator.cpp" line="519"/>
+        <location filename="../app/src/addtorrentcoordinator.cpp" line="521"/>
         <source>The torrent “%1” already exists.</source>
         <translation>Торрент «%1» уже добавлен.</translation>
     </message>
@@ -3043,42 +3043,42 @@ Used when opening files/folders with double-click.</source>
 <context>
     <name>PeerListModel</name>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="356"/>
+        <location filename="../app/src/detailmodels.cpp" line="362"/>
         <source>Host</source>
         <translation>Хост</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="358"/>
+        <location filename="../app/src/detailmodels.cpp" line="364"/>
         <source>Country</source>
         <translation>Страна</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="360"/>
+        <location filename="../app/src/detailmodels.cpp" line="366"/>
         <source>Flags</source>
         <translation>Флаги</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="362"/>
+        <location filename="../app/src/detailmodels.cpp" line="368"/>
         <source>Port</source>
         <translation>Порт</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="364"/>
+        <location filename="../app/src/detailmodels.cpp" line="370"/>
         <source>Client</source>
         <translation>Клиент</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="366"/>
+        <location filename="../app/src/detailmodels.cpp" line="372"/>
         <source>Have</source>
         <translation>Есть</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="368"/>
+        <location filename="../app/src/detailmodels.cpp" line="374"/>
         <source>Down speed</source>
         <translation>Скорость скач.</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="370"/>
+        <location filename="../app/src/detailmodels.cpp" line="376"/>
         <source>Up speed</source>
         <translation>Скорость отдачи</translation>
     </message>
@@ -3803,115 +3803,96 @@ Name on disk: %2</source>
 <context>
     <name>TorrentReplacement</name>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="127"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="128"/>
         <source>Connection lost during replacement. Check both torrents on the server before resuming them.</source>
         <translation>Во время замены потеряно соединение. Проверьте обе раздачи на сервере, прежде чем возобновить их.</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="146"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="147"/>
         <source>Could not read the file list from the new .torrent.</source>
         <translation>Не удалось прочитать список файлов из нового .torrent.</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="152"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="154"/>
         <source>Comparing torrent contents…</source>
         <translation>Сравнение содержимого раздач…</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="152"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="154"/>
         <source>Cancel</source>
         <translation>Отмена</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="153"/>
-        <location filename="../app/src/torrentreplacement.cpp" line="385"/>
-        <location filename="../app/src/torrentreplacement.cpp" line="516"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="155"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="409"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="543"/>
         <source>Replace torrent</source>
         <translation>Замена раздачи</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="165"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="167"/>
         <source>The old torrent must have metadata and must not be verifying.</source>
         <translation>Дождитесь получения метаданных старой раздачи и завершения её проверки.</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="180"/>
-        <source>File paths or sizes differ. The old torrent was left unchanged.</source>
-        <translation>Пути или размеры файлов различаются. Старая раздача оставлена без изменений.</translation>
-    </message>
-    <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="187"/>
-        <source>The new .torrent must contain the old files and at least one new file. The old torrent must have some downloaded data.</source>
-        <translation>В новом .torrent должны быть все старые файлы и хотя бы один новый. В старой раздаче должны быть скачанные данные.</translation>
-    </message>
-    <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="196"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="204"/>
         <source>Pausing the old torrent…</source>
         <translation>Остановка старой раздачи…</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="251"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="256"/>
         <source>Could not confirm that the old torrent stopped.</source>
         <translation>Не удалось подтвердить остановку старой раздачи.</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="256"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="261"/>
         <source>The old torrent changed on the server. The new entry was not added.</source>
         <translation>Старая раздача изменилась на сервере. Новая раздача не добавлена.</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="274"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="279"/>
         <source>Adding the replacement torrent…</source>
         <translation>Добавление новой раздачи…</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="284"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="289"/>
         <source>This .torrent is already on the server.</source>
         <translation>Этот .torrent уже есть на сервере.</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="286"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="291"/>
         <source>Could not confirm the new torrent. The old torrent is still listed. Check the server before resuming it.</source>
         <translation>Не удалось подтвердить добавление новой раздачи. Старая раздача осталась в списке. Проверьте сервер, прежде чем возобновить её.</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="295"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="324"/>
         <source>Verifying downloaded files…</source>
         <translation>Проверка скачанных файлов…</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="314"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="342"/>
         <source>Could not read the verification result.</source>
         <translation>Не удалось получить результат проверки.</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="319"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="347"/>
         <source>Verifying downloaded files… %1%</source>
         <translation>Проверка скачанных файлов… %1 %</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="329"/>
-        <location filename="../app/src/torrentreplacement.cpp" line="415"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="357"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="439"/>
         <source>The replacement torrent changed on the server. Both entries were kept.</source>
         <translation>Новая раздача изменилась на сервере. Обе записи сохранены.</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="346"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="182"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="373"/>
         <source>Transmission returned different file paths or sizes.</source>
         <translation>Transmission вернул другой список путей или размеров файлов.</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="364"/>
-        <source>An existing file failed verification: %1</source>
-        <translation>Существующий файл не прошёл проверку: %1</translation>
-    </message>
-    <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="371"/>
-        <source>Transmission did not verify any of the old data.</source>
-        <translation>Transmission не подтвердил наличие скачанных данных.</translation>
-    </message>
-    <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="386"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="410"/>
         <source>Old torrent: %1
 New torrent: %2
 Folder: %3
@@ -3936,32 +3917,32 @@ Replace the old entry and keep its files?</source>
 Заменить старую запись с сохранением файлов?</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="441"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="465"/>
         <source>The old torrent changed on the server. The new entry was kept.</source>
         <translation>Старая раздача изменилась на сервере. Новая запись сохранена.</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="447"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="471"/>
         <source>Could not confirm removal of the old entry. The new torrent was left paused.</source>
         <translation>Не удалось подтвердить удаление старой записи. Новая раздача оставлена на паузе.</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="456"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="483"/>
         <source>The torrent was replaced, but automatic start failed: %1</source>
         <translation>Раздача заменена. Ошибка автоматического запуска: %1</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="470"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="497"/>
         <source>Could not remove the new entry. Check both torrents on the server before resuming them.</source>
         <translation>Не удалось убрать новую запись. Проверьте обе раздачи на сервере, прежде чем возобновить их.</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="488"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="515"/>
         <source>Could not verify the old torrent after cancellation: %1</source>
         <translation>Не удалось проверить старую раздачу после отмены: %1</translation>
     </message>
     <message>
-        <location filename="../app/src/torrentreplacement.cpp" line="500"/>
+        <location filename="../app/src/torrentreplacement.cpp" line="527"/>
         <source>Could not resume the old torrent: %1</source>
         <translation>Не удалось возобновить старую раздачу: %1</translation>
     </message>
@@ -3969,43 +3950,43 @@ Replace the old entry and keep its files?</source>
 <context>
     <name>TrackerListModel</name>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="515"/>
-        <location filename="../app/src/detailmodels.cpp" line="517"/>
+        <location filename="../app/src/detailmodels.cpp" line="521"/>
+        <location filename="../app/src/detailmodels.cpp" line="523"/>
         <source>—</source>
         <translation>—</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="520"/>
+        <location filename="../app/src/detailmodels.cpp" line="526"/>
         <source>Updating...</source>
         <translation>Обновление...</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="539"/>
+        <location filename="../app/src/detailmodels.cpp" line="545"/>
         <source>Tracker</source>
         <translation>Трекер</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="541"/>
+        <location filename="../app/src/detailmodels.cpp" line="547"/>
         <source>Tier</source>
         <translation>Тир</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="543"/>
+        <location filename="../app/src/detailmodels.cpp" line="549"/>
         <source>Seeds</source>
         <translation>Сиды</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="545"/>
+        <location filename="../app/src/detailmodels.cpp" line="551"/>
         <source>Leechers</source>
         <translation>Личеры</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="547"/>
+        <location filename="../app/src/detailmodels.cpp" line="553"/>
         <source>Status</source>
         <translation>Статус</translation>
     </message>
     <message>
-        <location filename="../app/src/detailmodels.cpp" line="549"/>
+        <location filename="../app/src/detailmodels.cpp" line="555"/>
         <source>Update in</source>
         <translation>Обновление через</translation>
     </message>

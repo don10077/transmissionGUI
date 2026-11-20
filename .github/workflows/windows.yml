@@ -15,12 +15,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Check theme color tokens
-        shell: bash
-        run: |
-          if git grep -nE '#([[:xdigit:]]{3}|[[:xdigit:]]{6}|[[:xdigit:]]{8})\b' -- app/src/theme.cpp; then
-            exit 1
-          fi
       - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
         id: msys2
         with:
@@ -41,14 +35,18 @@ jobs:
             mingw-w64-ucrt-x86_64-libarchive
             mingw-w64-ucrt-x86_64-gtest
             mingw-w64-ucrt-x86_64-nsis
-      - name: Configure and update translations
+      - name: Configure
         shell: msys2 {0}
         run: |
           cmake --preset ci
-          cmake --build build/ci --target update_translations
       - name: Check translations are up to date
         shell: pwsh
-        run: git diff --exit-code -- translations/
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          $env:Path = "$env:MSYS2_LOCATION/ucrt64/bin;$env:Path"
+          ./tools/check-source.ps1 -BuildDir build/ci
+          git diff --exit-code -- translations/
       - name: Build and run tests
         shell: msys2 {0}
         run: |
