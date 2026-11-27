@@ -8,7 +8,7 @@
 cmake_minimum_required(VERSION 3.28)
 
 project(transmissiongui
-    VERSION 1.1.3
+    VERSION 1.1.4
     DESCRIPTION "Transmission daemon GUI client (C++/Qt)"
     LANGUAGES C CXX
 )
