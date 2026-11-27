@@ -29,6 +29,12 @@ struct ColumnLayout {
     void applyToView(QTableView* view) const; // W11: пиры
     static ColumnLayout fromView(QTableView* view, int count); // W11: текущая раскладка пиров
     static void configureHeader(QHeaderView* header); // общие настройки заголовка (выравнивание, stretch, подсветка)
+    /** Расширяет видимые колонки до размера заголовка при начальной раскладке. */
+    static void fitHeaderWidths(QHeaderView& header);
+
+private:
+    /** Применяет порядок, видимость и ширины к горизонтальному заголовку. */
+    void applyToHeader(QHeaderView* header) const;
 };
 
 // Диалог настройки колонок: порядок (Up/Down) + видимость (checkbox).

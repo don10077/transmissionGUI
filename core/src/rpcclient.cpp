@@ -151,7 +151,7 @@ bool RpcClient::configureClientTls()
     return true;
 }
 
-/** Открывает сессию; @p retryOnNetworkError разрешает повтор после ранее установленной связи. */
+/** Открывает сессию; @p retryOnNetworkError сообщает о временном сбое через connectionInterrupted. */
 void RpcClient::connectToDaemon(bool retryOnNetworkError)
 {
     disconnectFromDaemon();

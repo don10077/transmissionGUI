@@ -29,6 +29,7 @@ public:
 
     explicit OptionsDialog(QWidget* parent = nullptr, int rpcVersion = 0,
                            tgui::RpcClient* rpc = nullptr, const QString& profile = {});
+    ~OptionsDialog() override;
 
     // Вкладки диалога (для перехода из других окон).
     enum Page { GeneralPage, InterfacePage, SequentialPage, LabelsPage,
@@ -95,6 +96,7 @@ private:
     QLineEdit* m_watchDestination = nullptr;
     QPlainTextEdit* m_sequentialExtensions = nullptr;
     tgui::theme::ProgressColors m_progressColors;
+    tgui::theme::TextColors m_textColors;
     bool m_restartRequired = false;
     bool m_renamingLabel = false;
 };

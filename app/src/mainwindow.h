@@ -19,10 +19,12 @@
 #include "tgui/rpcclient.h"
 
 class QLineEdit;
+class QLabel;
 class QTreeView;
 class QAction;
 class QMenu;
 class QSplitter;
+class QStackedWidget;
 class QToolBar;
 class ConnectButton;
 class QDragEnterEvent;
@@ -111,6 +113,8 @@ private:
     void addSpeedLimitMenu(QMenu* parent, bool download);
     void setConnectedUi(bool connected);
     void setConnectionState(const QString& text, const QColor& color);
+    void showConnectionPage(const QString& title, const QString& detail = {});
+    void updateRetryCountdown();
     void updateConnectionButton();
     void updateThemeAction();
     void updateRefreshSchedule();
@@ -125,7 +129,13 @@ private:
     void onConnectionCleared();
 
     QTimer m_refreshTimer;
+    QTimer m_retryCountdownTimer;
+    QStackedWidget* m_mainPages = nullptr;
     QSplitter* m_mainSplitter = nullptr;
+    QWidget* m_connectionPage = nullptr;
+    QLabel* m_connectionTitle = nullptr;
+    QLabel* m_connectionDetail = nullptr;
+    QLabel* m_retryCountdown = nullptr;
     bool m_settingsImported = false;
     tgui::SessionInfo m_sessionInfo; // session-get для лимитов и вкладки «General»
     QStringList m_labels;

@@ -751,7 +751,7 @@
 <context>
     <name>Dialog</name>
     <message>
-        <location filename="../app/src/theme.cpp" line="1471"/>
+        <location filename="../app/src/theme.cpp" line="1518"/>
         <source>Close</source>
         <translation>Закрыть</translation>
     </message>
@@ -1111,7 +1111,7 @@
         <translation>Добавить ссылку на торрент, скопированную с %1?</translation>
     </message>
     <message>
-        <location filename="../app/src/connectioncontroller.cpp" line="224"/>
+        <location filename="../app/src/connectioncontroller.cpp" line="226"/>
         <source>Could not save the connection profiles.</source>
         <translation>Не удалось сохранить профили подключения.</translation>
     </message>
@@ -1156,17 +1156,17 @@
         <translation>Лимит (КБ/с):</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="146"/>
+        <location filename="../app/src/detailspanel.cpp" line="148"/>
         <source>No connected peers.</source>
         <translation>Нет подключённых пиров.</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="598"/>
+        <location filename="../app/src/detailspanel.cpp" line="603"/>
         <source>Expand all</source>
         <translation>Развернуть всё</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="599"/>
+        <location filename="../app/src/detailspanel.cpp" line="604"/>
         <source>Collapse all</source>
         <translation>Свернуть всё</translation>
     </message>
@@ -1217,7 +1217,7 @@
         <translation>В файле должна быть одна magnet-ссылка на строку.</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="445"/>
+        <location filename="../app/src/mainwindow.cpp" line="505"/>
         <source>Could not write the settings backup.</source>
         <translation>Не удалось записать резервную копию настроек.</translation>
     </message>
@@ -1227,7 +1227,7 @@
         <translation>Подключиться к текущему серверу (Ctrl+K)</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="344"/>
+        <location filename="../app/src/detailspanel.cpp" line="349"/>
         <source>(%1 more)</source>
         <translation>(ещё %1)</translation>
     </message>
@@ -1368,12 +1368,12 @@
         <translation>Изменить каталог меток…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="459"/>
+        <location filename="../app/src/mainwindow.cpp" line="519"/>
         <source>The file is not a supported TransmissionGUI settings backup.</source>
         <translation>Формат резервной копии настроек TransmissionGUI не распознан.</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="471"/>
+        <location filename="../app/src/mainwindow.cpp" line="531"/>
         <source>Could not apply the settings backup.</source>
         <translation>Не удалось применить резервную копию настроек.</translation>
     </message>
@@ -1487,24 +1487,36 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>%1 КБ/с</translation>
     </message>
     <message>
-        <location filename="../app/src/connectioncontroller.cpp" line="242"/>
+        <location filename="../app/src/connectioncontroller.cpp" line="244"/>
         <source>Client TLS passphrase</source>
         <translation>Пароль клиентского TLS</translation>
     </message>
     <message>
-        <location filename="../app/src/connectioncontroller.cpp" line="243"/>
+        <location filename="../app/src/connectioncontroller.cpp" line="245"/>
         <source>Passphrase for the client certificate or key:</source>
         <translation>Пароль клиентского сертификата или ключа:</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="278"/>
+        <location filename="../app/src/mainwindow.cpp" line="306"/>
+        <location filename="../app/src/mainwindow.cpp" line="332"/>
         <source>Reconnecting…</source>
         <translation>Переподключение…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="279"/>
-        <source>Retrying in %1 s: %2</source>
-        <translation>Повторное подключение через %1 с: %2</translation>
+        <location filename="../app/src/mainwindow.cpp" line="225"/>
+        <source>Retrying in %1 s</source>
+        <translation>Повторное подключение через %1 с</translation>
+    </message>
+    <message>
+        <location filename="../app/src/mainwindow.cpp" line="303"/>
+        <location filename="../app/src/mainwindow.cpp" line="311"/>
+        <source>Daemon unavailable</source>
+        <translation>Демон недоступен</translation>
+    </message>
+    <message>
+        <location filename="../app/src/mainwindow.cpp" line="439"/>
+        <source>Loading torrents…</source>
+        <translation>Загрузка списка торрентов…</translation>
     </message>
     <message>
         <location filename="../app/src/mainwindowui.cpp" line="152"/>
@@ -1607,17 +1619,17 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Загрузка завершена</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="147"/>
-        <location filename="../app/src/mainwindow.cpp" line="266"/>
-        <location filename="../app/src/mainwindow.cpp" line="272"/>
-        <location filename="../app/src/mainwindow.cpp" line="283"/>
+        <location filename="../app/src/mainwindow.cpp" line="150"/>
+        <location filename="../app/src/mainwindow.cpp" line="320"/>
+        <location filename="../app/src/mainwindow.cpp" line="326"/>
+        <location filename="../app/src/mainwindow.cpp" line="339"/>
         <location filename="../app/src/statusbarcontroller.cpp" line="139"/>
         <location filename="../app/src/statusbarcontroller.cpp" line="248"/>
         <source>Disconnected</source>
         <translation>Отключено</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="268"/>
+        <location filename="../app/src/mainwindow.cpp" line="322"/>
         <source>Add queue cleared. Torrents not added: %1.</source>
         <translation>Очередь добавления очищена. Не добавлено торрентов: %1.</translation>
     </message>
@@ -1633,39 +1645,39 @@ Are you sure to start verification of %n torrent(s)?</source>
     </message>
     <message>
         <location filename="../app/src/torrentlistcontroller.cpp" line="352"/>
-        <location filename="../app/src/detailspanel.cpp" line="645"/>
-        <location filename="../app/src/detailspanel.cpp" line="709"/>
-        <location filename="../app/src/detailspanel.cpp" line="887"/>
+        <location filename="../app/src/detailspanel.cpp" line="650"/>
+        <location filename="../app/src/detailspanel.cpp" line="714"/>
+        <location filename="../app/src/detailspanel.cpp" line="892"/>
         <source>Column layout updated.</source>
         <translation>Раскладка колонок обновлена.</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="218"/>
+        <location filename="../app/src/detailspanel.cpp" line="223"/>
         <source>General</source>
         <translation>Общие</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="220"/>
+        <location filename="../app/src/detailspanel.cpp" line="225"/>
         <source>Trackers</source>
         <translation>Трекеры</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="222"/>
+        <location filename="../app/src/detailspanel.cpp" line="227"/>
         <source>Peers</source>
         <translation>Пиры</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="224"/>
+        <location filename="../app/src/detailspanel.cpp" line="229"/>
         <source>Files</source>
         <translation>Файлы</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="226"/>
+        <location filename="../app/src/detailspanel.cpp" line="231"/>
         <source>Statistics</source>
         <translation>Статистика</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="195"/>
+        <location filename="../app/src/mainwindow.cpp" line="241"/>
         <location filename="../app/src/mainwindowui.cpp" line="54"/>
         <source>Connect</source>
         <translation>Подключить</translation>
@@ -1690,119 +1702,119 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Переименовать можно только один торрент.</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="809"/>
+        <location filename="../app/src/detailspanel.cpp" line="814"/>
         <location filename="../app/src/torrentactions.cpp" line="616"/>
         <source>New name:</source>
         <translation>Новое имя:</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="525"/>
+        <location filename="../app/src/mainwindow.cpp" line="585"/>
         <location filename="../app/src/mainwindowui.cpp" line="161"/>
         <source>Options</source>
         <translation>Параметры</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="579"/>
+        <location filename="../app/src/detailspanel.cpp" line="584"/>
         <source>Open</source>
         <translation>Открыть</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="581"/>
+        <location filename="../app/src/detailspanel.cpp" line="586"/>
         <source>Open containing folder</source>
         <translation>Открыть содержащую папку</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="585"/>
+        <location filename="../app/src/detailspanel.cpp" line="590"/>
         <source>Copy file path to clipboard</source>
         <translation>Копировать путь файла в буфер</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="595"/>
+        <location filename="../app/src/detailspanel.cpp" line="600"/>
         <source>Don&apos;t download</source>
         <translation>Не скачивать</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="730"/>
+        <location filename="../app/src/detailspanel.cpp" line="735"/>
         <source>Marked for download</source>
         <translation>Отмечено к скачиванию</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="730"/>
+        <location filename="../app/src/detailspanel.cpp" line="735"/>
         <source>Marked to skip</source>
         <translation>Отмечено пропуском</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="795"/>
+        <location filename="../app/src/detailspanel.cpp" line="800"/>
         <source>File path copied</source>
         <translation>Путь файла скопирован</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="846"/>
+        <location filename="../app/src/detailspanel.cpp" line="851"/>
         <source>Add tracker…</source>
         <translation>Добавить трекер…</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="847"/>
+        <location filename="../app/src/detailspanel.cpp" line="852"/>
         <source>Edit tracker…</source>
         <translation>Изменить трекер…</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="848"/>
+        <location filename="../app/src/detailspanel.cpp" line="853"/>
         <source>Remove tracker…</source>
         <translation>Удалить трекер…</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="849"/>
+        <location filename="../app/src/detailspanel.cpp" line="854"/>
         <source>Edit tracker list…</source>
         <translation>Редактировать список трекеров…</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="814"/>
+        <location filename="../app/src/detailspanel.cpp" line="819"/>
         <source>Specify a valid file or folder name.</source>
         <translation>Укажите допустимое имя файла или папки.</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="350"/>
+        <location filename="../app/src/detailspanel.cpp" line="355"/>
         <source>%1
 Name on disk: %2</source>
         <translation>%1
 Имя на диске: %2</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="923"/>
-        <location filename="../app/src/detailspanel.cpp" line="929"/>
+        <location filename="../app/src/detailspanel.cpp" line="928"/>
+        <location filename="../app/src/detailspanel.cpp" line="934"/>
         <source>Add tracker</source>
         <translation>Добавить трекер</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="923"/>
+        <location filename="../app/src/detailspanel.cpp" line="928"/>
         <source>Tracker URL:</source>
         <translation>URL трекера:</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="929"/>
-        <location filename="../app/src/detailspanel.cpp" line="949"/>
+        <location filename="../app/src/detailspanel.cpp" line="934"/>
+        <location filename="../app/src/detailspanel.cpp" line="954"/>
         <source>No tracker URL was specified.</source>
         <translation>URL трекера не указан.</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="943"/>
-        <location filename="../app/src/detailspanel.cpp" line="949"/>
+        <location filename="../app/src/detailspanel.cpp" line="948"/>
+        <location filename="../app/src/detailspanel.cpp" line="954"/>
         <source>Edit tracker</source>
         <translation>Изменение трекера</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="943"/>
+        <location filename="../app/src/detailspanel.cpp" line="948"/>
         <source>New tracker URL:</source>
         <translation>Новый URL трекера:</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="962"/>
+        <location filename="../app/src/detailspanel.cpp" line="967"/>
         <source>Remove tracker</source>
         <translation>Удаление трекера</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="962"/>
+        <location filename="../app/src/detailspanel.cpp" line="967"/>
         <source>Remove tracker “%1”?</source>
         <translation>Удалить трекер «%1»?</translation>
     </message>
@@ -1848,27 +1860,27 @@ Name on disk: %2</source>
         <translation>Главное</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="253"/>
+        <location filename="../app/src/mainwindow.cpp" line="301"/>
         <source>Connecting to %1…</source>
         <translation>Подключение к %1…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="203"/>
-        <location filename="../app/src/mainwindow.cpp" line="204"/>
-        <location filename="../app/src/mainwindow.cpp" line="381"/>
-        <location filename="../app/src/mainwindow.cpp" line="388"/>
+        <location filename="../app/src/mainwindow.cpp" line="249"/>
+        <location filename="../app/src/mainwindow.cpp" line="250"/>
+        <location filename="../app/src/mainwindow.cpp" line="438"/>
+        <location filename="../app/src/mainwindow.cpp" line="446"/>
         <location filename="../app/src/statusbarcontroller.cpp" line="248"/>
         <source>Connected</source>
         <translation>подключено</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="282"/>
-        <location filename="../app/src/connectioncontroller.cpp" line="179"/>
+        <location filename="../app/src/mainwindow.cpp" line="338"/>
+        <location filename="../app/src/connectioncontroller.cpp" line="181"/>
         <source>Connection failed</source>
         <translation>Ошибка подключения</translation>
     </message>
     <message>
-        <location filename="../app/src/connectioncontroller.cpp" line="180"/>
+        <location filename="../app/src/connectioncontroller.cpp" line="182"/>
         <source>Address: %1
 
 Reason: %2</source>
@@ -1994,7 +2006,7 @@ Reason: %2</source>
         <translation>Строка состояния</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="533"/>
+        <location filename="../app/src/mainwindow.cpp" line="593"/>
         <source>Daemon options</source>
         <translation>Параметры демона</translation>
     </message>
@@ -2006,7 +2018,7 @@ Reason: %2</source>
     <message>
         <location filename="../app/src/mainwindowui.cpp" line="171"/>
         <location filename="../app/src/mainwindowui.cpp" line="339"/>
-        <location filename="../app/src/connectioncontroller.cpp" line="224"/>
+        <location filename="../app/src/connectioncontroller.cpp" line="226"/>
         <source>Connect to Transmission</source>
         <translation>Подключение к Transmission</translation>
     </message>
@@ -2071,27 +2083,27 @@ Reason: %2</source>
     <message>
         <location filename="../app/src/mainwindowui.cpp" line="427"/>
         <location filename="../app/src/torrentlistcontroller.cpp" line="484"/>
-        <location filename="../app/src/detailspanel.cpp" line="603"/>
-        <location filename="../app/src/detailspanel.cpp" line="696"/>
-        <location filename="../app/src/detailspanel.cpp" line="851"/>
+        <location filename="../app/src/detailspanel.cpp" line="608"/>
+        <location filename="../app/src/detailspanel.cpp" line="701"/>
+        <location filename="../app/src/detailspanel.cpp" line="856"/>
         <source>Setup columns…</source>
         <translation>Настроить колонки…</translation>
     </message>
     <message>
         <location filename="../app/src/mainwindowui.cpp" line="365"/>
-        <location filename="../app/src/detailspanel.cpp" line="588"/>
+        <location filename="../app/src/detailspanel.cpp" line="593"/>
         <source>High priority</source>
         <translation>Высокий приоритет</translation>
     </message>
     <message>
         <location filename="../app/src/mainwindowui.cpp" line="367"/>
-        <location filename="../app/src/detailspanel.cpp" line="589"/>
+        <location filename="../app/src/detailspanel.cpp" line="594"/>
         <source>Normal priority</source>
         <translation>Обычный приоритет</translation>
     </message>
     <message>
         <location filename="../app/src/mainwindowui.cpp" line="369"/>
-        <location filename="../app/src/detailspanel.cpp" line="590"/>
+        <location filename="../app/src/detailspanel.cpp" line="595"/>
         <source>Low priority</source>
         <translation>Низкий приоритет</translation>
     </message>
@@ -2254,12 +2266,13 @@ Are you sure to start verification?</source>
         <translation>Поиск торрентов</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="255"/>
+        <location filename="../app/src/mainwindow.cpp" line="306"/>
         <source>Connecting…</source>
         <translation>Подключение…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="286"/>
+        <location filename="../app/src/mainwindow.cpp" line="342"/>
+        <location filename="../app/src/mainwindow.cpp" line="343"/>
         <source>Authentication required</source>
         <translation>Требуется аутентификация</translation>
     </message>
@@ -2305,9 +2318,9 @@ Are you sure to start verification?</source>
         <translation>Удалить торрент и данные</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="583"/>
-        <location filename="../app/src/detailspanel.cpp" line="809"/>
+        <location filename="../app/src/detailspanel.cpp" line="588"/>
         <location filename="../app/src/detailspanel.cpp" line="814"/>
+        <location filename="../app/src/detailspanel.cpp" line="819"/>
         <location filename="../app/src/torrentactions.cpp" line="46"/>
         <location filename="../app/src/torrentactions.cpp" line="603"/>
         <location filename="../app/src/torrentactions.cpp" line="616"/>
@@ -2360,17 +2373,17 @@ Download this database now?</source>
 Скачать базу сейчас?</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="670"/>
+        <location filename="../app/src/detailspanel.cpp" line="675"/>
         <source>Resolve Country</source>
         <translation>Определять страну</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="661"/>
+        <location filename="../app/src/detailspanel.cpp" line="666"/>
         <source>Resolve Host</source>
         <translation>Определять хост</translation>
     </message>
     <message>
-        <location filename="../app/src/detailspanel.cpp" line="683"/>
+        <location filename="../app/src/detailspanel.cpp" line="688"/>
         <source>Show Country Flag</source>
         <translation>Показывать флаг страны</translation>
     </message>
@@ -2405,8 +2418,8 @@ Download this database now?</source>
         <translation>Сайт разработки</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="439"/>
-        <location filename="../app/src/mainwindow.cpp" line="454"/>
+        <location filename="../app/src/mainwindow.cpp" line="499"/>
+        <location filename="../app/src/mainwindow.cpp" line="514"/>
         <source>INI files (*.ini)</source>
         <translation>INI-файлы (*.ini)</translation>
     </message>
@@ -2426,28 +2439,28 @@ Download this database now?</source>
         <translation>Это действие нельзя отменить.</translation>
     </message>
     <message>
-        <location filename="../app/src/connectioncontroller.cpp" line="296"/>
+        <location filename="../app/src/connectioncontroller.cpp" line="298"/>
         <source>Server &apos;%1&apos; has no host set.</source>
         <translation>Для сервера «%1» не задан адрес (host).</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="533"/>
+        <location filename="../app/src/mainwindow.cpp" line="593"/>
         <location filename="../app/src/addtorrentcoordinator.cpp" line="207"/>
         <source>Not connected to the daemon.</source>
         <translation>Нет подключения к демону.</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="546"/>
+        <location filename="../app/src/mainwindow.cpp" line="606"/>
         <source>Applying daemon options…</source>
         <translation>Применение параметров демона…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="542"/>
+        <location filename="../app/src/mainwindow.cpp" line="602"/>
         <source>No changes to apply.</source>
         <translation>Нет изменений для применения.</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="526"/>
+        <location filename="../app/src/mainwindow.cpp" line="586"/>
         <source>Language or interface scale changed. Restart the application to apply the new value.</source>
         <translation>Изменены язык или масштаб интерфейса. Перезапустите приложение, чтобы применить новое значение.</translation>
     </message>
@@ -2473,8 +2486,8 @@ Download this database now?</source>
         <translation>Экспорт настроек…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="438"/>
-        <location filename="../app/src/mainwindow.cpp" line="445"/>
+        <location filename="../app/src/mainwindow.cpp" line="498"/>
+        <location filename="../app/src/mainwindow.cpp" line="505"/>
         <source>Export settings</source>
         <translation>Экспорт настроек</translation>
     </message>
@@ -2484,25 +2497,25 @@ Download this database now?</source>
         <translation>Импорт настроек…</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="454"/>
-        <location filename="../app/src/mainwindow.cpp" line="459"/>
-        <location filename="../app/src/mainwindow.cpp" line="462"/>
-        <location filename="../app/src/mainwindow.cpp" line="471"/>
+        <location filename="../app/src/mainwindow.cpp" line="514"/>
+        <location filename="../app/src/mainwindow.cpp" line="519"/>
+        <location filename="../app/src/mainwindow.cpp" line="522"/>
+        <location filename="../app/src/mainwindow.cpp" line="531"/>
         <source>Import settings</source>
         <translation>Импорт настроек</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="448"/>
+        <location filename="../app/src/mainwindow.cpp" line="508"/>
         <source>Settings exported to: %1</source>
         <translation>Настройки экспортированы: %1</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="480"/>
+        <location filename="../app/src/mainwindow.cpp" line="540"/>
         <source>Settings imported. Restart to apply.</source>
         <translation>Настройки импортированы. Перезапустите для применения.</translation>
     </message>
     <message>
-        <location filename="../app/src/mainwindow.cpp" line="463"/>
+        <location filename="../app/src/mainwindow.cpp" line="523"/>
         <source>Import settings from file? Current settings will be overwritten.
 Restart the application to apply the changes.</source>
         <translation>Импортировать настройки из файла? Текущие настройки будут перезаписаны.
@@ -2613,52 +2626,62 @@ Restart the application to apply the changes.</source>
 <context>
     <name>OptionsDialog</name>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="168"/>
+        <location filename="../app/src/optionsdialog.cpp" line="461"/>
+        <source>Text in light theme</source>
+        <translation>Текст в светлой теме</translation>
+    </message>
+    <message>
+        <location filename="../app/src/optionsdialog.cpp" line="461"/>
+        <source>Text in dark theme</source>
+        <translation>Текст в тёмной теме</translation>
+    </message>
+    <message>
+        <location filename="../app/src/optionsdialog.cpp" line="169"/>
         <source>Progress bar colors…</source>
         <translation>Цвета шкалы прогресса…</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="445"/>
+        <location filename="../app/src/optionsdialog.cpp" line="452"/>
         <source>Progress bar colors</source>
         <translation>Цвета шкалы прогресса</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="448"/>
+        <location filename="../app/src/optionsdialog.cpp" line="459"/>
         <source>Downloading</source>
         <translation>Загрузка</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="448"/>
+        <location filename="../app/src/optionsdialog.cpp" line="459"/>
         <source>Seeding</source>
         <translation>Раздача</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="448"/>
+        <location filename="../app/src/optionsdialog.cpp" line="459"/>
         <source>Finished</source>
         <translation>Завершено</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="448"/>
+        <location filename="../app/src/optionsdialog.cpp" line="459"/>
         <source>Waiting</source>
         <translation>Ожидание</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="449"/>
+        <location filename="../app/src/optionsdialog.cpp" line="460"/>
         <source>Verifying</source>
         <translation>Проверка</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="449"/>
+        <location filename="../app/src/optionsdialog.cpp" line="460"/>
         <source>Paused</source>
         <translation>Пауза</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="449"/>
+        <location filename="../app/src/optionsdialog.cpp" line="460"/>
         <source>Error</source>
         <translation>Ошибка</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="476"/>
+        <location filename="../app/src/optionsdialog.cpp" line="502"/>
         <source>Restore defaults</source>
         <translation>Восстановить стандартные цвета</translation>
     </message>
@@ -2668,106 +2691,106 @@ Restart the application to apply the changes.</source>
         <translation>Интервал обновления в свёрнутом окне:</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="237"/>
+        <location filename="../app/src/optionsdialog.cpp" line="238"/>
         <source>Connections without a profile</source>
         <translation>Подключения без профиля</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="238"/>
+        <location filename="../app/src/optionsdialog.cpp" line="239"/>
         <source>Profile: %1</source>
         <translation>Профиль: %1</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="413"/>
-        <location filename="../app/src/optionsdialog.cpp" line="599"/>
+        <location filename="../app/src/optionsdialog.cpp" line="414"/>
+        <location filename="../app/src/optionsdialog.cpp" line="634"/>
         <source>Speed limits</source>
         <translation>Лимиты скорости</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="599"/>
+        <location filename="../app/src/optionsdialog.cpp" line="634"/>
         <source>Speed presets must be non-negative whole numbers.</source>
         <translation>Скорости должны быть целыми неотрицательными числами.</translation>
     </message>
     <message>
         <location filename="../app/src/optionsdialog.cpp" line="93"/>
-        <location filename="../app/src/optionsdialog.cpp" line="414"/>
+        <location filename="../app/src/optionsdialog.cpp" line="415"/>
         <source>Adding torrents</source>
         <translation>Добавление торрентов</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="273"/>
+        <location filename="../app/src/optionsdialog.cpp" line="274"/>
         <source>Watch folder</source>
         <translation>Отслеживаемая папка</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="281"/>
+        <location filename="../app/src/optionsdialog.cpp" line="282"/>
         <source>Leave empty to disable monitoring</source>
         <translation>Пустое поле отключает отслеживание</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="282"/>
+        <location filename="../app/src/optionsdialog.cpp" line="283"/>
         <source>Browse…</source>
         <translation>Обзор…</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="284"/>
+        <location filename="../app/src/optionsdialog.cpp" line="285"/>
         <source>Choose a watch folder</source>
         <translation>Выберите отслеживаемую папку</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="293"/>
+        <location filename="../app/src/optionsdialog.cpp" line="294"/>
         <source>Use the daemon&apos;s default folder</source>
         <translation>Папка по умолчанию на демоне</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="622"/>
+        <location filename="../app/src/optionsdialog.cpp" line="657"/>
         <source>Could not register the handlers in Windows.</source>
         <translation>Не удалось зарегистрировать обработчики в Windows.</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="411"/>
-        <location filename="../app/src/optionsdialog.cpp" line="605"/>
+        <location filename="../app/src/optionsdialog.cpp" line="412"/>
+        <location filename="../app/src/optionsdialog.cpp" line="640"/>
         <source>Labels</source>
         <translation>Метки</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="398"/>
-        <location filename="../app/src/optionsdialog.cpp" line="679"/>
-        <location filename="../app/src/optionsdialog.cpp" line="690"/>
-        <location filename="../app/src/optionsdialog.cpp" line="697"/>
-        <location filename="../app/src/optionsdialog.cpp" line="712"/>
+        <location filename="../app/src/optionsdialog.cpp" line="399"/>
+        <location filename="../app/src/optionsdialog.cpp" line="715"/>
+        <location filename="../app/src/optionsdialog.cpp" line="726"/>
+        <location filename="../app/src/optionsdialog.cpp" line="733"/>
+        <location filename="../app/src/optionsdialog.cpp" line="748"/>
         <source>Rename label</source>
         <translation>Переименование метки</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="691"/>
+        <location filename="../app/src/optionsdialog.cpp" line="727"/>
         <source>New name (saved immediately and applied on the connected server):</source>
         <translation>Новое имя (сохраняется сразу и применяется на подключённом сервере):</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="698"/>
+        <location filename="../app/src/optionsdialog.cpp" line="734"/>
         <source>Enter a unique, nonempty name without commas.</source>
         <translation>Введите свободное непустое имя без запятых.</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="713"/>
+        <location filename="../app/src/optionsdialog.cpp" line="749"/>
         <source>The rename did not finish. You can retry with the same name.
 %1</source>
         <translation>Переименование не завершено. Можно повторить операцию с тем же именем.
 %1</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="605"/>
+        <location filename="../app/src/optionsdialog.cpp" line="640"/>
         <source>Label names cannot contain commas.</source>
         <translation>В названиях меток нельзя использовать запятые.</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="307"/>
+        <location filename="../app/src/optionsdialog.cpp" line="308"/>
         <source>Only for torrents containing one file. You can change the checkbox in the Add torrent dialog.</source>
         <translation>Только для торрентов с одним файлом. Галочку можно изменить вручную в окне добавления.</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="410"/>
+        <location filename="../app/src/optionsdialog.cpp" line="411"/>
         <source>Sequential download</source>
         <translation>Последовательное скачивание</translation>
     </message>
@@ -2782,22 +2805,22 @@ Restart the application to apply the changes.</source>
         <translation>Отображение данных</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="408"/>
+        <location filename="../app/src/optionsdialog.cpp" line="409"/>
         <source>General</source>
         <translation>Общие</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="173"/>
+        <location filename="../app/src/optionsdialog.cpp" line="174"/>
         <source>Tray icon</source>
         <translation>Значок в трее</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="179"/>
+        <location filename="../app/src/optionsdialog.cpp" line="180"/>
         <source>Close to tray</source>
         <translation>Закрывать в трей</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="409"/>
+        <location filename="../app/src/optionsdialog.cpp" line="410"/>
         <source>Interface</source>
         <translation>Интерфейс</translation>
     </message>
@@ -2817,12 +2840,12 @@ Restart the application to apply the changes.</source>
         <translation>Язык:</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="412"/>
+        <location filename="../app/src/optionsdialog.cpp" line="413"/>
         <source>Paths</source>
         <translation>Пути</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="177"/>
+        <location filename="../app/src/optionsdialog.cpp" line="178"/>
         <source>Minimize to tray</source>
         <translation>Сворачивать в трей</translation>
     </message>
@@ -2888,48 +2911,48 @@ Restart the application to apply the changes.</source>
         <translation>Кнопки панели инструментов:</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="181"/>
+        <location filename="../app/src/optionsdialog.cpp" line="182"/>
         <source>Always show the tray icon</source>
         <translation>Всегда показывать значок</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="183"/>
+        <location filename="../app/src/optionsdialog.cpp" line="184"/>
         <source>Show notifications</source>
         <translation>Показывать уведомления</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="195"/>
+        <location filename="../app/src/optionsdialog.cpp" line="196"/>
         <source>Check for updates every:</source>
         <translation>Проверять обновления каждые:</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="201"/>
+        <location filename="../app/src/optionsdialog.cpp" line="202"/>
         <source> days</source>
         <translation> дней</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="210"/>
-        <location filename="../app/src/optionsdialog.cpp" line="621"/>
+        <location filename="../app/src/optionsdialog.cpp" line="211"/>
+        <location filename="../app/src/optionsdialog.cpp" line="656"/>
         <source>System integration</source>
         <translation>Интеграция с системой</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="213"/>
+        <location filename="../app/src/optionsdialog.cpp" line="214"/>
         <source>Open .torrent files with this application</source>
         <translation>Открывать .torrent-файлы этой программой</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="217"/>
+        <location filename="../app/src/optionsdialog.cpp" line="218"/>
         <source>Open magnet links with this application</source>
         <translation>Открывать magnet-ссылки этой программой</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="223"/>
+        <location filename="../app/src/optionsdialog.cpp" line="224"/>
         <source>File and magnet associations are configured by the desktop environment.</source>
         <translation>Связи файлов и magnet настраиваются в среде рабочего стола.</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="233"/>
+        <location filename="../app/src/optionsdialog.cpp" line="234"/>
         <source>Map the daemon&apos;s (remote) paths to local ones, one pair per line: remote=local.
 Example: /var/downloads/music=Z:/music
 Used when opening files/folders with double-click.</source>
@@ -2938,104 +2961,104 @@ Used when opening files/folders with double-click.</source>
 Используется при открытии файлов и папок двойным щелчком.</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="252"/>
+        <location filename="../app/src/optionsdialog.cpp" line="253"/>
         <source>Speed presets for the limit menu, separated by commas or spaces.</source>
         <translation>Значения скорости для меню ограничений, через запятую или пробел.</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="263"/>
+        <location filename="../app/src/optionsdialog.cpp" line="264"/>
         <source>Download presets (KB/s):</source>
         <translation>Скорости загрузки (КБ/с):</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="264"/>
+        <location filename="../app/src/optionsdialog.cpp" line="265"/>
         <source>Upload presets (KB/s):</source>
         <translation>Скорости отдачи (КБ/с):</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="276"/>
+        <location filename="../app/src/optionsdialog.cpp" line="277"/>
         <source>Torrent files placed in the folder are added automatically while the application is running.</source>
         <translation>Торрент-файлы, помещённые в папку, добавляются автоматически, пока приложение запущено.</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="290"/>
+        <location filename="../app/src/optionsdialog.cpp" line="291"/>
         <source>Local folder:</source>
         <translation>Локальная папка:</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="294"/>
+        <location filename="../app/src/optionsdialog.cpp" line="295"/>
         <source>Download folder on the daemon:</source>
         <translation>Папка загрузки на демоне:</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="303"/>
+        <location filename="../app/src/optionsdialog.cpp" line="304"/>
         <source>Enable automatically for files with these extensions:</source>
         <translation>Автоматически включать для файлов с расширениями:</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="317"/>
+        <location filename="../app/src/optionsdialog.cpp" line="318"/>
         <source>Requires Transmission 4.1 or newer (RPC 18) to edit this setting.</source>
         <translation>Требуется Transmission 4.1 или новее (RPC 18), чтобы изменить эту настройку.</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="329"/>
+        <location filename="../app/src/optionsdialog.cpp" line="330"/>
         <source>The label catalog is used in the add torrent dialog, torrent properties, the context menu and the filter panel.</source>
         <translation>Каталог меток используется в окне добавления, свойствах торрента, контекстном меню и панели фильтров.</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="336"/>
+        <location filename="../app/src/optionsdialog.cpp" line="337"/>
         <source>Add…</source>
         <translation>Добавить…</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="338"/>
+        <location filename="../app/src/optionsdialog.cpp" line="339"/>
         <source>Rename…</source>
         <translation>Переименовать…</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="340"/>
+        <location filename="../app/src/optionsdialog.cpp" line="341"/>
         <source>Delete</source>
         <translation>Удалить</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="342"/>
+        <location filename="../app/src/optionsdialog.cpp" line="343"/>
         <source>Up</source>
         <translation>Вверх</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="344"/>
+        <location filename="../app/src/optionsdialog.cpp" line="345"/>
         <source>Down</source>
         <translation>Вниз</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="346"/>
+        <location filename="../app/src/optionsdialog.cpp" line="347"/>
         <source>Standard</source>
         <translation>Стандартные</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="364"/>
+        <location filename="../app/src/optionsdialog.cpp" line="365"/>
         <source>Renaming a label is applied to all torrents on the server (Transmission 4.0+, RPC 16).</source>
         <translation>Переименование метки применяется ко всем торрентам на сервере (Transmission 4.0+, RPC 16).</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="398"/>
-        <location filename="../app/src/optionsdialog.cpp" line="679"/>
+        <location filename="../app/src/optionsdialog.cpp" line="399"/>
+        <location filename="../app/src/optionsdialog.cpp" line="715"/>
         <source>New name:</source>
         <translation>Новое имя:</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="542"/>
-        <location filename="../app/src/optionsdialog.cpp" line="547"/>
+        <location filename="../app/src/optionsdialog.cpp" line="577"/>
+        <location filename="../app/src/optionsdialog.cpp" line="582"/>
         <source>New label</source>
         <translation>Новая метка</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="542"/>
+        <location filename="../app/src/optionsdialog.cpp" line="577"/>
         <source>Name:</source>
         <translation>Название:</translation>
     </message>
     <message>
-        <location filename="../app/src/optionsdialog.cpp" line="547"/>
+        <location filename="../app/src/optionsdialog.cpp" line="582"/>
         <source>Enter a unique name without commas.</source>
         <translation>Введите уникальное имя без запятых.</translation>
     </message>
@@ -3549,42 +3572,42 @@ Used when opening files/folders with double-click.</source>
 <context>
     <name>StatsForm</name>
     <message>
-        <location filename="../app/src/statsform.cpp" line="80"/>
+        <location filename="../app/src/statsform.cpp" line="81"/>
         <source>Ratio</source>
         <translation>Коэффициент</translation>
     </message>
     <message>
-        <location filename="../app/src/statsform.cpp" line="78"/>
+        <location filename="../app/src/statsform.cpp" line="79"/>
         <source>Global statistics:</source>
         <translation>Общая статистика:</translation>
     </message>
     <message>
-        <location filename="../app/src/statsform.cpp" line="83"/>
+        <location filename="../app/src/statsform.cpp" line="84"/>
         <source>Cumulative</source>
         <translation>Всего</translation>
     </message>
     <message>
-        <location filename="../app/src/statsform.cpp" line="83"/>
+        <location filename="../app/src/statsform.cpp" line="84"/>
         <source>Current</source>
         <translation>Текущее</translation>
     </message>
     <message>
-        <location filename="../app/src/statsform.cpp" line="80"/>
+        <location filename="../app/src/statsform.cpp" line="81"/>
         <source>Downloaded</source>
         <translation>Скачано</translation>
     </message>
     <message>
-        <location filename="../app/src/statsform.cpp" line="80"/>
+        <location filename="../app/src/statsform.cpp" line="81"/>
         <source>Uploaded</source>
         <translation>Отдано</translation>
     </message>
     <message>
-        <location filename="../app/src/statsform.cpp" line="80"/>
+        <location filename="../app/src/statsform.cpp" line="81"/>
         <source>Files added</source>
         <translation>Файлов добавлено</translation>
     </message>
     <message>
-        <location filename="../app/src/statsform.cpp" line="80"/>
+        <location filename="../app/src/statsform.cpp" line="81"/>
         <source>Active for</source>
         <translation>Активность</translation>
     </message>

@@ -45,6 +45,7 @@ static void applyDefaultFileColumnWidths(QTreeView* view)
     view->setColumnWidth(FileTreeModel::Done, 90);
     view->setColumnWidth(FileTreeModel::Progress, 86);
     view->setColumnWidth(FileTreeModel::Priority, 100);
+    ColumnLayout::fitHeaderWidths(*view->header());
 }
 
 DetailsPanel::DetailsPanel(QWidget* parent, const ConnectionController& connection, const TorrentModel& model,
@@ -52,6 +53,7 @@ DetailsPanel::DetailsPanel(QWidget* parent, const ConnectionController& connecti
     : QTabWidget(parent), m_connection(connection), m_model(model), m_sessionInfo(session),
       mappedLocalPath(std::move(map)), openLocalPath(std::move(open)), m_selectionCount(std::move(count))
 {
+    setObjectName(QStringLiteral("infoPanel"));
     // Вкладки деталей выбранного торрента: Файлы / Пиры / Трекеры.
     auto makeTable = [this](QAbstractTableModel* tableModel) {
         auto* view = new QTableView(this);
@@ -169,6 +171,8 @@ DetailsPanel::DetailsPanel(QWidget* parent, const ConnectionController& connecti
     if (QSettings().contains(QStringLiteral("peers/columns/order")))
         ColumnLayout::fromSettings(PeerListModel::ColumnCount, QStringLiteral("peers/columns"))
             .applyToView(peersView);
+    else
+        ColumnLayout::fitHeaderWidths(*peersView->horizontalHeader());
     m_peersView = peersView; // для периодического обновления вкладки (см. refreshFilesDetails)
 
     auto* trackersView = makeTable(&m_trackerModel);
@@ -188,6 +192,8 @@ DetailsPanel::DetailsPanel(QWidget* parent, const ConnectionController& connecti
     if (QSettings().contains(QStringLiteral("trackers/columns/order")))
         ColumnLayout::fromSettings(TrackerListModel::ColumnCount, QStringLiteral("trackers/columns"))
             .applyToView(trackersView);
+    else
+        ColumnLayout::fitHeaderWidths(*trackersView->horizontalHeader());
     // Контекстное меню вкладки «Трекеры» (референс — pmTrackers): Add/Edit/Remove.
     trackersView->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(trackersView, &QWidget::customContextMenuRequested,
@@ -205,7 +211,6 @@ DetailsPanel::DetailsPanel(QWidget* parent, const ConnectionController& connecti
     m_general = new PropsForm(this);
     m_statsForm = new StatsForm(this);
 
-    this->setObjectName(QStringLiteral("infoPanel"));
     this->setIconSize(QSize(14, 14));
     this->setUsesScrollButtons(true);
     m_infoTitle = new QLabel(this);

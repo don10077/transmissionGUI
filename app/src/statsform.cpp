@@ -7,6 +7,7 @@
 #include <QScrollArea>
 #include <QVBoxLayout>
 
+#include "colsetup.h"
 #include "tgui/util.h"
 
 namespace {
@@ -93,6 +94,7 @@ void StatsForm::rebuild()
         table->setMaximumWidth(520);
         table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
         table->horizontalHeader()->setStretchLastSection(false);
+        ColumnLayout::fitHeaderWidths(*table->horizontalHeader());
         table->setSelectionBehavior(QAbstractItemView::SelectRows);
         table->setEditTriggers(QAbstractItemView::NoEditTriggers);
         table->setMouseTracking(true);

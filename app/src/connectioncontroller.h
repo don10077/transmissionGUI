@@ -26,8 +26,10 @@ public:
     bool isConnected() const { return m_connected; }
     bool isReconnecting() const { return m_reconnecting; }
     bool hasScheduledRetry() const { return m_reconnectOptions.has_value(); }
+    /** Возвращает оставшееся время до запланированной попытки в миллисекундах. */
+    int retryRemainingMs() const { return m_reconnectTimer.remainingTime(); }
 
-    /** Завершает повторное подключение после первого свежего списка торрентов. */
+    /** Сбрасывает задержку после свежего списка и сообщает, был ли это повтор. */
     bool finishReconnect();
     /** Отменяет запросы при уничтожении главного окна. */
     void shutdown();
@@ -50,11 +52,11 @@ signals:
     void connecting(const QUrl& address);
     void connected(const tgui::SessionInfo& info);
     void suspended();
-    void interrupted();
+    void interrupted(const QString& error);
     void clearing();
     void cleared();
     void manuallyDisconnected();
-    void retryScheduled(int delayMs, const QString& error);
+    void retryScheduled();
     void failed();
     void authenticationRequired();
     void profileRenamed();

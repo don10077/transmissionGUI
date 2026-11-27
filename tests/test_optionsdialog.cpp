@@ -45,7 +45,7 @@ TEST(OptionsDialog, DefaultsAfterReset)
     isolateTestSettings();
     resetUiKeys();
     OptionsDialog dlg;
-    EXPECT_EQ(dlg.currentLanguage(), QStringLiteral("ru"));  // по умолчанию русский
+    EXPECT_EQ(dlg.currentLanguage(), QStringLiteral("en"));  // по умолчанию английский
     EXPECT_EQ(dlg.scale(), 100);
     EXPECT_EQ(dlg.refreshIntervalSec(), 2);
 }
@@ -99,6 +99,8 @@ TEST(OptionsDialog, ProgressColorsApplyAndResetWithoutRestart)
                 auto* picker = dialog->findChild<QColorDialog*>();
                 ASSERT_NE(picker, nullptr);
                 picker->setCurrentColor(custom);
+                EXPECT_EQ(progressColor(ProgressState::Downloading), custom);
+                EXPECT_EQ(loadProgressColors(QSettings()).front(), defaultDownload);
                 picker->accept();
             });
             colorButton->click();
@@ -107,7 +109,8 @@ TEST(OptionsDialog, ProgressColorsApplyAndResetWithoutRestart)
     });
     settingsButton->click();
 
-    EXPECT_EQ(progressColor(ProgressState::Downloading), defaultDownload);
+    EXPECT_EQ(progressColor(ProgressState::Downloading), custom);
+    EXPECT_EQ(loadProgressColors(QSettings()).front(), defaultDownload);
     ASSERT_TRUE(options.apply());
     EXPECT_FALSE(options.restartRequired());
     EXPECT_EQ(progressColor(ProgressState::Downloading), custom);
@@ -140,13 +143,13 @@ TEST(OptionsDialog, SaveAndPersist)
     isolateTestSettings();
     resetUiKeys();
     OptionsDialog dlg;
-    dlg.setLanguage("en");
+    dlg.setLanguage("ru");
     dlg.setScale(125);
     dlg.setRefreshIntervalSec(5);
     dlg.apply();
 
     QSettings s;
-    EXPECT_EQ(s.value("ui/language").toString(), "en");
+    EXPECT_EQ(s.value("ui/language").toString(), "ru");
     EXPECT_EQ(s.value("ui/scale").toInt(), 125);
     EXPECT_EQ(s.value("ui/refreshInterval").toInt(), 5);
     EXPECT_TRUE(dlg.restartRequired());  // язык и масштаб изменились

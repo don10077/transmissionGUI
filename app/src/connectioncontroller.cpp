@@ -35,7 +35,10 @@ void ConnectionController::shutdown()
 
 bool ConnectionController::finishReconnect()
 {
-    return m_connected && std::exchange(m_reconnecting, false);
+    if (!m_connected)
+        return false;
+    m_reconnectDelayMs = kReconnectBaseDelayMs;
+    return std::exchange(m_reconnecting, false);
 }
 
 void ConnectionController::onConnect()
@@ -68,7 +71,6 @@ void ConnectionController::startConnect(const tgui::RpcClient::Options& opts, bo
         m_reconnectDelayMs = kReconnectBaseDelayMs;
     m_rpc = std::make_unique<tgui::RpcClient>(opts);
     connect(m_rpc.get(), &tgui::RpcClient::connected, this, [this](const tgui::SessionInfo& info) {
-        m_reconnectDelayMs = kReconnectBaseDelayMs;
         m_connected = true;
         emit connected(info);
     });
@@ -82,7 +84,7 @@ void ConnectionController::startConnect(const tgui::RpcClient::Options& opts, bo
             &ConnectionController::onClientTlsPassphraseRequired);
     emit clientChanged(m_rpc.get());
     emit connecting(opts.url);
-    m_rpc->connectToDaemon(retry);
+    m_rpc->connectToDaemon(true);
 }
 
 void ConnectionController::setAutoConnect(const tgui::RpcClient::Options& opts)
@@ -154,7 +156,7 @@ void ConnectionController::onConnectionFailed(const QString& error)
 /** Планирует новую сессию после временного сбоя или показывает постоянную ошибку. */
 void ConnectionController::handleConnectionError(const QString& error, bool retry)
 {
-    emit interrupted();
+    emit interrupted(error);
     suspendConnection();
     const QPointer<tgui::RpcClient> failedClient(m_rpc.get());
     QTimer::singleShot(0, this, [this, failedClient, error, retry] {
@@ -170,7 +172,7 @@ void ConnectionController::handleConnectionError(const QString& error, bool retr
             const int delay = m_reconnectDelayMs;
             m_reconnectDelayMs = std::min(delay * 2, kReconnectMaxDelayMs);
             m_reconnectTimer.start(delay);
-            emit retryScheduled(delay, error);
+            emit retryScheduled();
             return;
         }
         clearConnection();

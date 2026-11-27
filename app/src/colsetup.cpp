@@ -133,33 +133,32 @@ void ColumnLayout::configureHeader(QHeaderView* header)
     header->setHighlightSections(false);
 }
 
+void ColumnLayout::fitHeaderWidths(QHeaderView& header)
+{
+    header.ensurePolished();
+    for (int column = 0; column < header.count(); ++column) {
+        if (header.isSectionHidden(column) || header.sectionResizeMode(column) != QHeaderView::Interactive)
+            continue;
+        const int titleWidth = header.sectionSizeHint(column);
+        if (header.sectionSize(column) < titleWidth)
+            header.resizeSection(column, titleWidth);
+    }
+}
+
 void ColumnLayout::applyToView(QTreeView* view) const
 {
-    if (!view)
-        return;
-    auto* header = view->header();
-    if (!header)
-        return;
-    header->setSectionResizeMode(QHeaderView::Interactive);
-    const auto n = std::min({order.size(), visible.size(), qsizetype(header->count())});
-    for (int visual = 0; visual < n; ++visual) {
-        const int logical = order.at(visual);
-        const int cur = header->visualIndex(logical);
-        if (cur >= 0 && cur != visual)
-            header->moveSection(cur, visual);
-    }
-    for (int i = 0; i < n; ++i) {
-        view->setColumnHidden(i, !visible.at(i));
-        if (widths.contains(i))
-            view->setColumnWidth(i, widths.value(i));
-    }
+    if (view)
+        applyToHeader(view->header());
 }
 
 void ColumnLayout::applyToView(QTableView* view) const
 {
-    if (!view)
-        return;
-    auto* header = view->horizontalHeader();
+    if (view)
+        applyToHeader(view->horizontalHeader());
+}
+
+void ColumnLayout::applyToHeader(QHeaderView* header) const
+{
     if (!header)
         return;
     header->setSectionResizeMode(QHeaderView::Interactive);
@@ -171,10 +170,11 @@ void ColumnLayout::applyToView(QTableView* view) const
             header->moveSection(cur, visual);
     }
     for (int i = 0; i < n; ++i) {
-        view->setColumnHidden(i, !visible.at(i));
+        header->setSectionHidden(i, !visible.at(i));
         if (widths.contains(i))
-            view->setColumnWidth(i, widths.value(i));
+            header->resizeSection(i, widths.value(i));
     }
+    fitHeaderWidths(*header);
 }
 
 ColumnLayout ColumnLayout::fromView(QTableView* view, int count)

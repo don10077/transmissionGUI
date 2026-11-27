@@ -1596,9 +1596,51 @@ protected:
 
     static bool waitingForRetry(MainWindow& window, int seconds)
     {
-        return window.statusBar()->currentMessage().contains(QString("Retrying in %1 s").arg(seconds));
+        const auto* countdown = window.findChild<QLabel*>("retryCountdown");
+        return countdown && countdown->isVisibleTo(&window) &&
+               countdown->text() == QString("Retrying in %1 s").arg(seconds);
     }
 };
+
+TEST_F(ConnectionRecovery, StartsOfflineAndKeepsStaleTorrentsHiddenUntilFreshSnapshot)
+{
+    const MockRpcServer::Response unavailable{503, "Service temporarily unavailable", {}};
+    const MockRpcServer::Response initial{200,
+        R"({"result":"success","arguments":{"rpc-version":14,"torrents":[{"id":1,"name":"Before outage"}]}})", {}};
+    const MockRpcServer::Response updated{200,
+        R"({"result":"success","arguments":{"rpc-version":14,"torrents":[{"id":2,"name":"After outage"}]}})", {}};
+    server.setDefault(unavailable);
+    RpcClient::Options options;
+    options.url = server.url();
+    MainWindow window(nullptr, options);
+    auto* view = window.torrentView();
+
+    ASSERT_TRUE(waitForSettings([&] { return waitingForRetry(window, 1); }));
+    EXPECT_TRUE(hasExactLabel(window.centralWidget(), "Daemon unavailable"));
+    EXPECT_FALSE(view->isVisibleTo(&window));
+    server.setDefault(initial);
+    ASSERT_TRUE(waitForSettings([&] { return view->isVisibleTo(&window) && window.torrentModel().torrentById(1); }));
+
+    server.setDefault(unavailable);
+    ASSERT_TRUE(QMetaObject::invokeMethod(&window, "onRefresh", Qt::DirectConnection));
+    ASSERT_TRUE(waitForSettings([&] { return waitingForRetry(window, 1); }));
+    EXPECT_FALSE(view->isVisibleTo(&window));
+
+    server.setDefault(updated);
+    server.holdNext();
+    ASSERT_TRUE(waitForSettings([&] { return server.heldCount() == 1; }));
+    EXPECT_TRUE(hasExactLabel(window.centralWidget(), QString("Connecting to %1…").arg(server.url().toDisplayString())));
+    EXPECT_FALSE(view->isVisibleTo(&window));
+    server.holdNext();
+    server.release();
+    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow() && server.heldCount() == 1; }));
+    EXPECT_TRUE(window.torrentModel().torrentById(1) != nullptr);
+    EXPECT_FALSE(view->isVisibleTo(&window));
+
+    server.release();
+    ASSERT_TRUE(waitForSettings([&] { return view->isVisibleTo(&window) && window.torrentModel().torrentById(2); }));
+    EXPECT_EQ(window.torrentModel().torrentById(1), nullptr);
+}
 
 TEST_F(ConnectionRecovery, TimeoutAndTransportLossRecoverWithBackoff)
 {
@@ -1615,7 +1657,7 @@ TEST_F(ConnectionRecovery, TimeoutAndTransportLossRecoverWithBackoff)
     server.setDefault({503, "Service temporarily unavailable", {}});
     ASSERT_TRUE(waitForSettings([&] { return waitingForRetry(window, 2); }));
     server.setDefault(healthy);
-    ASSERT_TRUE(waitForSettings([&] { return window.isConnectedNow() && server.requestCount() >= 5; }));
+    ASSERT_TRUE(waitForSettings([&] { return window.torrentView()->isVisibleTo(&window); }));
 
     const int before = server.requestCount();
     server.setDefault({0, {}, {}});

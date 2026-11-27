@@ -627,12 +627,49 @@ Scheme scheme()
     return g_scheme;
 }
 
+TextColors defaultTextColors()
+{
+    return {QColor(0x1B, 0x1B, 0x1B), QColor(0xE6, 0xE7, 0xE9)};
+}
+
+TextColors loadTextColors(const QSettings& settings)
+{
+    auto colors = defaultTextColors();
+    const auto values = settings.value(QStringLiteral("ui/textColors")).toStringList();
+    for (qsizetype i = 0; i < qMin(values.size(), qsizetype(colors.size())); ++i) {
+        const QColor color(values.at(i));
+        if (color.isValid())
+            colors[static_cast<size_t>(i)] = QColor(color.red(), color.green(), color.blue());
+    }
+    return colors;
+}
+
+void saveTextColors(QSettings& settings, const TextColors& colors)
+{
+    if (colors == defaultTextColors())
+        settings.remove(QStringLiteral("ui/textColors"));
+    else
+        settings.setValue(QStringLiteral("ui/textColors"), QStringList{colors[0].name(), colors[1].name()});
+    previewTextColors(colors);
+}
+
+void previewTextColors(const TextColors& colors)
+{
+    activePalette().text = colors[g_scheme == Scheme::Dark ? 1 : 0];
+    if (auto* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
+        installAppearance(*app, false);
+        for (auto* widget : app->allWidgets())
+            widget->update();
+    }
+}
+
 void setScheme(Scheme scheme)
 {
     if (scheme == g_scheme)
         return;
     g_scheme = scheme;
     activePalette() = scheme == Scheme::Dark ? darkPalette() : lightPalette();
+    activePalette().text = loadTextColors(QSettings())[scheme == Scheme::Dark ? 1 : 0];
 
     QPixmapCache::clear();
     if (auto* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
@@ -1202,12 +1239,21 @@ void saveProgressColors(QSettings& settings, const ProgressColors& colors)
     else
         settings.setValue(progressColorsKey, values);
 
+    previewProgressColors(colors);
+}
+
+void previewProgressColors(const ProgressColors& colors)
+{
     auto& active = activeProgressColors();
     if (active == colors)
         return;
     active = colors;
     if (qApp && !qApp->styleSheet().isEmpty())
         qApp->setStyleSheet(buildQss(palette()));
+    if (qApp) {
+        for (auto* widget : qApp->allWidgets())
+            widget->update();
+    }
 }
 
 void installAppearance(QApplication& app, bool resetStyle)
@@ -1298,6 +1344,7 @@ void apply(QApplication& app, Scheme scheme)
     activeProgressColors() = loadProgressColors(QSettings());
     g_scheme = scheme;
     activePalette() = scheme == Scheme::Dark ? darkPalette() : lightPalette();
+    activePalette().text = loadTextColors(QSettings())[scheme == Scheme::Dark ? 1 : 0];
     QPixmapCache::clear();
 
     installAppearance(app, true);

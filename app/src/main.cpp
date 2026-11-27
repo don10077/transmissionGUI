@@ -90,18 +90,18 @@ int main(int argc, char* argv[])
     }
 
     // i18n (W06, I18N-02): язык — QSettings("ui/language"). Значение из ini не доверяем:
-    // допускаем "system" или код вида ru / pt_BR, иначе откатываемся на русский.
+    // допускаем "system" или код вида ru / pt_BR, иначе откатываемся на английский (язык по умолчанию).
     // Переводы Qt (qtbase_*.qm) грузим отдельным переводчиком: без них остаются
     // английскими кнопки диалогов и контекстные меню стандартных виджетов.
     // Переводчик живёт до выхода из main (installTranslator держит указатель на него).
     QTranslator translator;
     QTranslator qtTranslator;
-    QString lang = QSettings().value("ui/language", QStringLiteral("ru")).toString();
+    QString lang = QSettings().value("ui/language", QStringLiteral("en")).toString();
     if (lang == QLatin1String("system"))
         lang = QLocale::system().name();
     static const QRegularExpression languagePattern(QStringLiteral("^[a-z]{2}(_[A-Z]{2})?$"));
     if (!languagePattern.match(lang).hasMatch())
-        lang = QStringLiteral("ru");
+        lang = QStringLiteral("en");
     {
         const QString qmPath = QStringLiteral("/translations/tgui_") + lang + QStringLiteral(".qm");
         if (translator.load(QCoreApplication::applicationDirPath() + qmPath) ||

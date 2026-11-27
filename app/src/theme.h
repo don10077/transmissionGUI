@@ -199,8 +199,18 @@ using ProgressColors = std::array<QColor, static_cast<std::size_t>(ProgressState
 const ProgressColors& defaultProgressColors();
 ProgressColors loadProgressColors(const QSettings& settings);
 void saveProgressColors(QSettings& settings, const ProgressColors& colors);
+/** Применяет цвета шкалы для предпросмотра без записи настроек. */
+void previewProgressColors(const ProgressColors& colors);
 ProgressState torrentProgressState(int status, bool finished, bool error);
 QColor progressColor(ProgressState state);
+/** Общий цвет текста для светлой и тёмной схем соответственно. */
+using TextColors = std::array<QColor, 2>;
+TextColors defaultTextColors();
+TextColors loadTextColors(const QSettings& settings);
+/** Сохраняет цвета и немедленно обновляет оформление приложения. */
+void saveTextColors(QSettings& settings, const TextColors& colors);
+/** Показывает цвет текущей темы без записи настроек. */
+void previewTextColors(const TextColors& colors);
 
 // A.2: логические пиксели при 100%; Qt 6 масштабирует сам (HiDPI).
 inline int dp(int v) { return v; }

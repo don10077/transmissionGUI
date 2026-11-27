@@ -8,13 +8,16 @@
 #include <QDropEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QLabel>
 #include <QMessageBox>
 #include <QMenu>
 #include <QMimeData>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QStatusBar>
+#include <QVBoxLayout>
 
 #include "aboutdialog.h"
 #include "connectbutton.h"
@@ -155,6 +158,7 @@ MainWindow::~MainWindow()
     // существовать (и тем более слать сигналы) после их уничтожения.
     // Владелец таймеров — сами члены-контроллеры, parent не нужен.
     m_refreshTimer.stop();
+    m_retryCountdownTimer.stop();
     m_watchService.stop();
     m_actions.suspend();
     m_connection.shutdown();
@@ -173,10 +177,52 @@ void MainWindow::createUi()
     splitter->setStretchFactor(1, 0);
     splitter->setSizes({qMax(kMainTopMinHeight, height() - kDetailsPanelHeight - splitter->handleWidth()),
                         kDetailsPanelHeight});
-    setCentralWidget(splitter);
+    m_mainPages = new QStackedWidget(this);
+    m_mainPages->addWidget(splitter);
+    m_connectionPage = new QWidget;
+    auto* layout = new QVBoxLayout(m_connectionPage);
+    layout->setContentsMargins(24, 24, 24, 24);
+    layout->setSpacing(8);
+    layout->addStretch();
+    m_connectionTitle = new QLabel(m_connectionPage);
+    auto headingFont = m_connectionTitle->font();
+    headingFont.setBold(true);
+    m_connectionTitle->setFont(headingFont);
+    m_connectionDetail = new QLabel(m_connectionPage);
+    m_retryCountdown = new QLabel(m_connectionPage);
+    m_retryCountdown->setObjectName(QStringLiteral("retryCountdown"));
+    for (auto* label : {m_connectionTitle, m_connectionDetail, m_retryCountdown}) {
+        label->setAlignment(Qt::AlignCenter);
+        label->setTextFormat(Qt::PlainText);
+        label->setWordWrap(true);
+        layout->addWidget(label);
+    }
+    layout->addStretch();
+    m_mainPages->addWidget(m_connectionPage);
+    setCentralWidget(m_mainPages);
+    m_retryCountdownTimer.setInterval(200);
+    connect(&m_retryCountdownTimer, &QTimer::timeout, this, &MainWindow::updateRetryCountdown);
 
     m_status.initialize(*m_list.view());
+}
 
+/** Заменяет список и детали сообщением о текущем состоянии соединения. */
+void MainWindow::showConnectionPage(const QString& title, const QString& detail)
+{
+    m_retryCountdownTimer.stop();
+    m_retryCountdown->hide();
+    m_connectionTitle->setText(title);
+    m_connectionDetail->setText(detail);
+    m_connectionDetail->setVisible(!detail.isEmpty());
+    m_mainPages->setCurrentWidget(m_connectionPage);
+}
+
+/** Обновляет отсчёт по таймеру, который запускает следующую попытку RPC. */
+void MainWindow::updateRetryCountdown()
+{
+    const int remaining = m_connection.retryRemainingMs();
+    if (remaining > 0)
+        m_retryCountdown->setText(tr("Retrying in %1 s").arg((remaining + 999) / 1000));
 }
 
 /** Обновляет подпись профиля и адрес или состояние подключения. */
@@ -226,7 +272,9 @@ void MainWindow::setConnectedUi(bool on)
 // transgui: acStartTorrent/acStopTorrent/… Enabled по SelectedCount).
 void MainWindow::updateSelectionActions(qsizetype count)
 {
-    if (count < 0)
+    if (m_mainPages->currentWidget() == m_connectionPage)
+        count = 0;
+    else if (count < 0)
         count = m_list.selectedTorrentIds().size();
     const bool hasSel = m_connection.isConnected() && count != 0;
     m_details.updateInfoTitleWithCount(count);
@@ -250,19 +298,25 @@ void MainWindow::connectConnectionController()
     connect(&m_connection, &ConnectionController::clientChanged, this, &MainWindow::onClientChanged);
     connect(&m_connection, &ConnectionController::connecting, this, [this](const QUrl& address) {
         m_watchService.stop(true);
-        statusBar()->showMessage(tr("Connecting to %1…").arg(address.toDisplayString(QUrl::RemoveUserInfo)), 5000);
+        const auto detail = tr("Connecting to %1…").arg(address.toDisplayString(QUrl::RemoveUserInfo));
+        const bool retry = m_connection.isReconnecting();
+        showConnectionPage(retry ? tr("Daemon unavailable") : detail, retry ? detail : QString{});
+        statusBar()->showMessage(detail, 5000);
         setConnectedUi(false);
-        setConnectionState(tr("Connecting…"), tgui::theme::color::accent);
+        setConnectionState(retry ? tr("Reconnecting…") : tr("Connecting…"), tgui::theme::color::accent);
     });
     connect(&m_connection, &ConnectionController::connected, this, &MainWindow::onConnected);
-    connect(&m_connection, &ConnectionController::interrupted, this, [this] {
+    connect(&m_connection, &ConnectionController::interrupted, this, [this](const QString& error) {
         m_add.interrupt();
+        showConnectionPage(tr("Daemon unavailable"), error);
     });
     connect(&m_connection, &ConnectionController::suspended, this, &MainWindow::suspendConnectionUi);
     connect(&m_connection, &ConnectionController::clearing, this, &MainWindow::onConnectionClearing);
     connect(&m_connection, &ConnectionController::cleared, this, &MainWindow::onConnectionCleared);
     connect(&m_connection, &ConnectionController::manuallyDisconnected, this, [this] {
         const auto discarded = m_discardedAdds;
+        m_retryCountdownTimer.stop();
+        m_mainPages->setCurrentWidget(m_mainSplitter);
         setConnectionState(tr("Disconnected"), tgui::theme::palette().statusOfflineDot);
         if (discarded > 0) {
             const auto notice = tr("Add queue cleared. Torrents not added: %1.").arg(discarded);
@@ -272,17 +326,20 @@ void MainWindow::connectConnectionController()
             statusBar()->showMessage(tr("Disconnected"), 5000);
         }
     });
-    connect(&m_connection, &ConnectionController::retryScheduled, this, [this](int delay, const QString& error) {
+    connect(&m_connection, &ConnectionController::retryScheduled, this, [this] {
         m_add.prepareRetry();
         setConnectedUi(false);
         setConnectionState(tr("Reconnecting…"), tgui::theme::color::accent);
-        statusBar()->showMessage(tr("Retrying in %1 s: %2").arg(delay / 1000).arg(error), delay);
+        updateRetryCountdown();
+        m_retryCountdown->show();
+        m_retryCountdownTimer.start();
     });
     connect(&m_connection, &ConnectionController::failed, this, [this] {
         setConnectionState(tr("Connection failed"), tgui::theme::color::red);
         statusBar()->showMessage(tr("Disconnected"), 5000);
     });
     connect(&m_connection, &ConnectionController::authenticationRequired, this, [this] {
+        showConnectionPage(tr("Authentication required"));
         setConnectionState(tr("Authentication required"), tgui::theme::color::red);
     });
     connect(&m_connection, &ConnectionController::profileRenamed, this, [this] { setConnectedUi(true); });
@@ -379,6 +436,7 @@ void MainWindow::onConnected(const tgui::SessionInfo& info)
     if (m_details.generalForm()->torrent())
         m_details.generalForm()->setSession(info);
     setConnectionState(tr("Connected"), tgui::theme::color::green);
+    showConnectionPage(tr("Loading torrents…"));
     setConnectedUi(true);
     updateRefreshSchedule();
     m_connection.client()->getTorrents();
@@ -417,6 +475,8 @@ void MainWindow::updateRefreshSchedule()
 void MainWindow::onTorrentsReceived(const QVector<tgui::Torrent>& torrents)
 {
     const auto selection = m_list.applySnapshot(torrents, currentId());
+    if (m_connection.isConnected() && m_mainPages->currentWidget() == m_connectionPage)
+        m_mainPages->setCurrentWidget(m_mainSplitter);
     m_details.applySnapshot(selection.currentId, m_connection.isReconnecting());
 
     m_status.updateStatusBarTotals();

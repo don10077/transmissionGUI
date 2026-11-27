@@ -142,7 +142,7 @@ OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion, tgui::RpcClient* r
     m_language->addItem(QStringLiteral("Deutsch"), QStringLiteral("de"));
     m_language->addItem(QStringLiteral("Українська"), QStringLiteral("uk"));
     {
-        const QString lang = QSettings().value(kKeyLanguage, QStringLiteral("ru")).toString();
+        const QString lang = QSettings().value(kKeyLanguage, QStringLiteral("en")).toString();
         const int idx = m_language->findData(lang);
         if (idx >= 0)
             m_language->setCurrentIndex(idx);
@@ -165,6 +165,7 @@ OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion, tgui::RpcClient* r
     tgui::theme::addFormRow(interfaceForm, tr("Toolbar buttons:"), m_toolbarStyle);
 
     m_progressColors = tgui::theme::loadProgressColors(QSettings());
+    m_textColors = tgui::theme::loadTextColors(QSettings());
     auto* progressColors = new QPushButton(tr("Progress bar colors…"), interfacePage);
     progressColors->setObjectName(QStringLiteral("progressColorsButton"));
     connect(progressColors, &QPushButton::clicked, this, &OptionsDialog::editProgressColors);
@@ -438,17 +439,35 @@ OptionsDialog::OptionsDialog(QWidget* parent, int rpcVersion, tgui::RpcClient* r
     tgui::theme::decorateDialog(this);
 }
 
+OptionsDialog::~OptionsDialog()
+{
+    tgui::theme::previewProgressColors(tgui::theme::loadProgressColors(QSettings()));
+    tgui::theme::previewTextColors(tgui::theme::loadTextColors(QSettings()));
+}
+
 /** Позволяет выбрать цвета и вернуть стандартную палитру до сохранения настроек. */
 void OptionsDialog::editProgressColors()
 {
     QDialog dialog(this);
     dialog.setWindowTitle(tr("Progress bar colors"));
     auto* form = tgui::theme::formGrid(&dialog);
-    auto edited = m_progressColors;
+    QList<QColor> edited;
+    for (const auto& color : m_progressColors)
+        edited.append(color);
+    for (const auto& color : m_textColors)
+        edited.append(color);
     const std::array labels{tr("Downloading"), tr("Seeding"), tr("Finished"), tr("Waiting"),
-                            tr("Verifying"), tr("Paused"), tr("Error")};
-    static_assert(labels.size() == std::tuple_size_v<tgui::theme::ProgressColors>);
+                            tr("Verifying"), tr("Paused"), tr("Error"),
+                            tr("Text in light theme"), tr("Text in dark theme")};
     std::array<QPushButton*, labels.size()> fields{};
+    const auto preview = [&] {
+        tgui::theme::ProgressColors progress;
+        std::copy_n(edited.cbegin(), progress.size(), progress.begin());
+        tgui::theme::previewProgressColors(progress);
+        tgui::theme::TextColors text;
+        std::copy_n(edited.cbegin() + progress.size(), text.size(), text.begin());
+        tgui::theme::previewTextColors(text);
+    };
     const auto updateField = [&edited, &fields](size_t index) {
         const auto color = edited[index];
         QPixmap swatch(24, 14);
@@ -463,12 +482,19 @@ void OptionsDialog::editProgressColors()
         updateField(i);
         tgui::theme::addFormRow(form, labels[i], button);
         connect(button, &QPushButton::clicked, &dialog, [&, i] {
-            const auto color = QColorDialog::getColor(edited[i], &dialog, labels[i],
-                                                       QColorDialog::DontUseNativeDialog);
-            if (color.isValid()) {
+            const auto original = edited[i];
+            QColorDialog picker(original, &dialog);
+            picker.setWindowTitle(labels[i]);
+            picker.setOption(QColorDialog::DontUseNativeDialog);
+            connect(&picker, &QColorDialog::currentColorChanged, &dialog, [&, i](const QColor& color) {
                 edited[i] = color;
                 updateField(i);
-            }
+                preview();
+            });
+            if (picker.exec() != QDialog::Accepted)
+                edited[i] = original;
+            updateField(i);
+            preview();
         });
     }
 
@@ -476,16 +502,25 @@ void OptionsDialog::editProgressColors()
     auto* reset = buttons->addButton(tr("Restore defaults"), QDialogButtonBox::ResetRole);
     reset->setObjectName(QStringLiteral("resetProgressColors"));
     connect(reset, &QPushButton::clicked, &dialog, [&] {
-        edited = tgui::theme::defaultProgressColors();
+        edited.clear();
+        for (const auto& color : tgui::theme::defaultProgressColors())
+            edited.append(color);
+        for (const auto& color : tgui::theme::defaultTextColors())
+            edited.append(color);
         for (size_t i = 0; i < fields.size(); ++i)
             updateField(i);
+        preview();
     });
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     tgui::theme::addFullRow(form, buttons);
     tgui::theme::decorateDialog(&dialog);
-    if (dialog.exec() == QDialog::Accepted)
-        m_progressColors = edited;
+    if (dialog.exec() == QDialog::Accepted) {
+        std::copy_n(edited.cbegin(), m_progressColors.size(), m_progressColors.begin());
+        std::copy_n(edited.cbegin() + m_progressColors.size(), m_textColors.size(), m_textColors.begin());
+    }
+    tgui::theme::previewProgressColors(m_progressColors);
+    tgui::theme::previewTextColors(m_textColors);
 }
 
 void OptionsDialog::setCurrentPage(int page)
@@ -610,7 +645,7 @@ bool OptionsDialog::apply()
     QSettings s;
     const QString newLang = currentLanguage();
     const int newScale = scale();
-    m_restartRequired = (s.value(kKeyLanguage, QStringLiteral("ru")).toString() != newLang) ||
+    m_restartRequired = (s.value(kKeyLanguage, QStringLiteral("en")).toString() != newLang) ||
                         (s.value(kKeyScale, 100).toInt() != newScale);
 
 #ifdef Q_OS_WIN
@@ -629,6 +664,7 @@ bool OptionsDialog::apply()
     s.setValue(kKeyScale, newScale);
     s.setValue(kKeyToolbarStyle, m_toolbarStyle->currentData().toInt());
     tgui::theme::saveProgressColors(s, m_progressColors);
+    tgui::theme::saveTextColors(s, m_textColors);
     s.setValue(kKeyRefresh, refreshIntervalSec());
     s.setValue("ui/backgroundRefreshInterval", m_backgroundRefresh->value());
     s.setValue("ui/smoothRates", m_smoothRates->isChecked());

@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QEventLoop>
 #include <QFont>
+#include <QHeaderView>
 #include <QImage>
 #include <QLineEdit>
 #include <QMenuBar>
@@ -12,7 +13,10 @@
 #include <QScopeGuard>
 #include <QSettings>
 #include <QStyleHints>
+#include <QTableView>
 #include <QTimer>
+#include <QTranslator>
+#include <QTreeView>
 #include <QUrl>
 #include <QWindow>
 
@@ -88,6 +92,45 @@ private:
     QPalette m_palette;
     QFont m_font;
 };
+
+TEST_F(ThemeRendering, InitialColumnWidthsFitLocalizedHeaders)
+{
+    QTranslator translator;
+    ASSERT_TRUE(translator.load(QStringLiteral(TGUI_QM_PATH)));
+    ASSERT_TRUE(qApp->installTranslator(&translator));
+    const auto restoreTranslator = qScopeGuard([&] { qApp->removeTranslator(&translator); });
+    QFont font = qApp->font();
+    font.setPointSize(14);
+    qApp->setFont(font);
+
+    const auto widthKey = [](int column) { return QStringLiteral("columns/width_%1").arg(column); };
+    QSettings settings;
+    settings.setValue(widthKey(TorrentModel::ColRateUp), 78);
+    settings.setValue(widthKey(TorrentModel::ColName), 485);
+    const auto restoreWidths = qScopeGuard([&] {
+        settings.remove(widthKey(TorrentModel::ColRateUp));
+        settings.remove(widthKey(TorrentModel::ColName));
+    });
+
+    MainWindow window;
+    window.show();
+    QCoreApplication::processEvents();
+    auto* torrentHeader = window.torrentView()->header();
+    auto* peers = window.findChild<QTableView*>("peersView");
+    ASSERT_NE(peers, nullptr);
+    EXPECT_GT(torrentHeader->sectionSizeHint(TorrentModel::ColRateDown), 78);
+    EXPECT_GT(peers->horizontalHeader()->sectionSizeHint(PeerListModel::ColRateUp), 85);
+    for (auto* header : {torrentHeader, peers->horizontalHeader()}) {
+        for (int column = 0; column < header->count(); ++column) {
+            if (!header->isSectionHidden(column)) {
+                EXPECT_GE(header->sectionSize(column), header->sectionSizeHint(column)) << column;
+            }
+        }
+    }
+    EXPECT_EQ(torrentHeader->sectionSize(TorrentModel::ColName), 485);
+    torrentHeader->resizeSection(TorrentModel::ColRateUp, 78);
+    EXPECT_EQ(torrentHeader->sectionSize(TorrentModel::ColRateUp), 78);
+}
 
 TEST_F(ThemeRendering, IconRasterUsesRequestedSizeAndDisabledOpacity)
 {
