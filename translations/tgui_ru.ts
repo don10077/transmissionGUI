@@ -1085,6 +1085,52 @@
 <context>
     <name>MainWindow</name>
     <message>
+        <location filename="../app/src/updatechecker.cpp" line="209"/>
+        <source>Download and install</source>
+        <translation>Скачать и установить</translation>
+    </message>
+    <message>
+        <location filename="../app/src/updatechecker.cpp" line="211"/>
+        <source>Download and open</source>
+        <translation>Скачать и открыть</translation>
+    </message>
+    <message>
+        <location filename="../app/src/updatechecker.cpp" line="229"/>
+        <source>Downloading update…</source>
+        <translation>Скачивание обновления…</translation>
+    </message>
+    <message>
+        <location filename="../app/src/updatechecker.cpp" line="284"/>
+        <source>Could not download the update checksum.</source>
+        <translation>Не удалось скачать контрольную сумму обновления.</translation>
+    </message>
+    <message>
+        <location filename="../app/src/updatechecker.cpp" line="287"/>
+        <source>The release has no valid checksum for this package.</source>
+        <translation>В релизе нет корректной контрольной суммы для этого пакета.</translation>
+    </message>
+    <message>
+        <location filename="../app/src/updatechecker.cpp" line="293"/>
+        <location filename="../app/src/updatechecker.cpp" line="297"/>
+        <source>Could not save the update package.</source>
+        <translation>Не удалось сохранить пакет обновления.</translation>
+    </message>
+    <message>
+        <location filename="../app/src/updatechecker.cpp" line="299"/>
+        <source>Could not download the update package.</source>
+        <translation>Не удалось скачать пакет обновления.</translation>
+    </message>
+    <message>
+        <location filename="../app/src/updatechecker.cpp" line="302"/>
+        <source>The update package did not pass SHA-256 verification.</source>
+        <translation>Контрольная сумма SHA-256 пакета обновления не совпала.</translation>
+    </message>
+    <message>
+        <location filename="../app/src/updatechecker.cpp" line="315"/>
+        <source>Could not open the update package. It was saved to %1.</source>
+        <translation>Не удалось открыть пакет обновления. Он сохранён в %1.</translation>
+    </message>
+    <message>
         <location filename="../app/src/addtorrentcoordinator.cpp" line="284"/>
         <location filename="../app/src/addtorrentcoordinator.cpp" line="388"/>
         <source>Torrent metadata exceeds the 32 MiB limit.</source>
@@ -1406,6 +1452,7 @@ Are you sure to start verification of %n torrent(s)?</source>
     </message>
     <message>
         <location filename="../app/src/geoipupdater.cpp" line="59"/>
+        <location filename="../app/src/updatechecker.cpp" line="229"/>
         <source>Cancel</source>
         <translation>Отмена</translation>
     </message>
@@ -1430,38 +1477,38 @@ Are you sure to start verification of %n torrent(s)?</source>
         <translation>Не удалось сохранить.</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="70"/>
+        <location filename="../app/src/updatechecker.cpp" line="137"/>
         <source>Checking for updates…</source>
         <translation>Проверка обновлений…</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="96"/>
+        <location filename="../app/src/updatechecker.cpp" line="163"/>
         <source>No published release was found.</source>
         <translation>Опубликованные выпуски не найдены.</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="102"/>
+        <location filename="../app/src/updatechecker.cpp" line="169"/>
         <source>Could not check for updates: %1</source>
         <translation>Не удалось проверить обновления: %1</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="110"/>
+        <location filename="../app/src/updatechecker.cpp" line="177"/>
         <source>Could not read the published version.</source>
         <translation>Не удалось определить опубликованную версию.</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="119"/>
+        <location filename="../app/src/updatechecker.cpp" line="186"/>
         <source>You have the latest version.</source>
         <translation>Установлена актуальная версия.</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="123"/>
-        <location filename="../app/src/updatechecker.cpp" line="127"/>
+        <location filename="../app/src/updatechecker.cpp" line="190"/>
+        <location filename="../app/src/updatechecker.cpp" line="194"/>
         <source>Version %1 is available.</source>
         <translation>Доступна версия %1.</translation>
     </message>
     <message>
-        <location filename="../app/src/updatechecker.cpp" line="129"/>
+        <location filename="../app/src/updatechecker.cpp" line="196"/>
         <source>Open release</source>
         <translation>Открыть выпуск</translation>
     </message>
@@ -2066,7 +2113,8 @@ Reason: %2</source>
     </message>
     <message>
         <location filename="../app/src/mainwindowui.cpp" line="553"/>
-        <location filename="../app/src/updatechecker.cpp" line="91"/>
+        <location filename="../app/src/updatechecker.cpp" line="158"/>
+        <location filename="../app/src/updatechecker.cpp" line="228"/>
         <source>Check for updates</source>
         <translation>Проверить обновления</translation>
     </message>

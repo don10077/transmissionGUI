@@ -28,12 +28,15 @@ public:
     void suspend();
 
 private:
+    /** Скачивает, проверяет и передаёт пакет установщику платформы. */
+    void downloadUpdate(const QByteArray& releasePath, const QString& package);
     QMainWindow& m_window;
     Notify m_notify;
     QNetworkAccessManager m_nam;
     QTimer m_updateCheckTimer;
     bool m_settingsImported = false;
     bool m_checkingUpdate = false;
+    bool m_downloadingUpdate = false;
     bool m_manualUpdateCheck = false;
     bool m_updateTimerIsWake = false;
 };
